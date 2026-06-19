@@ -43,6 +43,10 @@ Every irreversible choice, dated, with reason. Append-only.
 
 **2026-06-19 — Tax-bill SIGNAL basis LOCKED = `curtxbtot` (transitional taxable) × FY2026 class-4 rate 10.848%. NEVER `curacttot`.** DOF pages show three distinct values: ESTIMATED MARKET VALUE (=`curmkttot`, the distribution basis), MARKET AV (=`curacttot`, the mechanical 45%), and TRANS AV labeled "Your 2026/27 Taxes Will Be Based On" (=`curtxbtot`, the transitional taxable). Taxes are levied on the transitional taxable, lower than actual assessed during phase-in. Worked example: 438 Greenwich — actual assessed 765,000 vs transitional taxable 709,500. Using `curacttot` would overstate every tax bill.
 
+**2026-06-19 — Minimum comp count LOCKED = 8.** Below 8 comps in a target's comparison set → visible refusal, regardless of how many optional fields were supplied. Starting value (roadmap default); tunable in Phase 4 validation once real comp-set sizes are observed.
+
+**2026-06-19 — Comp SF band LOCKED = ±50%.** A parcel qualifies as a comp when its SF is within ±50% of the target's SF (PLUTO `BldgArea`, `gross_sqft` fallback). Starting value (roadmap default); tunable in Phase 4 validation.
+
 ---
 
 ## RESOLVED (2026-06-19)
@@ -52,5 +56,7 @@ Every irreversible choice, dated, with reason. Append-only.
 
 ## OPEN decisions — not yet locked
 
-- **[OPEN] Minimum comp count for refusal gate.** Lock 8 (roadmap default) to proceed; tune after seeing real comp-set sizes in Phase 4.
-- **[OPEN] Comp SF band.** Start ±50% (roadmap default). Lock to proceed.
+- **[LOCKED 2026-06-19] Minimum comp count for refusal gate = 8.** See dated lock above; tunable in Phase 4.
+- **[LOCKED 2026-06-19] Comp SF band = ±50%.** See dated lock above; tunable in Phase 4.
+
+_(No remaining open decisions.)_
