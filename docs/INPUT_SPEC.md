@@ -19,18 +19,18 @@ Tool runs and shows where comparable assessments sit **before asking for anythin
 | User's own assessed value | Shows their exact percentile in the distribution |
 | Confirmation of building class | Corrects a stale/mis-coded PLUTO `BldgClass` |
 | Confirmation of SF | Corrects stale PLUTO `BldgArea` |
-| Vintage (year built) | Tightens comp band *if* Phase 2 fill rate kept vintage as a criterion |
+| Vintage (year built) | Display-only context; failed the Phase 2 fill gate (68%) so it is not a comp criterion |
 
 ## Tier 2 — optional, CONTEXT enrichment or RUNG 3
 
 | Field | Powers | Output discipline |
 |---|---|---|
-| **Purchase price + date** | Purchase-vs-DOF-market-value SIGNAL | Cited gap, no verdict: "you purchased for X on [date], DOF market value is Y, a Z% gap." Both numbers real → rung-1 arithmetic. |
+| **Purchase price + date** | Purchase-vs-DOF-market-value SIGNAL | Cited gap, no verdict: "deal price X on [date] vs DOF market value Y, a Z% gap." Both numbers real → rung-1 arithmetic. |
 | **NOI** | RUNG 3 implied cap rate | Off by default. Output stamped "based on the NOI you provided." No comparison rate, no verdict, visually partitioned from public figures. |
 
 ## Behavior rules
 
-- Tier 0 alone → full distribution + the three public SIGNAL comparisons (assessed-value distribution/percentile, tax-bill distribution/percentile, assessment-ratio deviation vs 45%).
+- Tier 0 alone → full distribution + the four public SIGNAL comparisons (assessed-value distribution/percentile, tax-bill distribution/percentile, market-value-per-SF percentile, and the phase-in gap (transitional vs actual assessed)).
 - Supplying Tier 2 purchase price → adds the purchase-vs-market gap SIGNAL.
 - Loading two roll years (engine parameter, not a user field) → adds the YoY assessment-change-vs-comp-set SIGNAL.
 - Enabling RUNG 3 toggle + entering NOI → adds the implied-cap-rate line, partitioned.
