@@ -19,3 +19,6 @@ raw/*
 
 # Phase 2 generated output
 phase2/phase2_results.json
+
+# Local Claude Code settings
+.claude/
