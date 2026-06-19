@@ -1,0 +1,21 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# DuckDB
+*.duckdb
+*.duckdb.wal
+
+# Raw API pulls (large, reproducible via loader) — keep the dir, ignore contents
+raw/*
+!raw/.gitkeep
+
+# macOS
+.DS_Store
+
+# Phase 2 generated output
+phase2/phase2_results.json

@@ -1,0 +1,81 @@
+{
+  "jurisdiction": "NYC",
+  "schema_version": "0.1",
+  "last_updated": "2026-06-19",
+  "status": "DRAFT — value-field meanings and several citations marked verify_against_dof are PENDING Phase 2 introspection and direct DOF confirmation",
+  "tax_class_scope": "4",
+  "assessment_roll": {
+    "dataset_id": "8y4t-faws",
+    "name": "Property Valuation and Assessment Data (Tax Classes 1,2,3,4)",
+    "publisher": "NYC Department of Finance via NYC Open Data",
+    "access_method": "SODA API (data.cityofnewyork.us/resource/8y4t-faws.json) + bulk CSV",
+    "update_cadence": "annual roll, periodic corrections — confirm at pull",
+    "vintage": "PENDING — record roll year and update date at retrieval",
+    "citation_url": "https://data.cityofnewyork.us/City-Government/Property-Valuation-and-Assessment-Data-Tax-Classes/8y4t-faws",
+    "retrieved": "PENDING (Phase 2)"
+  },
+  "physical_characteristics": {
+    "dataset_id": "64uk-42ks",
+    "name": "Primary Land Use Tax Lot Output (PLUTO)",
+    "publisher": "NYC Department of City Planning via NYC Open Data",
+    "join_key": "BBL",
+    "fields_used": ["BldgArea", "BldgClass", "LotArea", "YearBuilt", "neighborhood/CD"],
+    "version_string": "PENDING — record exact release (e.g. 26v1) at retrieval",
+    "data_dictionary": "PLUTO Data Dictionary 26v1 (May 2026)",
+    "readme": "PLUTO README 24v4 (Nov 2024) — condo aggregation + YearBuilt caveats",
+    "citation_url": "https://data.cityofnewyork.us/City-Government/Primary-Land-Use-Tax-Lot-Output-PLUTO-/64uk-42ks",
+    "retrieved": "PENDING (Phase 2)"
+  },
+  "value_field_definitions": {
+    "status": "PENDING Phase 2 Step 2 — the value-field minefield",
+    "note": "The roll carries ~50 value columns. Document which single field is the comparison basis and confirm all comps use the same field and tax class. Likely DOF final MARKET VALUE (not actual assessed, not transitional assessed). MUST be confirmed against DOF class 4 methodology, not a summary.",
+    "candidate_comparison_field": "final market value (TBD exact column name from API introspection)",
+    "verify_against_dof": "https://www.nyc.gov/site/finance/property/property-determining-your-assessed-value.page"
+  },
+  "assessment_ratio": {
+    "class_4_ratio_of_market_value": 0.45,
+    "use": "SIGNAL — assessment-ratio deviation, descriptive only, not a verdict",
+    "source": "NYC DOF — Determining Your Assessed Value",
+    "verify_against_dof": "https://www.nyc.gov/site/finance/property/property-determining-your-assessed-value.page",
+    "confidence": "high (multiple secondary sources trace to DOF); re-cite directly to DOF page"
+  },
+  "tax_rate": {
+    "fiscal_year": 2026,
+    "class_4_rate": 0.10848,
+    "layer": "CONTEXT only",
+    "note": "Confirmed ~10.848% via FY2026 sources citing nyc.gov. LOCK exact figure against official DOF tax-rate table before display. Used only to multiply a published taxable value into a displayed tax bill.",
+    "verify_against_dof": "https://www.nyc.gov/site/finance/taxes/property-tax-rates.page",
+    "historical_rates_needed": true
+  },
+  "reassessment_cycle": {
+    "status": "PENDING — cite to DOF",
+    "note": "Class 4 has no assessment-increase cap; assessments can move to full market value in a single year. Cite DOF.",
+    "layer": "CONTEXT only"
+  },
+  "ret_transfer_tax": {
+    "status": "PENDING — cite NYC RPTT + NY State RETT",
+    "layer": "CONTEXT only",
+    "relevance": "supports the 'new owner paid less than assessed' use case"
+  },
+  "appeal_process": {
+    "authority": "NYC Tax Commission",
+    "status": "PENDING — cite process + annual deadline",
+    "layer": "CONTEXT only (the user's next step, never advice to take it)",
+    "verify_url": "https://www.nyc.gov/site/taxcommission/index.page"
+  },
+  "rpie_note": {
+    "fact": "Real Property Income and Expense (RPIE) data — source of the assessor's NOI — is NOT published per parcel.",
+    "consequence": "RUNG 3 implied cap rate is USER-INPUT NOI ONLY. Cannot be auto-pulled. This dependency keeps RUNG 3 honest."
+  },
+  "known_data_caveats": [
+    "Condo billing-lot aggregation in PLUTO — handle explicitly, route exclusions with reason codes",
+    "Transitional assessment phase-in for class 4 — affects value-field choice",
+    "YearBuilt correction history in PLUTO — demote to display-only if fill rate weak",
+    "Open-data vintage lag vs official DOF lookup — disclose any lag found in Phase 2 ground-truth check"
+  ],
+  "address_to_bbl": {
+    "service": "NYC Geoclient / DCP Geosupport",
+    "cost": "free, requires NYC API key",
+    "status": "needed for Tier 0 address input resolution"
+  }
+}
