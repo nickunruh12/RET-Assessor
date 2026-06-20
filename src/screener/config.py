@@ -11,6 +11,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = REPO_ROOT / "raw"
 DB_PATH = REPO_ROOT / "screener.duckdb"
+COMP_CRITERIA_PATH = REPO_ROOT / "config" / "comp_criteria.json"
 
 # --- Datasets (DECISIONS.md, 2026-06-19) ---
 SODA_BASE = "https://data.cityofnewyork.us/resource/{dataset}.json"
