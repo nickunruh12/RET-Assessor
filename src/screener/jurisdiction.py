@@ -53,6 +53,10 @@ class CompCriteria(BaseModel):
     condo_unit_lot_min: int = 1001
     min_comp_count: int = 8
 
+    # output guards + context rate
+    low_exact_caution_threshold: int = 3
+    class4_tax_rate: float = 0.10848
+
     @classmethod
     def load(cls, path: Path | None = None) -> "CompCriteria":
         path = path or config.COMP_CRITERIA_PATH

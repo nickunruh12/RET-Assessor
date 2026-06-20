@@ -47,5 +47,11 @@
   "_condo_doc": "Condo unit lots are excluded from the comp set: their gross_sqft provenance is unreliable for $/SF (whole-building-envelope error, see DECISIONS derived-tier rejection). A parcel is a condo unit lot if its building class starts with 'R' OR its lot number (BBL digits 7-10) >= condo_unit_lot_min. NOTE: not fully excluded upstream — many re-enter SF-eligibility via the roll gross_sqft fallback — so they are excluded here at the comp layer.",
 
   "min_comp_count": 8,
-  "_min_comp_count_doc": "Below this within the 1-mile cap, the screen REFUSES (DECISIONS LOCKED = 8). Tunable, logged for Phase 6."
+  "_min_comp_count_doc": "Below this within the 1-mile cap, the screen REFUSES (DECISIONS LOCKED = 8). Tunable, logged for Phase 6.",
+
+  "low_exact_caution_threshold": 3,
+  "_low_exact_caution_doc": "When a SUCCESSFUL comp set has fewer than this many exact-class comps, attach a visible caution ('comp set is largely adjacent-class, interpret accordingly'). Warn, never refuse (DECISIONS 2026-06-20). Tunable, logged for Phase 6.",
+
+  "class4_tax_rate": 0.10848,
+  "_class4_tax_rate_doc": "FY2026 class-4 tax rate (DECISIONS). Multiplies curtxbtot (transitional taxable) into the tax-bill SIGNAL. CONTEXT layer."
 }
