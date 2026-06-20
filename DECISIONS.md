@@ -28,9 +28,9 @@ Every irreversible choice, dated, with reason. Append-only.
 
 **Vintage DEMOTED to display-only.** `yrbuilt` fill = 68.1% on class 4 (FAIL ≥80% gate). Not reliable enough to be a comp criterion.
 
-**SF source = PLUTO `BldgArea`.** 99.98% fill on commercial (O*/K*) vs 71.8% for roll `gross_sqft`. `gross_sqft` is the fallback when the PLUTO join misses.
+**Gross-building-area source = PLUTO `BldgArea`.** The SF metric throughout this tool is **gross building area** (PLUTO `BldgArea`), not usable/rentable area. 99.98% fill on commercial (O*/K*) vs 71.8% for roll `gross_sqft`. `gross_sqft` (also a gross-building-area figure, from the DOF roll) is the fallback when the PLUTO join misses.
 
-**Assessment-ratio-vs-45% SIGNAL REMOVED; replaced by two SIGNALs (Nick's call, 2026-06-19).** (1) **Market-value-per-SF percentile** = `curmkttot ÷ BldgArea` ranked against the comp set. (2) **Phase-in gap** = `curtrntot` vs `curacttot`, showing how much of an assessment increase is still being phased in. Both deterministic, public, no verdict. The old ratio is mechanically 0.45 for every class-4 parcel and carries zero information.
+**Assessment-ratio-vs-45% SIGNAL REMOVED; replaced by two SIGNALs (Nick's call, 2026-06-19).** (1) **Market-value-per-gross-building-area percentile** = `curmkttot ÷ BldgArea` ranked against the comp set, where the denominator is PLUTO `BldgArea` (gross building area). (2) **Phase-in gap** = `curtrntot` vs `curacttot`, showing how much of an assessment increase is still being phased in. Both deterministic, public, no verdict. The old ratio is mechanically 0.45 for every class-4 parcel and carries zero information. **Framing discipline:** this $/SF figure is a **peer-comparison screen** (where does this parcel's market-value-per-gross-SF sit against its comps), NOT a reconstruction of the assessor's valuation method — DOF values class 4 primarily by income (capitalized net operating income), not by $/SF. The SIGNAL screens for outliers among peers; it does not claim to reproduce how the assessment was set.
 
 **2026-06-19 — Ground-truth check PASSED 5/5. Accuracy gate CLOSED.** Manually verified 5 class-4 parcels against the official DOF property lookup (a836-pts-access.nyc.gov); API `curmkttot` matched DOF published market value exactly, to the dollar, on all 5:
 - 438 Greenwich St — BBL 1002230035 — API 1,700,000 / DOF 1,700,000 — MATCH
@@ -45,7 +45,11 @@ Every irreversible choice, dated, with reason. Append-only.
 
 **2026-06-19 — Minimum comp count LOCKED = 8.** Below 8 comps in a target's comparison set → visible refusal, regardless of how many optional fields were supplied. Starting value (roadmap default); tunable in Phase 4 validation once real comp-set sizes are observed.
 
-**2026-06-19 — Comp SF band LOCKED = ±50%.** A parcel qualifies as a comp when its SF is within ±50% of the target's SF (PLUTO `BldgArea`, `gross_sqft` fallback). Starting value (roadmap default); tunable in Phase 4 validation.
+**2026-06-19 — Comp SF band LOCKED = ±50%.** A parcel qualifies as a comp when its gross building area is within ±50% of the target's gross building area (PLUTO `BldgArea`, `gross_sqft` fallback). Starting value (roadmap default); tunable in Phase 4 validation.
+
+**2026-06-19 — Terminology LOCKED = "gross building area."** The SF metric is everywhere called **gross building area** (PLUTO `BldgArea`; roll `gross_sqft` as fallback — also gross), never "usable" or "rentable" square feet. The market-value-per-SF SIGNAL is a **peer-comparison screen**, not a reconstruction of the assessor's method: DOF values class 4 primarily by income (capitalized NOI), so $/gross-SF is used only to rank a parcel against its comps, never to claim how the assessment was derived.
+
+**2026-06-19 — $/SF output contract LOCKED (recorded; rendering deferred).** Every market-value-per-gross-building-area figure must display its denominator's source, tied to the row's `sf_source` tag, every time — no unlabeled $/SF output. Labels: `pluto_bldgarea` → "based on gross building area (PLUTO [version])"; `roll_gross_sqft` → "based on gross building area (DOF assessment roll)"; `derived_dimensions` → "based on ESTIMATED gross building area (frontage × depth × stories, not a reported figure)"; no SF from any tier → per-signal refusal "Market-value-per-SF unavailable, gross building area missing for this parcel," shown alongside the assessed-value and tax-bill distributions (which don't need SF). The label rides on the $/SF figure itself — same provenance discipline as the citation tuple. Full table in `docs/INPUT_SPEC.md`.
 
 ---
 

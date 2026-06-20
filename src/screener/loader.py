@@ -196,7 +196,7 @@ def load_to_duckdb(manifest: dict, db_path: Path | None = None) -> dict:
                 bldg_class       VARCHAR,
                 zip_code         VARCHAR,
                 year_built       VARCHAR,           -- display-only (68% fill)
-                gross_sqft       DOUBLE,            -- SF fallback when PLUTO misses
+                gross_sqft       DOUBLE,            -- gross-building-area fallback when PLUTO misses
                 curmkttot        DOUBLE,            -- market value: distribution basis
                 curtxbtot        DOUBLE,            -- transitional taxable: tax-bill SIGNAL
                 curtrntot        DOUBLE,            -- transitional assessed: phase-in gap

@@ -34,7 +34,7 @@ COL_BBL = "parid"
 COL_BLDG_CLASS = "bldg_class"
 COL_ZIP = "zip_code"
 COL_YEAR_BUILT = "yrbuilt"      # display-only; failed 80% fill gate (68.1%)
-COL_GROSS_SQFT = "gross_sqft"   # SF fallback when PLUTO join misses
+COL_GROSS_SQFT = "gross_sqft"   # gross-building-area fallback when PLUTO join misses
 
 # --- Rates (CONTEXT only) ---
 CLASS4_ASSESSMENT_RATIO = 0.45

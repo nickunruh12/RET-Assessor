@@ -79,6 +79,19 @@ def test_sf_source_is_labeled_when_sf_present(con):
     assert bad == 0
 
 
+def test_parcels_no_sf_is_persisted_and_consistent(con):
+    _require(con, "parcels_no_sf")
+    # Must be a real table that exactly equals the no-gross-building-area set.
+    table_n = con.execute("SELECT count(*) FROM parcels_no_sf").fetchone()[0]
+    query_n = con.execute("SELECT count(*) FROM parcels WHERE sf IS NULL").fetchone()[0]
+    assert table_n == query_n
+    # Every no-SF parcel still carries provenance (it appears in distributions).
+    bad = con.execute(
+        "SELECT count(*) FROM parcels_no_sf WHERE source_dataset IS NULL OR parcel_id IS NULL"
+    ).fetchone()[0]
+    assert bad == 0
+
+
 def test_commercial_office_retail_match_is_near_total(con):
     _require(con, "parcels")
     total, matched = con.execute(

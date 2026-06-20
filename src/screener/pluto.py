@@ -1,14 +1,17 @@
-"""PLUTO join — primary square-footage source for the class-4 parcels.
+"""PLUTO join — primary gross-building-area source for the class-4 parcels.
+
+The SF metric is gross building area (PLUTO `BldgArea`), not usable/rentable area.
 
 Contract (DECISIONS.md):
-  * Physical characteristics come from PLUTO 64uk-42ks; `BldgArea` is the PRIMARY
-    SF source (99.98% fill on commercial vs 71.8% for the roll's gross_sqft).
+  * Physical characteristics come from PLUTO 64uk-42ks; `BldgArea` (gross building
+    area) is the PRIMARY source (99.98% fill on commercial vs 71.8% for the roll's
+    gross_sqft, itself a gross-building-area figure used as fallback).
   * Join roll_class4 -> PLUTO on BBL. Every class-4 parcel that fails to match
     PLUTO is routed to an exclusions table with a reason code. The PLUTO match
     rate is a reported finding.
   * Raw PLUTO lands in raw/ untouched. Transforms build new DuckDB tables only.
   * Each derived row carries its roll provenance tuple AND cites the PLUTO source
-    + version for the SF value. No row exists without provenance.
+    + version for the gross-building-area value. No row exists without provenance.
 
 BBL formats differ: the roll's `parid` is a 10-char string ("1002230035"); PLUTO's
 `bbl` is a float string ("1002230035.00000000"). Both are normalized to BIGINT for
@@ -147,9 +150,10 @@ def join(manifest: dict, db_path: Path | None = None) -> dict:
         )
 
         # 2. parcels: roll_class4 LEFT JOIN pluto_lots on normalized BBL.
-        #    SF source = PLUTO BldgArea (primary); fall back to roll gross_sqft when
-        #    PLUTO has no usable area. Every row keeps the roll provenance tuple and
-        #    additionally cites the PLUTO source + version for the SF value.
+        #    Gross-building-area source = PLUTO BldgArea (primary); fall back to roll
+        #    gross_sqft when PLUTO has no usable gross building area. Every row keeps the roll
+        #    provenance tuple and additionally cites the PLUTO source + version for
+        #    the gross-building-area value.
         con.execute("DROP TABLE IF EXISTS parcels")
         con.execute(
             """
@@ -202,6 +206,21 @@ def join(manifest: dict, db_path: Path | None = None) -> dict:
             """
         )
 
+        # 4. parcels_no_sf: persisted set of parcels with NO gross building area
+        #    from any tier (PLUTO BldgArea or roll gross_sqft). These are ineligible
+        #    for the $/SF SIGNAL but still appear in the assessed-value and tax-bill
+        #    distributions. Persisted as a real table, not just a query.
+        con.execute("DROP TABLE IF EXISTS parcels_no_sf")
+        con.execute(
+            """
+            CREATE TABLE parcels_no_sf AS
+            SELECT parcel_id, source_dataset, dataset_version, roll_year, retrieval_date,
+                   bldg_class, zip_code, curmkttot, curtxbtot
+            FROM parcels
+            WHERE sf IS NULL
+            """
+        )
+
         total = con.execute("SELECT count(*) FROM parcels").fetchone()[0]
         matched = con.execute("SELECT count(*) FROM parcels WHERE pluto_bldgclass IS NOT NULL").fetchone()[0]
         no_match = con.execute("SELECT count(*) FROM exclusions WHERE reason_code='NO_PLUTO_MATCH'").fetchone()[0]
@@ -235,14 +254,14 @@ def join(manifest: dict, db_path: Path | None = None) -> dict:
     print(f"  excluded NO_PLUTO_MATCH:     {no_match:,}  (mostly condo unit lots)")
     print(f"  excluded PLUTO_MATCH_NO_AREA:{no_area:,}")
     print(f"  ...of excluded, rescued by roll gross_sqft fallback: {rescued:,}")
-    print(f"  no usable SF anywhere:       {no_sf_anywhere:,}")
+    print(f"  no gross building area anywhere: {no_sf_anywhere:,}")
     print(f"  SF from PLUTO BldgArea:      {sf_from_pluto:,}  (primary)")
     print(f"  SF from roll gross_sqft:     {sf_from_fallback:,}  (fallback)")
     return stats
 
 
 def main(argv: list[str] | None = None) -> None:
-    ap = argparse.ArgumentParser(description="Join class-4 roll to PLUTO for BldgArea.")
+    ap = argparse.ArgumentParser(description="Join class-4 roll to PLUTO for gross building area (BldgArea).")
     ap.add_argument("--skip-fetch", action="store_true", help="reuse raw/pluto/, just rejoin")
     args = ap.parse_args(argv)
 
