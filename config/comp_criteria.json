@@ -17,6 +17,14 @@
     "O5_O6": "Office with commercial (O5/O6)", "O7_O9": "Misc office (O7/O8/O9)"
   },
 
+  "fallback_ladder": {
+    "O1": ["O2", "O3"],
+    "O2": ["O1", "O3"],
+    "O3": ["O2", "O1"],
+    "O4": []
+  },
+  "_fallback_ladder_doc": "Tiered class fallback for the EXACT low-rise codes (DECISIONS 2026-06-20). Distance is relaxed BEFORE class: a subject's exact class is exhausted across the full radius (0.5->1.0 mi) first; only if it yields < min_comp_count at 1.0 mi are adjacent classes added, in ladder order, each swept 0.5->1.0 mi. O4 has an empty ladder = exact-or-refuse (towers have no adjacent peer class). Classes NOT listed here (O5/O6, O7/O8/O9) are grouped buckets that 'fall back within the bucket only': the whole bucket is the exact match unit, with no cross-bucket ladder. The grouped bucket map (office_buckets) is unchanged.",
+
   "sf_band": 0.50,
   "_sf_band_doc": "Gross-building-area band: a comp must fall within +/- this fraction of the subject's gross building area. LOCKED 0.50 (DECISIONS 2026-06-19), tunable in Phase 6.",
 

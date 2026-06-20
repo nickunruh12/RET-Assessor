@@ -48,6 +48,18 @@ class NYC:
         codes = [c for c, b in criteria.office_buckets.items() if b == bucket]
         return codes or [bucket]  # fallback: the bucket key is itself the class code
 
+    # --- tiered class fallback --------------------------------------------
+    def exact_classes(self, bldg_class: str | None, criteria: CompCriteria) -> list[str]:
+        code = (bldg_class or "").strip()
+        if code in criteria.fallback_ladder:
+            # A low-rise code (O1-O4): the exact tier is the subject's own class only.
+            return [code]
+        # A grouped bucket (O5/O6, O7/O8/O9): the whole bucket is the exact match unit.
+        return self.bucket_classes(self.product_bucket(code, criteria), criteria)
+
+    def adjacent_ladder(self, bldg_class: str | None, criteria: CompCriteria) -> list[str]:
+        return list(criteria.fallback_ladder.get((bldg_class or "").strip(), []))
+
     def product_bucket_label(self, bucket: str | None, criteria: CompCriteria) -> str:
         if bucket is None:
             return "Unknown"

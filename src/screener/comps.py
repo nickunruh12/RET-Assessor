@@ -37,12 +37,17 @@ EARTH_RADIUS_MI = 3958.7613
 class CompRow(CitedRow):
     """One comparable parcel. Carries the citation tuple (via CitedRow) + comp fields.
 
+    `match_type` ('exact' | 'adjacent') records whether this comp shares the subject's
+    exact class (or grouped bucket) or was pulled in via the fallback ladder, alongside
+    its actual `bldg_class` — the same provenance discipline as the citation tuple.
+
     The gross-SF value also cites its own source: `sf_source` + `sf_dataset_version`
     (PLUTO version when sf came from BldgArea), honoring the $/SF output contract.
     """
 
     bldg_class: str | None
     bucket: str | None
+    match_type: str             # "exact" or "adjacent"
     sf: float
     sf_source: str
     sf_dataset_version: str | None
@@ -64,6 +69,24 @@ class CompSet:
     criteria: dict
     note: str | None = None     # out_of_scope_v1 / subject_not_found / subject_no_gross_sf
     candidates_within_cap: int = 0  # diagnostic: qualifying comps inside the 1-mile cap
+    # fallback accounting (the non-negotiable exact-vs-adjacent labeling)
+    fallback_triggered: bool = False
+    exact_count: int = 0
+    adjacent_count: int = 0
+    adjacent_breakdown: dict = field(default_factory=dict)  # class -> count
+
+    def composition_label(self) -> str:
+        """One-line exact-vs-adjacent summary, e.g.
+        '8 comps: 5 exact (O3), 3 adjacent (2 O2, 1 O1), radius 0.8 mi'."""
+        if self.refused or not self.comps:
+            return f"{self.count} comps"
+        subj_cls = self.subject["bldg_class"] if self.subject else "?"
+        if not self.fallback_triggered:
+            return f"{self.count} comps: all {self.exact_count} exact ({subj_cls}), radius {self.radius_used_miles} mi"
+        adj = ", ".join(f"{n} {c}" for c, n in sorted(self.adjacent_breakdown.items(),
+                                                       key=lambda kv: (-kv[1], kv[0])))
+        return (f"{self.count} comps: {self.exact_count} exact ({subj_cls}), "
+                f"{self.adjacent_count} adjacent ({adj}), radius {self.radius_used_miles} mi")
 
 
 # --------------------------------------------------------------------------- #
@@ -74,6 +97,29 @@ def _rows_to_dicts(cur) -> list[dict]:
 
 def _refusal(subject_bbl, subject, criteria, note, cap=None) -> CompSet:
     return CompSet(subject_bbl, subject, [], 0, cap, True, criteria, note=note)
+
+
+def _radii(criteria: CompCriteria) -> list[float]:
+    """The sweep of radii from start to cap (inclusive), in step increments."""
+    out, r = [], criteria.radius_start_miles
+    while r < criteria.radius_cap_miles + 1e-9:
+        out.append(round(min(r, criteria.radius_cap_miles), 4))
+        r += criteria.radius_step_miles
+    if out[-1] < criteria.radius_cap_miles - 1e-9:
+        out.append(criteria.radius_cap_miles)
+    return out
+
+
+def _resolve_tier(cand: list[dict], allowed: set[str], criteria: CompCriteria):
+    """Sweep radius for a fixed class set. Return (radius, comps_within) once the set
+    reaches the minimum, else None. Distance is relaxed within the tier before the
+    caller adds the next class."""
+    pool = [c for c in cand if c["bldg_class"] in allowed]
+    for r in _radii(criteria):
+        within = [c for c in pool if c["distance_miles"] <= r + 1e-9]
+        if len(within) >= criteria.min_comp_count:
+            return r, within
+    return None
 
 
 def select_comps(
@@ -91,6 +137,7 @@ def select_comps(
         "radius_step_miles": criteria.radius_step_miles,
         "min_comp_count": criteria.min_comp_count,
         "exclude_condo_unit_lots": criteria.exclude_condo_unit_lots,
+        "fallback": "distance-first tiered class fallback",
     }
 
     # --- fetch the subject ---
@@ -100,11 +147,12 @@ def select_comps(
     if not subj_rows:
         return _refusal(subject_bbl, None, crit_summary, "subject_not_found")
     subj = subj_rows[0]
+    subj_class = subj.get("bldg_class")
 
-    bucket = juris.product_bucket(subj.get("bldg_class"), criteria)
+    bucket = juris.product_bucket(subj_class, criteria)
     subject_summary = {
         "parcel_id": subj["parcel_id"],
-        "bldg_class": subj.get("bldg_class"),
+        "bldg_class": subj_class,
         "bucket": bucket,
         "bucket_label": juris.product_bucket_label(bucket, criteria),
         "borough": juris.borough_of(subj["parcel_id"]),
@@ -116,7 +164,7 @@ def select_comps(
     }
 
     # --- scope: v1 activated product is office only ---
-    if not juris.is_activated_product(subj.get("bldg_class"), criteria):
+    if not juris.is_activated_product(subj_class, criteria):
         return _refusal(subject_bbl, subject_summary, crit_summary, "out_of_scope_v1")
 
     # --- subject must anchor the SF band and the distance origin ---
@@ -125,15 +173,19 @@ def select_comps(
     if subj.get("pluto_latitude") is None or subj.get("pluto_longitude") is None:
         return _refusal(subject_bbl, subject_summary, crit_summary, "subject_no_coordinates")
 
-    # --- candidate pull: same bucket, SF band, non-condo, has coords, within cap ---
-    bucket_codes = juris.bucket_classes(bucket, criteria)
+    # --- class tiers: exact set first, then the ladder (distance relaxed before class) ---
+    exact_classes = juris.exact_classes(subj_class, criteria)       # [O1] or [O5,O6]
+    ladder = juris.adjacent_ladder(subj_class, criteria)            # [O2,O3] or []
+    all_classes = exact_classes + ladder
+
+    # --- candidate pull: every class that could be needed, SF band, non-condo, coords ---
     where = [
         "parcel_id != ?",
         "pluto_latitude IS NOT NULL AND pluto_longitude IS NOT NULL",
         "sf IS NOT NULL",
-        f"bldg_class IN ({','.join(['?'] * len(bucket_codes))})",
+        f"bldg_class IN ({','.join(['?'] * len(all_classes))})",
     ]
-    params: list = [subject_bbl, *bucket_codes]
+    params: list = [subject_bbl, *all_classes]
 
     if criteria.sf_required:
         lo = subj["sf"] * (1 - criteria.sf_band)
@@ -171,33 +223,47 @@ def select_comps(
     """
     cand = _rows_to_dicts(con.execute(sql, [slat, slat, slon, *params, criteria.radius_cap_miles]))
 
-    # --- radius-first expansion: smallest radius reaching the minimum, else refuse ---
-    radius_used, refused = _resolve_radius(cand, criteria)
-    chosen = [c for c in cand if c["distance_miles"] <= radius_used]
+    exact_set = set(exact_classes)
 
-    comps = [_to_comprow(c, juris, criteria) for c in chosen]
-    note = "insufficient_comps_within_cap" if refused else None
+    # Tier 1: EXACT class only, exhausted across the full radius first.
+    hit = _resolve_tier(cand, exact_set, criteria)
+    fallback_triggered = False
+    used_adjacent: set[str] = set()
+
+    # Tier 2..n: add ladder classes one at a time, each swept 0.5->cap, only if exact failed.
+    if hit is None and ladder:
+        for i in range(len(ladder)):
+            adj = set(ladder[: i + 1])
+            hit = _resolve_tier(cand, exact_set | adj, criteria)
+            if hit is not None:
+                fallback_triggered = True
+                used_adjacent = adj
+                break
+
+    if hit is None:
+        return CompSet(
+            subject_bbl, subject_summary, [], 0, criteria.radius_cap_miles, True,
+            crit_summary, note="insufficient_comps_within_cap",
+            candidates_within_cap=len(cand),
+        )
+
+    radius_used, chosen = hit
+    comps = [_to_comprow(c, juris, criteria, exact_set) for c in chosen]
+    exact_n = sum(1 for c in comps if c.match_type == "exact")
+    adj_rows = [c for c in comps if c.match_type == "adjacent"]
+    breakdown: dict = {}
+    for c in adj_rows:
+        breakdown[c.bldg_class] = breakdown.get(c.bldg_class, 0) + 1
     return CompSet(
-        subject_bbl, subject_summary, comps, len(comps), radius_used, refused,
-        crit_summary, note=note, candidates_within_cap=len(cand),
+        subject_bbl, subject_summary, comps, len(comps), radius_used, False,
+        crit_summary, candidates_within_cap=len(cand),
+        fallback_triggered=fallback_triggered, exact_count=exact_n,
+        adjacent_count=len(adj_rows), adjacent_breakdown=breakdown,
     )
 
 
-def _resolve_radius(cand: list[dict], criteria: CompCriteria) -> tuple[float, bool]:
-    """Return (radius_used, refused). Expand from start to cap until min is met."""
-    start, cap, step = (criteria.radius_start_miles, criteria.radius_cap_miles,
-                        criteria.radius_step_miles)
-    r = start
-    while r < cap + 1e-9:
-        n = sum(1 for c in cand if c["distance_miles"] <= r + 1e-9)
-        if n >= criteria.min_comp_count:
-            return round(min(r, cap), 4), False
-        r += step
-    # At the cap, still short.
-    return cap, True
-
-
-def _to_comprow(c: dict, juris: Jurisdiction, criteria: CompCriteria) -> CompRow:
+def _to_comprow(c: dict, juris: Jurisdiction, criteria: CompCriteria,
+                exact_set: set[str]) -> CompRow:
     rd = c["retrieval_date"]
     citation = Citation(
         source_dataset=c["source_dataset"],
@@ -210,6 +276,7 @@ def _to_comprow(c: dict, juris: Jurisdiction, criteria: CompCriteria) -> CompRow
         citation=citation,
         bldg_class=c.get("bldg_class"),
         bucket=juris.product_bucket(c.get("bldg_class"), criteria),
+        match_type="exact" if c.get("bldg_class") in exact_set else "adjacent",
         sf=c["sf"],
         sf_source=c["sf_source"],
         sf_dataset_version=c.get("pluto_dataset_version"),
@@ -238,11 +305,10 @@ def _print_compset(cs: CompSet, sample: int = 5) -> None:
         print(f"  REFUSED: {cs.note} (only {cs.candidates_within_cap} < "
               f"{cs.criteria['min_comp_count']} within {cs.criteria['radius_cap_miles']} mi)")
         return
-    print(f"  radius used: {cs.radius_used_miles} mi")
-    print(f"  >>> COMP COUNT: {cs.count}")
+    print(f"  >>> {cs.composition_label()}")
     for c in cs.comps[:sample]:
-        print(f"      {c.citation.parcel_id}  {c.bldg_class:>3}  {c.distance_miles:>5.2f} mi  "
-              f"SF {c.sf:>10,.0f}  ({c.sf_source})")
+        print(f"      {c.citation.parcel_id}  {c.bldg_class:>3}  [{c.match_type:>8}]  "
+              f"{c.distance_miles:>5.2f} mi  SF {c.sf:>10,.0f}  ({c.sf_source})")
     if cs.count > sample:
         print(f"      ... {cs.count - sample} more")
 

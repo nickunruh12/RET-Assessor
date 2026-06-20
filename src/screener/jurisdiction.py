@@ -35,6 +35,7 @@ class CompCriteria(BaseModel):
     activated_products: list[str] = ["O"]
     office_buckets: dict[str, str] = {}
     office_bucket_labels: dict[str, str] = {}
+    fallback_ladder: dict[str, list[str]] = {}
 
     # gross-SF band
     sf_band: float = Field(gt=0, le=5)
@@ -85,6 +86,15 @@ class Jurisdiction(Protocol):
 
     def bucket_classes(self, bucket: str, criteria: CompCriteria) -> list[str]:
         """All building-class codes that map to a bucket (for the candidate filter)."""
+        ...
+
+    def exact_classes(self, bldg_class: str | None, criteria: CompCriteria) -> list[str]:
+        """Tier-1 class set: the subject's own class for a low-rise code, or the whole
+        grouped bucket for O5/O6 and O7/O8/O9 (which match within-bucket, no ladder)."""
+        ...
+
+    def adjacent_ladder(self, bldg_class: str | None, criteria: CompCriteria) -> list[str]:
+        """Ordered adjacent classes added on fallback; [] for O4 and grouped buckets."""
         ...
 
     def product_bucket_label(self, bucket: str | None, criteria: CompCriteria) -> str:
