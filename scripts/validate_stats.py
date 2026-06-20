@@ -20,13 +20,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import duckdb  # noqa: E402
 
 from screener import config  # noqa: E402
-from screener.comps import select_comps  # noqa: E402
+from screener.comps import select_comps, refusal_message  # noqa: E402
 from screener.jurisdiction import CompCriteria, get_jurisdiction  # noqa: E402
 from screener.stats import compute_stats  # noqa: E402
 
-DENSE = "1000090001"      # O4 Manhattan, large set
+DENSE = "1000090001"      # O4 Manhattan, large set (had 2 exempt $0 comps before)
 FALLBACK = "2023070046"   # O1 Bronx, 1 exact + 7 adjacent
 NO_SF = "3053480042"      # O9 Brooklyn, no gross SF
+TAX_EXEMPT = "1000380001"  # O4 Manhattan, curmkttot = 0 (tax-exempt subject)
 
 
 def fmt(v, unit):
@@ -44,6 +45,7 @@ def show(res):
           f"{s['borough']}  ZIP {s['zip_code']}  SF {s['sf']}")
     if res.refused:
         print(f"  WHOLE-SCREEN REFUSAL: {res.note}")
+        print(f"  message: {refusal_message(res.note)}")
         return
     comp = res.composition
     print(f"  comps: {res.comp_count}  radius {res.radius_used_miles} mi  "
@@ -117,9 +119,10 @@ def main():
     con = duckdb.connect(str(config.DB_PATH), read_only=True)
     crit = CompCriteria.load()
     juris = get_jurisdiction(crit.jurisdiction)
-    for bbl in (DENSE, FALLBACK, NO_SF):
+    for bbl in (DENSE, FALLBACK, NO_SF, TAX_EXEMPT):
         show(compute_stats(select_comps(con, bbl, juris, crit), crit))
-    hand_verify(con, juris, crit, FALLBACK)
+    # hand-verify the DENSE subject — the one whose distribution the exclusion changed
+    hand_verify(con, juris, crit, DENSE)
     con.close()
 
 

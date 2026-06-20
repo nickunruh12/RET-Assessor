@@ -168,3 +168,30 @@ def test_composition_label_shape(setup):
     cs = select_comps(con, O1_FALLBACK, juris, crit)
     label = cs.composition_label()
     assert "exact" in label and "adjacent" in label and "radius" in label
+
+
+# --- non-positive market value (tax-exempt) exclusion --------------------------
+TAX_EXEMPT_SUBJECT = "1000380001"  # O4 Manhattan, curmkttot = 0
+
+
+def test_tax_exempt_subject_refuses(setup):
+    con, juris, crit = setup
+    cs = select_comps(con, TAX_EXEMPT_SUBJECT, juris, crit)
+    assert cs.refused and cs.note == "subject_tax_exempt"
+
+
+def test_no_exempt_comps_in_set(setup):
+    con, juris, crit = setup
+    cs = select_comps(con, OFFICE_DENSE, juris, crit)
+    assert all(c.curmkttot is not None and c.curmkttot > 0 for c in cs.comps)
+
+
+def test_exclusions_table_has_non_positive_reason(setup):
+    con, juris, crit = setup
+    if con.execute("SELECT count(*) FROM information_schema.tables "
+                   "WHERE table_name='exclusions'").fetchone()[0] != 1:
+        pytest.skip("exclusions not built")
+    n = con.execute(
+        "SELECT count(*) FROM exclusions WHERE reason_code='NON_POSITIVE_MARKET_VALUE'"
+    ).fetchone()[0]
+    assert n > 0

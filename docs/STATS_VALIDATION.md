@@ -46,3 +46,32 @@ guard, so treatment is inconsistent across signals.)
 value from the comp universe (exempt parcels aren't assessment peers — same spirit as the condo
 exclusion); (b) exclude in stats with an `exempt_zero` reason code, counted separately from
 blanks; (c) keep as-is. Recommend (a).
+
+---
+
+# Re-validation after the exempt exclusion (2026-06-20) — option (a) implemented
+
+`curmkttot <= 0` parcels are now excluded from the comp universe (config
+`exclude_non_positive_market_value`), routed to the `exclusions` table with reason
+`NON_POSITIVE_MARKET_VALUE` (**1,629 class-4 parcels citywide**; 29 office), and a
+tax-exempt **subject** gets a no-comparison refusal. 55 tests pass.
+
+## Confirmations
+- **Dense Manhattan `1000090001`**: comp set 28 → **26** (the 2 exempt $0 comps gone).
+  Assessed-value **min 0 → 56,283,000**; median 114,184,000 → **119,726,500**; mean
+  119.7M → **128.9M**; subject percentile 82.1 → **80.8**. $/gross-SF min 0 → **129.62**.
+  (Phase-in gap unchanged at n=26 — it already dropped the zeros via its divide guard.)
+- **Tax-exempt subject `1000380001`** (O4, curmkttot 0): **WHOLE-SCREEN REFUSAL**
+  `subject_tax_exempt` → "this parcel has no positive market value (tax-exempt);
+  assessment comparison does not apply."
+- **Exclusions table** carries `NON_POSITIVE_MARKET_VALUE` with its count; provenance
+  (`source_dataset`, version, roll_year, retrieval_date) travels on each excluded row.
+- Fallback-heavy and no-SF subjects unchanged (their comps were all positive-value).
+
+## Hand-verification re-run (subject `1000090001`, post-exclusion)
+26 sorted comp values, 56,283,000 … 283,515,000.
+- median = mean(index 12, 13) = **119,726,500** — matches stats.
+- subject 185,249,000; 21 of 26 strictly below → percentile **80.77** — matches.
+- mean 128,910,230.77 and population stddev 59,447,593.51 — both match exactly.
+
+Math still exact after the exclusion.

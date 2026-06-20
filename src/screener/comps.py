@@ -33,6 +33,21 @@ from .schema import Citation, CitedRow
 # Mean Earth radius in miles (for the haversine great-circle distance).
 EARTH_RADIUS_MI = 3958.7613
 
+# Human-readable messages for refusal notes (no rendering layer yet; surfaced for
+# validation and carried so downstream display stays consistent).
+REFUSAL_MESSAGES = {
+    "subject_not_found": "no parcel found for this BBL",
+    "out_of_scope_v1": "out of scope for v1 (only office is activated)",
+    "subject_tax_exempt": "this parcel has no positive market value (tax-exempt); "
+                          "assessment comparison does not apply",
+    "subject_no_coordinates": "this parcel has no PLUTO coordinates; cannot rank comps by distance",
+    "insufficient_comps_within_cap": "insufficient comparable properties within 1 mile",
+}
+
+
+def refusal_message(note: str | None) -> str | None:
+    return REFUSAL_MESSAGES.get(note) if note else None
+
 
 class CompRow(CitedRow):
     """One comparable parcel. Carries the citation tuple (via CitedRow) + comp fields.
@@ -176,6 +191,10 @@ def select_comps(
     if not juris.is_activated_product(subj_class, criteria):
         return _refusal(subject_bbl, subject_summary, crit_summary, "out_of_scope_v1")
 
+    # --- a tax-exempt subject (no positive market value) has nothing to compare ---
+    if criteria.exclude_non_positive_market_value and not (subj.get("curmkttot") and subj["curmkttot"] > 0):
+        return _refusal(subject_bbl, subject_summary, crit_summary, "subject_tax_exempt")
+
     # The subject anchors the distance origin (required) and, when it has a reported
     # gross building area, the SF band. A subject with NO gross SF is NOT refused
     # wholesale (locked per-signal philosophy): it still gets a class+location comp set
@@ -208,6 +227,10 @@ def select_comps(
     condo_sql, condo_params = juris.condo_clause(criteria)
     where.append(condo_sql)
     params += condo_params
+
+    # Tax-exempt parcels (curmkttot <= 0) are not assessment peers — never a comp.
+    if criteria.exclude_non_positive_market_value:
+        where.append("curmkttot > 0")
 
     if criteria.zip_prefilter:
         where.append("zip_code = ?")

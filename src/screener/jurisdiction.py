@@ -51,6 +51,7 @@ class CompCriteria(BaseModel):
     # condo exclusion + refusal threshold
     exclude_condo_unit_lots: bool = True
     condo_unit_lot_min: int = 1001
+    exclude_non_positive_market_value: bool = True
     min_comp_count: int = 8
 
     # output guards + context rate

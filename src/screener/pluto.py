@@ -188,13 +188,11 @@ def join(manifest: dict, db_path: Path | None = None) -> dict:
             [manifest["source_dataset"], manifest["dataset_version"], manifest["retrieval_date"]],
         )
 
-        # 3. exclusions: per the spec, EVERY class-4 parcel that fails the PLUTO
-        #    join is logged with a reason code — independent of whether the roll
-        #    gross_sqft fallback can later rescue it (that is recorded as
-        #    fallback_sf so downstream can see the rescue without losing the audit
-        #    trail of the PLUTO miss).
-        #      NO_PLUTO_MATCH     — BBL not present in PLUTO (mostly condo unit lots)
-        #      PLUTO_MATCH_NO_AREA— matched but PLUTO BldgArea is null/<=0
+        # 3. exclusions: comp-universe exclusion audit, one row per (parcel, reason).
+        #    A parcel may appear under more than one reason (e.g. no SF AND exempt).
+        #      NO_PLUTO_MATCH            — BBL not present in PLUTO (mostly condo unit lots)
+        #      PLUTO_MATCH_NO_AREA       — matched but PLUTO BldgArea is null/<=0
+        #      NON_POSITIVE_MARKET_VALUE — curmkttot <= 0 (tax-exempt; not an assessment peer)
         con.execute("DROP TABLE IF EXISTS exclusions")
         con.execute(
             """
@@ -208,6 +206,12 @@ def join(manifest: dict, db_path: Path | None = None) -> dict:
                    CASE WHEN sf_source = 'roll_gross_sqft_fallback' THEN sf ELSE NULL END AS fallback_sf
             FROM parcels
             WHERE pluto_bldgarea IS NULL OR pluto_bldgarea <= 0
+            UNION ALL
+            SELECT parcel_id, source_dataset, dataset_version, roll_year, retrieval_date,
+                   bldg_class, zip_code, 'NON_POSITIVE_MARKET_VALUE' AS reason_code,
+                   NULL AS fallback_sf
+            FROM parcels
+            WHERE curmkttot <= 0 OR curmkttot IS NULL
             """
         )
 
@@ -230,6 +234,7 @@ def join(manifest: dict, db_path: Path | None = None) -> dict:
         matched = con.execute("SELECT count(*) FROM parcels WHERE pluto_bldgclass IS NOT NULL").fetchone()[0]
         no_match = con.execute("SELECT count(*) FROM exclusions WHERE reason_code='NO_PLUTO_MATCH'").fetchone()[0]
         no_area = con.execute("SELECT count(*) FROM exclusions WHERE reason_code='PLUTO_MATCH_NO_AREA'").fetchone()[0]
+        non_positive = con.execute("SELECT count(*) FROM exclusions WHERE reason_code='NON_POSITIVE_MARKET_VALUE'").fetchone()[0]
         rescued = con.execute("SELECT count(*) FROM exclusions WHERE fallback_sf IS NOT NULL").fetchone()[0]
         no_sf_anywhere = con.execute("SELECT count(*) FROM parcels WHERE sf IS NULL").fetchone()[0]
         sf_from_pluto = con.execute("SELECT count(*) FROM parcels WHERE sf_source='pluto_bldgarea'").fetchone()[0]
@@ -245,6 +250,7 @@ def join(manifest: dict, db_path: Path | None = None) -> dict:
         "pluto_match_rate": round(matched / total, 4) if total else 0.0,
         "excluded_no_pluto_match": no_match,
         "excluded_pluto_match_no_area": no_area,
+        "excluded_non_positive_market_value": non_positive,
         "excluded_total": no_match + no_area,
         "excluded_rescued_by_roll_fallback": rescued,
         "no_usable_sf_anywhere": no_sf_anywhere,
@@ -258,6 +264,7 @@ def join(manifest: dict, db_path: Path | None = None) -> dict:
     print(f"  >>> PLUTO MATCH RATE:        {stats['pluto_match_rate']:.2%}")
     print(f"  excluded NO_PLUTO_MATCH:     {no_match:,}  (mostly condo unit lots)")
     print(f"  excluded PLUTO_MATCH_NO_AREA:{no_area:,}")
+    print(f"  excluded NON_POSITIVE_MARKET_VALUE: {non_positive:,}  (tax-exempt; not assessment peers)")
     print(f"  ...of excluded, rescued by roll gross_sqft fallback: {rescued:,}")
     print(f"  no gross building area anywhere: {no_sf_anywhere:,}")
     print(f"  SF from PLUTO BldgArea:      {sf_from_pluto:,}  (primary)")

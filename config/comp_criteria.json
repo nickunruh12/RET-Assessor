@@ -46,6 +46,9 @@
   "condo_unit_lot_min": 1001,
   "_condo_doc": "Condo unit lots are excluded from the comp set: their gross_sqft provenance is unreliable for $/SF (whole-building-envelope error, see DECISIONS derived-tier rejection). A parcel is a condo unit lot if its building class starts with 'R' OR its lot number (BBL digits 7-10) >= condo_unit_lot_min. NOTE: not fully excluded upstream — many re-enter SF-eligibility via the roll gross_sqft fallback — so they are excluded here at the comp layer.",
 
+  "exclude_non_positive_market_value": true,
+  "_exclude_non_positive_market_value_doc": "Parcels with curmkttot <= 0 are tax-EXEMPT (no positive market value) and are NOT assessment peers — same categorical logic as the condo exclusion (DECISIONS 2026-06-20). Excluded from the comp universe entirely and routed to the exclusions table with reason NON_POSITIVE_MARKET_VALUE. A SUBJECT with curmkttot <= 0 gets a no-comparison refusal, not a distribution.",
+
   "min_comp_count": 8,
   "_min_comp_count_doc": "Below this within the 1-mile cap, the screen REFUSES (DECISIONS LOCKED = 8). Tunable, logged for Phase 6.",
 
