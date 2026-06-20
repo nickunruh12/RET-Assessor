@@ -29,6 +29,22 @@ What the tool refuses to do, and why. Refusal and provenance are features, not a
 - **YearBuilt reliability.** `yrbuilt` fill is 68% on class 4 → demoted to display-only.
 - **Open-data vintage lag.** The API copy may lag the official DOF lookup; disclose any lag found in the ground-truth check.
 
+## Post-v1 expansion path (ordered roadmap — not yet built)
+
+v1 ships **Office (`O*`) only** (see DECISIONS.md). Expansion is deliberately sequential — each step is validated before the next is activated. The comp engine is **universal**; each product type is a **config addition, not an engine change.**
+
+**1. Other class-4 commercial types, one at a time.** Retail `K*`, industrial `F*`, warehouse `E*`, garage `G*`, loft `L*`, etc. Each is activated individually with its own parcel-count-driven bucketing and comp-quality validation — the same method used for office. Until activated, a type returns the "out of scope for v1" refusal. No type is switched on wholesale.
+
+**2. Class 2 multifamily — its own plugin, its own assessment logic.** A separate jurisdiction-style plugin, not a config tweak to the class-4 engine. Requirements recorded now so they are not forgotten:
+
+- **Different ratio / cap rules.** Class 2 has statutory assessment-increase caps (8%/yr, 30%/5yr for buildings ≤10 units) that class 4 lacks. The **YoY-spike signal must be reinterpreted**: capped parcels cannot spike the way class 4 can, so a flat YoY is expected, not informative, for capped buildings.
+- **Scope = whole-building rentals and coops.** Exclude residential **condo unit lots** (the same per-unit exclusion already applied to commercial condos).
+- **RENT STABILIZATION HANDLING — OPEN QUESTION, NOT YET DECIDED.** The following is an **initial proposal only**; the final approach will be investigated and decided when class 2 is actually built, not now. Stabilized units carry below-market legal rents, so income-based assessments differ between otherwise-identical buildings by stabilization mix. The proposed handling:
+  - (a) **Display** each parcel's stabilized-unit share as a **cited, published attribute** alongside building class and SF — descriptive only, letting the underwriter infer.
+  - (b) **Caveat or refuse** the income-sensitive signals ($/unit, $/SF) when the stabilization mix is unknown or materially differs across the comp set — the same per-signal refusal discipline as missing SF.
+  - (c) **Never compute a stabilization-adjusted value internally** — that would be a tool-invented estimate that crosses the honesty line.
+  - Stabilized-unit counts would come from DOF rent-stabilization / tax-bill registration data — a **separate cited join with its own vintage.** **Revisit this explicitly when class 2 is built.**
+
 ## Variance explanation is descriptive, never causal
 
 Allowed: "This comp is assessed 20% higher and differs on: built 2015 vs 1980, class O5 vs O3, 40k SF vs 32k SF." Banned: "This comp is higher because it is newer."
