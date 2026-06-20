@@ -40,7 +40,8 @@ from .schema import Citation
 RAW_PLUTO_DIR = config.RAW_DIR / "pluto"
 PAGE_SIZE = 50_000
 # Only the columns the join needs. Keeps the raw pull lean (858k lots citywide).
-PLUTO_COLS = "bbl,bldgarea,bldgclass,landuse,yearbuilt,areasource,version"
+# latitude/longitude feed distance-based comp ranking (DECISIONS 2026-06-19).
+PLUTO_COLS = "bbl,bldgarea,bldgclass,landuse,yearbuilt,areasource,version,latitude,longitude"
 
 
 def fetch_pluto() -> dict:
@@ -141,7 +142,9 @@ def join(manifest: dict, db_path: Path | None = None) -> dict:
                 TRY_CAST(bbl AS BIGINT)        AS bbl_int,
                 TRY_CAST(bldgarea AS DOUBLE)   AS bldgarea,
                 bldgclass                       AS pluto_bldgclass,
-                version                         AS pluto_version
+                version                         AS pluto_version,
+                TRY_CAST(latitude AS DOUBLE)   AS latitude,
+                TRY_CAST(longitude AS DOUBLE)  AS longitude
             FROM pluto_raw
             WHERE TRY_CAST(bbl AS BIGINT) IS NOT NULL
             QUALIFY ROW_NUMBER() OVER (PARTITION BY TRY_CAST(bbl AS BIGINT)
@@ -163,6 +166,8 @@ def join(manifest: dict, db_path: Path | None = None) -> dict:
                 p.bldgarea                                  AS pluto_bldgarea,
                 p.pluto_bldgclass,
                 p.pluto_version,
+                p.latitude                                  AS pluto_latitude,
+                p.longitude                                 AS pluto_longitude,
                 CASE WHEN p.bbl_int IS NOT NULL THEN ? ELSE NULL END  AS pluto_source_dataset,
                 CASE WHEN p.bbl_int IS NOT NULL THEN ? ELSE NULL END  AS pluto_dataset_version,
                 CASE WHEN p.bbl_int IS NOT NULL THEN ?::DATE ELSE NULL END AS pluto_retrieval_date,

@@ -30,14 +30,27 @@ class CompCriteria(BaseModel):
     model_config = ConfigDict(extra="ignore")  # tolerate the _doc helper keys in the JSON
 
     jurisdiction: str
+
+    # v1 scope + product bucketing
+    activated_products: list[str] = ["O"]
+    office_buckets: dict[str, str] = {}
+    office_bucket_labels: dict[str, str] = {}
+
+    # gross-SF band
     sf_band: float = Field(gt=0, le=5)
     sf_required: bool = True
-    class_match_level: str = "letter"          # "letter" | "exact"
-    location_match: str = "borough_and_zip"     # "borough_and_zip" | "borough_only" | "zip_only"
+
+    # location = distance from PLUTO lat/lon, with radius-first expansion
+    location_mode: str = "distance"
+    radius_start_miles: float = Field(default=0.5, gt=0)
+    radius_cap_miles: float = Field(default=1.0, gt=0)
+    radius_step_miles: float = Field(default=0.1, gt=0)
+    zip_prefilter: bool = False
+
+    # condo exclusion + refusal threshold
     exclude_condo_unit_lots: bool = True
     condo_unit_lot_min: int = 1001
     min_comp_count: int = 8
-    class_group_labels: dict[str, str] = {}
 
     @classmethod
     def load(cls, path: Path | None = None) -> "CompCriteria":
@@ -50,30 +63,32 @@ class CompCriteria(BaseModel):
 class Jurisdiction(Protocol):
     """What a jurisdiction plugin must provide to the comp engine.
 
-    All methods return SQL fragments / expressions operating on a comp table that
-    has at least `parcel_id`, `bldg_class`, and `zip_code` columns.
+    The engine owns the generic mechanics (gross-SF band, great-circle distance,
+    radius-first expansion, provenance). The plugin owns jurisdiction-specific
+    knowledge: which products are activated, how the activated product's classes
+    bucket, borough naming, and what counts as a condo unit lot.
     """
 
     name: str
 
     def borough_of(self, parcel_id: str) -> str:
-        """Human borough name for a parcel id (used for display / the subject summary)."""
+        """Human borough name for a parcel id (display / subject summary)."""
         ...
 
-    def class_group(self, bldg_class: str | None, criteria: CompCriteria) -> str | None:
-        """The match key for a building class under the configured match level."""
+    def is_activated_product(self, bldg_class: str | None, criteria: CompCriteria) -> bool:
+        """True if this building class is an activated v1 product (office only at launch)."""
         ...
 
-    def class_group_label(self, group: str | None, criteria: CompCriteria) -> str:
-        """Human label for a group key (display only)."""
+    def product_bucket(self, bldg_class: str | None, criteria: CompCriteria) -> str | None:
+        """The comp bucket key for a building class (e.g. O5 -> 'O5_O6')."""
         ...
 
-    def class_group_sql(self, class_col: str, criteria: CompCriteria) -> str:
-        """SQL expression computing the group key from a building-class column."""
+    def bucket_classes(self, bucket: str, criteria: CompCriteria) -> list[str]:
+        """All building-class codes that map to a bucket (for the candidate filter)."""
         ...
 
-    def location_clause(self, subject: dict, criteria: CompCriteria) -> tuple[str, list]:
-        """(sql_fragment, params) restricting comps to the subject's location."""
+    def product_bucket_label(self, bucket: str | None, criteria: CompCriteria) -> str:
+        """Human label for a bucket key (display only)."""
         ...
 
     def condo_clause(self, criteria: CompCriteria) -> tuple[str, list]:

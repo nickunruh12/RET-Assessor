@@ -1,19 +1,27 @@
 """Comp-selection engine — jurisdiction-agnostic. NO statistics.
 
-Given a subject BBL, returns the set of comparable parcels and a count. It does the
-generic work — fetch the subject, apply the gross-SF band, exclude the subject,
-carry provenance — and delegates jurisdiction-specific predicates (class grouping,
-location, condo exclusion) to a `Jurisdiction` plugin.
+Given a subject BBL it returns the set of comparable parcels, the radius used, and a
+count. It does the generic work — scope check, gross-SF band, great-circle distance,
+radius-first expansion, excluding the subject, carrying provenance — and delegates
+jurisdiction-specific predicates (product scope, office bucketing, condo exclusion)
+to a `Jurisdiction` plugin.
 
-This module computes NOTHING statistical: no mean, median, percentile, ranking.
-It only selects rows. Every comp row is constructed as a `CompRow`, which subclasses
-`CitedRow`, so a comp without its provenance tuple cannot exist.
+Selection logic only. NOTHING statistical: no mean, median, percentile, ranking by
+value. Distance ranking is for *selection* (who is near enough), not analytics.
+
+Radius-first logic (DECISIONS 2026-06-19): collect all qualifying comps within
+`radius_start_miles`; if fewer than `min_comp_count`, expand by `radius_step_miles`
+toward `radius_cap_miles`; if still short at the cap, REFUSE. The actual radius used
+is reported on every result.
+
+Every comp row is a `CompRow` (subclasses `CitedRow`), so a comp without its
+provenance tuple cannot exist; each also carries the PLUTO version of its SF value.
 """
 from __future__ import annotations
 
 import argparse
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 import duckdb
@@ -21,6 +29,9 @@ import duckdb
 from . import config
 from .jurisdiction import CompCriteria, Jurisdiction, get_jurisdiction
 from .schema import Citation, CitedRow
+
+# Mean Earth radius in miles (for the haversine great-circle distance).
+EARTH_RADIUS_MI = 3958.7613
 
 
 class CompRow(CitedRow):
@@ -31,12 +42,13 @@ class CompRow(CitedRow):
     """
 
     bldg_class: str | None
-    zip_code: str | None
-    borough: str
-    class_group: str | None
+    bucket: str | None
     sf: float
     sf_source: str
     sf_dataset_version: str | None
+    distance_miles: float
+    latitude: float
+    longitude: float
     curmkttot: float | None
     curtxbtot: float | None
 
@@ -44,17 +56,24 @@ class CompRow(CitedRow):
 @dataclass
 class CompSet:
     subject_bbl: str
-    subject: dict | None        # subject summary (group, borough, zip, sf, ...)
+    subject: dict | None
     comps: list[CompRow]
     count: int
-    criteria: dict              # the criteria actually applied (for the audit trail)
-    note: str | None = None     # e.g. subject_not_found, subject_no_gross_sf
+    radius_used_miles: float | None
+    refused: bool
+    criteria: dict
+    note: str | None = None     # out_of_scope_v1 / subject_not_found / subject_no_gross_sf
+    candidates_within_cap: int = 0  # diagnostic: qualifying comps inside the 1-mile cap
 
 
 # --------------------------------------------------------------------------- #
-def _row_to_dict(cur) -> list[dict]:
+def _rows_to_dicts(cur) -> list[dict]:
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+def _refusal(subject_bbl, subject, criteria, note, cap=None) -> CompSet:
+    return CompSet(subject_bbl, subject, [], 0, cap, True, criteria, note=note)
 
 
 def select_comps(
@@ -66,96 +85,140 @@ def select_comps(
 ) -> CompSet:
     crit_summary = {
         "sf_band": criteria.sf_band,
-        "class_match_level": criteria.class_match_level,
-        "location_match": criteria.location_match,
+        "location_mode": criteria.location_mode,
+        "radius_start_miles": criteria.radius_start_miles,
+        "radius_cap_miles": criteria.radius_cap_miles,
+        "radius_step_miles": criteria.radius_step_miles,
+        "min_comp_count": criteria.min_comp_count,
         "exclude_condo_unit_lots": criteria.exclude_condo_unit_lots,
-        "sf_required": criteria.sf_required,
     }
 
     # --- fetch the subject ---
-    subj_rows = _row_to_dict(
+    subj_rows = _rows_to_dicts(
         con.execute(f"SELECT * FROM {comp_table} WHERE parcel_id = ?", [subject_bbl])
     )
     if not subj_rows:
-        return CompSet(subject_bbl, None, [], 0, crit_summary, note="subject_not_found")
+        return _refusal(subject_bbl, None, crit_summary, "subject_not_found")
     subj = subj_rows[0]
 
-    subj_group = juris.class_group(subj.get("bldg_class"), criteria)
+    bucket = juris.product_bucket(subj.get("bldg_class"), criteria)
     subject_summary = {
         "parcel_id": subj["parcel_id"],
         "bldg_class": subj.get("bldg_class"),
-        "class_group": subj_group,
-        "class_group_label": juris.class_group_label(subj_group, criteria),
+        "bucket": bucket,
+        "bucket_label": juris.product_bucket_label(bucket, criteria),
         "borough": juris.borough_of(subj["parcel_id"]),
         "zip_code": subj.get("zip_code"),
         "sf": subj.get("sf"),
         "sf_source": subj.get("sf_source"),
+        "latitude": subj.get("pluto_latitude"),
+        "longitude": subj.get("pluto_longitude"),
     }
 
-    # The subject must have a gross-SF to anchor the band when SF is part of the match.
+    # --- scope: v1 activated product is office only ---
+    if not juris.is_activated_product(subj.get("bldg_class"), criteria):
+        return _refusal(subject_bbl, subject_summary, crit_summary, "out_of_scope_v1")
+
+    # --- subject must anchor the SF band and the distance origin ---
     if criteria.sf_required and not subj.get("sf"):
-        return CompSet(subject_bbl, subject_summary, [], 0, crit_summary,
-                       note="subject_no_gross_sf")
+        return _refusal(subject_bbl, subject_summary, crit_summary, "subject_no_gross_sf")
+    if subj.get("pluto_latitude") is None or subj.get("pluto_longitude") is None:
+        return _refusal(subject_bbl, subject_summary, crit_summary, "subject_no_coordinates")
 
-    # --- build the comp filter ---
-    where = ["parcel_id != ?"]
-    params: list = [subject_bbl]
-
-    if subj_group is not None:
-        where.append(f"{juris.class_group_sql('bldg_class', criteria)} = ?")
-        params.append(subj_group)
+    # --- candidate pull: same bucket, SF band, non-condo, has coords, within cap ---
+    bucket_codes = juris.bucket_classes(bucket, criteria)
+    where = [
+        "parcel_id != ?",
+        "pluto_latitude IS NOT NULL AND pluto_longitude IS NOT NULL",
+        "sf IS NOT NULL",
+        f"bldg_class IN ({','.join(['?'] * len(bucket_codes))})",
+    ]
+    params: list = [subject_bbl, *bucket_codes]
 
     if criteria.sf_required:
         lo = subj["sf"] * (1 - criteria.sf_band)
         hi = subj["sf"] * (1 + criteria.sf_band)
-        where.append("sf IS NOT NULL AND sf BETWEEN ? AND ?")
+        where.append("sf BETWEEN ? AND ?")
         params += [lo, hi]
-
-    loc_sql, loc_params = juris.location_clause(subj, criteria)
-    where.append(loc_sql)
-    params += loc_params
 
     condo_sql, condo_params = juris.condo_clause(criteria)
     where.append(condo_sql)
     params += condo_params
 
+    if criteria.zip_prefilter:
+        where.append("zip_code = ?")
+        params.append(subj.get("zip_code"))
+
+    slat, slon = subj["pluto_latitude"], subj["pluto_longitude"]
+    haversine = (
+        f"{EARTH_RADIUS_MI} * 2 * asin(sqrt("
+        "power(sin(radians(pluto_latitude - ?) / 2), 2) + "
+        "cos(radians(?)) * cos(radians(pluto_latitude)) * "
+        "power(sin(radians(pluto_longitude - ?) / 2), 2)))"
+    )
     sql = f"""
-        SELECT parcel_id, source_dataset, dataset_version, roll_year, retrieval_date,
-               bldg_class, zip_code, sf, sf_source, pluto_dataset_version,
-               curmkttot, curtxbtot
-        FROM {comp_table}
-        WHERE {' AND '.join(where)}
-        ORDER BY parcel_id
+        WITH cand AS (
+            SELECT parcel_id, source_dataset, dataset_version, roll_year, retrieval_date,
+                   bldg_class, zip_code, sf, sf_source, pluto_dataset_version,
+                   pluto_latitude, pluto_longitude, curmkttot, curtxbtot,
+                   {haversine} AS distance_miles
+            FROM {comp_table}
+            WHERE {' AND '.join(where)}
+        )
+        SELECT * FROM cand
+        WHERE distance_miles <= ?
+        ORDER BY distance_miles
     """
-    rows = _row_to_dict(con.execute(sql, params))
+    cand = _rows_to_dicts(con.execute(sql, [slat, slat, slon, *params, criteria.radius_cap_miles]))
 
-    comps: list[CompRow] = []
-    for r in rows:
-        citation = Citation(
-            source_dataset=r["source_dataset"],
-            dataset_version=r["dataset_version"],
-            roll_year=r["roll_year"],
-            retrieval_date=r["retrieval_date"] if isinstance(r["retrieval_date"], date)
-            else date.fromisoformat(str(r["retrieval_date"])),
-            parcel_id=r["parcel_id"],
-        )
-        grp = juris.class_group(r.get("bldg_class"), criteria)
-        comps.append(
-            CompRow(
-                citation=citation,
-                bldg_class=r.get("bldg_class"),
-                zip_code=r.get("zip_code"),
-                borough=juris.borough_of(r["parcel_id"]),
-                class_group=grp,
-                sf=r["sf"],
-                sf_source=r["sf_source"],
-                sf_dataset_version=r.get("pluto_dataset_version"),
-                curmkttot=r.get("curmkttot"),
-                curtxbtot=r.get("curtxbtot"),
-            )
-        )
+    # --- radius-first expansion: smallest radius reaching the minimum, else refuse ---
+    radius_used, refused = _resolve_radius(cand, criteria)
+    chosen = [c for c in cand if c["distance_miles"] <= radius_used]
 
-    return CompSet(subject_bbl, subject_summary, comps, len(comps), crit_summary)
+    comps = [_to_comprow(c, juris, criteria) for c in chosen]
+    note = "insufficient_comps_within_cap" if refused else None
+    return CompSet(
+        subject_bbl, subject_summary, comps, len(comps), radius_used, refused,
+        crit_summary, note=note, candidates_within_cap=len(cand),
+    )
+
+
+def _resolve_radius(cand: list[dict], criteria: CompCriteria) -> tuple[float, bool]:
+    """Return (radius_used, refused). Expand from start to cap until min is met."""
+    start, cap, step = (criteria.radius_start_miles, criteria.radius_cap_miles,
+                        criteria.radius_step_miles)
+    r = start
+    while r < cap + 1e-9:
+        n = sum(1 for c in cand if c["distance_miles"] <= r + 1e-9)
+        if n >= criteria.min_comp_count:
+            return round(min(r, cap), 4), False
+        r += step
+    # At the cap, still short.
+    return cap, True
+
+
+def _to_comprow(c: dict, juris: Jurisdiction, criteria: CompCriteria) -> CompRow:
+    rd = c["retrieval_date"]
+    citation = Citation(
+        source_dataset=c["source_dataset"],
+        dataset_version=c["dataset_version"],
+        roll_year=c["roll_year"],
+        retrieval_date=rd if isinstance(rd, date) else date.fromisoformat(str(rd)),
+        parcel_id=c["parcel_id"],
+    )
+    return CompRow(
+        citation=citation,
+        bldg_class=c.get("bldg_class"),
+        bucket=juris.product_bucket(c.get("bldg_class"), criteria),
+        sf=c["sf"],
+        sf_source=c["sf_source"],
+        sf_dataset_version=c.get("pluto_dataset_version"),
+        distance_miles=round(c["distance_miles"], 4),
+        latitude=c["pluto_latitude"],
+        longitude=c["pluto_longitude"],
+        curmkttot=c.get("curmkttot"),
+        curtxbtot=c.get("curtxbtot"),
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -165,21 +228,27 @@ def _print_compset(cs: CompSet, sample: int = 5) -> None:
     if s is None:
         print(f"  (not found)  note={cs.note}")
         return
-    print(f"  class {s['bldg_class']} -> group '{s['class_group']}' ({s['class_group_label']})")
+    print(f"  class {s['bldg_class']} -> bucket '{s['bucket']}' ({s['bucket_label']})")
     print(f"  {s['borough']}  ZIP {s['zip_code']}  gross SF {s['sf']}  ({s['sf_source']})")
-    print(f"  criteria: {cs.criteria}")
-    if cs.note:
-        print(f"  NOTE: {cs.note}")
+    if cs.note in ("out_of_scope_v1", "subject_no_gross_sf", "subject_no_coordinates"):
+        print(f"  REFUSED: {cs.note}")
+        return
+    print(f"  candidates within {cs.criteria['radius_cap_miles']} mi cap: {cs.candidates_within_cap}")
+    if cs.refused:
+        print(f"  REFUSED: {cs.note} (only {cs.candidates_within_cap} < "
+              f"{cs.criteria['min_comp_count']} within {cs.criteria['radius_cap_miles']} mi)")
+        return
+    print(f"  radius used: {cs.radius_used_miles} mi")
     print(f"  >>> COMP COUNT: {cs.count}")
     for c in cs.comps[:sample]:
-        print(f"      {c.citation.parcel_id}  {c.bldg_class:>3}  ZIP {c.zip_code}  "
-              f"SF {c.sf:>10,.0f}  ({c.sf_source})  src={c.citation.source_dataset}@{c.citation.roll_year}")
+        print(f"      {c.citation.parcel_id}  {c.bldg_class:>3}  {c.distance_miles:>5.2f} mi  "
+              f"SF {c.sf:>10,.0f}  ({c.sf_source})")
     if cs.count > sample:
         print(f"      ... {cs.count - sample} more")
 
 
 def main(argv: list[str] | None = None) -> None:
-    ap = argparse.ArgumentParser(description="Select comps for one or more subject BBLs (no stats).")
+    ap = argparse.ArgumentParser(description="Select office comps for subject BBL(s) (no stats).")
     ap.add_argument("bbls", nargs="+", help="subject BBL(s), e.g. 1002230035")
     ap.add_argument("--sample", type=int, default=5, help="comp rows to print per subject")
     args = ap.parse_args(argv)

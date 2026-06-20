@@ -7,7 +7,7 @@ Dataset IDs, vintages, retrieval dates, access methods, source tier list. Update
 | Source | ID | What it gives | Access | Version / vintage | Retrieved |
 |---|---|---|---|---|---|
 | DOF Property Valuation & Assessment Data (Tax Classes 1–4) | `8y4t-faws` | Assessed/market values, tax class, building class, year built, dimensions, ZIP. **Multi-year — filter by `year`.** | SODA API + bulk CSV | FY2027 tentative roll is latest (`year='2027'`) | 2026-06-19 (live counts) |
-| DCP PLUTO | `64uk-42ks` | `BldgArea` (SF source), `BldgClass`, `LotArea`, `YearBuilt`, neighborhood | Bulk CSV / SODA | Data dictionary 26v1 (May 2026); readme 24v4 (Nov 2024) | 2026-06-19 (commercial fill check) |
+| DCP PLUTO | `64uk-42ks` | `BldgArea` (gross-building-area source), `BldgClass`, **`latitude`/`longitude` (distance-based comp ranking)**, `LotArea`, `YearBuilt` | Bulk CSV / SODA | **Release `26v1`** (version string from the data; SODA `rowsUpdatedAt` 2026-05-28). Data dictionary 26v1 (May 2026); readme 24v4 (Nov 2024) | **2026-06-19 (re-pulled with lat/lon; 858,602 lots)** |
 | SODA API | — | `data.cityofnewyork.us/resource/{id}.json` with `$select`/`$where`/`$group` | HTTPS | n/a | n/a |
 | DOF property lookup site | — | Ground-truth cross-check; the public record each citation links to. **Note: nyc.gov DOF domains are blocked from the agent browser — manual check.** | Web (not an API) | live | PENDING (manual) |
 | PLUTO readme + data dictionary | — | Condo billing-lot aggregation + YearBuilt caveats. Treat as part of the codebase. | PDF | 26v1 / 24v4 | 2026-06-19 |

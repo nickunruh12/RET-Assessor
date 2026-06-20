@@ -2,47 +2,42 @@
   "_doc": "Tunable comp-selection criteria. Edit this file to retune WITHOUT touching code. Jurisdiction logic lives in src/screener/plugins/<jurisdiction>.py; this file only carries parameters. Every value here traces to a dated entry in DECISIONS.md.",
   "jurisdiction": "nyc",
 
+  "activated_products": ["O"],
+  "_activated_products_doc": "Building-class first letters ACTIVATED in v1. Only Office ('O') is live (DECISIONS 2026-06-19). A subject whose class letter is not here gets an 'out of scope for v1' refusal. Adding a type later (e.g. 'K' retail) is a config addition here plus its bucket map, not an engine change.",
+
+  "office_buckets": {
+    "O1": "O1", "O2": "O2", "O3": "O3", "O4": "O4",
+    "O5": "O5_O6", "O6": "O5_O6",
+    "O7": "O7_O9", "O8": "O7_O9", "O9": "O7_O9"
+  },
+  "_office_buckets_doc": "Office subclass -> bucket key (DECISIONS 2026-06-19). O1-O4 each their own bucket (exact match, no cross-matching); O5+O6 grouped; O7+O8+O9 grouped. Class code encodes stories at 100% fill, so common codes stay exact for tight peers and rare codes group to avoid comp starvation. A comp must share the subject's bucket.",
+
+  "office_bucket_labels": {
+    "O1": "Office — O1", "O2": "Office — O2", "O3": "Office — O3", "O4": "Office — O4",
+    "O5_O6": "Office with commercial (O5/O6)", "O7_O9": "Misc office (O7/O8/O9)"
+  },
+
   "sf_band": 0.50,
-  "_sf_band_doc": "Gross-building-area band: a comp must fall within +/- this fraction of the subject's gross building area. LOCKED 0.50 (DECISIONS 2026-06-19), tunable in Phase 4.",
+  "_sf_band_doc": "Gross-building-area band: a comp must fall within +/- this fraction of the subject's gross building area. LOCKED 0.50 (DECISIONS 2026-06-19), tunable in Phase 6.",
 
   "sf_required": true,
-  "_sf_required_doc": "When true, only parcels with a reported gross building area enter the comp set, and the subject must have one too. Gross SF is part of the match (the +/-50% band), so this is true by default.",
+  "_sf_required_doc": "Only parcels with a reported gross building area enter the comp set, and the subject must have one too (gross SF is part of the +/-50% match).",
 
-  "class_match_level": "letter",
-  "_class_match_level_doc": "How granular the building-class match is. 'letter' = group by the building-class first letter / major use category (e.g. O1 comps against ALL O* office classes). 'exact' = match the full 2-char class (O1 only vs O1). PROPOSED DEFAULT: 'letter'.",
+  "location_mode": "distance",
+  "_location_mode_doc": "Comps ranked/collected by great-circle distance from the subject's PLUTO latitude/longitude (DECISIONS 2026-06-19). ZIP is NOT a match criterion.",
 
-  "location_match": "borough_and_zip",
-  "_location_match_doc": "Location granularity. 'borough_and_zip' = same borough AND same ZIP (implemented). 'borough_only' and 'zip_only' also supported. 'borough_and_neighborhood' is reserved but NOT yet available: the PLUTO neighborhood/CD field was not pulled in Phase 2, so neighborhood matching needs a re-pull before it can be selected.",
+  "radius_start_miles": 0.5,
+  "radius_cap_miles": 1.0,
+  "radius_step_miles": 0.1,
+  "_radius_doc": "Radius-first with automatic expansion (DECISIONS 2026-06-19). Collect ALL qualifying comps within radius_start_miles; if fewer than min_comp_count, expand by radius_step_miles toward radius_cap_miles; if still short at the cap, REFUSE. The actual radius used is reported on every result. Radii tunable, logged for Phase 6.",
+
+  "zip_prefilter": false,
+  "_zip_prefilter_doc": "Optional ZIP pre-filter, OFF by default. When true, candidates are additionally restricted to the subject's ZIP before distance ranking. Demoted from a match criterion to an optional pre-filter only.",
 
   "exclude_condo_unit_lots": true,
   "condo_unit_lot_min": 1001,
-  "_condo_doc": "Condo unit lots are excluded from the comp set: their gross_sqft provenance is unreliable for $/SF (whole-building-envelope error, see DECISIONS derived-tier rejection). A parcel is treated as a condo unit lot if its building class starts with 'R' OR its lot number (BBL digits 7-10) >= condo_unit_lot_min. NOTE: these are NOT fully excluded upstream — many re-enter SF-eligibility via the roll gross_sqft fallback — so they must be excluded here at the comp layer.",
+  "_condo_doc": "Condo unit lots are excluded from the comp set: their gross_sqft provenance is unreliable for $/SF (whole-building-envelope error, see DECISIONS derived-tier rejection). A parcel is a condo unit lot if its building class starts with 'R' OR its lot number (BBL digits 7-10) >= condo_unit_lot_min. NOTE: not fully excluded upstream — many re-enter SF-eligibility via the roll gross_sqft fallback — so they are excluded here at the comp layer.",
 
   "min_comp_count": 8,
-  "_min_comp_count_doc": "Below this, the screen refuses (DECISIONS LOCKED = 8). Carried here as a tunable for the refusal gate, which is NOT yet implemented.",
-
-  "class_group_labels": {
-    "E": "Warehouse",
-    "F": "Factory / Industrial",
-    "G": "Garage / Gas station",
-    "H": "Hotel",
-    "I": "Hospital / Health",
-    "J": "Theatre",
-    "K": "Store / Retail",
-    "L": "Loft",
-    "M": "Religious / Institutional",
-    "N": "Asylum / Home",
-    "O": "Office",
-    "P": "Public assembly / Cultural",
-    "Q": "Outdoor recreational",
-    "R": "Condominium (excluded from comps)",
-    "S": "Mixed residential / commercial",
-    "T": "Transportation",
-    "U": "Utility",
-    "V": "Vacant land",
-    "W": "Educational",
-    "Y": "Government / Selected",
-    "Z": "Miscellaneous"
-  },
-  "_class_group_labels_doc": "Human labels for the building-class first-letter groups (used in output, not in matching logic). Matching uses the letter itself; this map only names it."
+  "_min_comp_count_doc": "Below this within the 1-mile cap, the screen REFUSES (DECISIONS LOCKED = 8). Tunable, logged for Phase 6."
 }
