@@ -68,3 +68,59 @@ Bimodal: outer-borough successes barely clear the floor of 8; dense Manhattan of
 The locked exact-bucketing for O1/O2/O3 produces high refusal rates. Options if undesirable:
 loosen those buckets (e.g. group O1+O2+O3 like the rare codes), widen the radius cap, or accept
 the refusals as honest "insufficient comparable properties." No change made — flagged for Phase 6.
+
+---
+
+# Tiered fallback re-run (2026-06-20) — distance-first relaxation
+
+Selector now relaxes distance fully on the exact class before adding adjacent ladder
+classes (O1→O2→O3 etc.; O4 and grouped buckets exact-or-refuse). Full office census,
+`PYTHONPATH=src python scripts/validate_tiered.py`. EXACT baseline reproduced in-memory
+(ladder emptied) as a control.
+
+## (a) Refusal rate vs baselines
+
+| Borough | Subjects | Exact | Grouped | **Tiered** |
+|---|---|---|---|---|
+| Bronx | 590 | 66.8% | — | **59.3%** |
+| Brooklyn | 1,779 | 37.9% | — | **33.3%** |
+| Manhattan | 2,478 | 10.5% | — | **8.8%** |
+| Queens | 1,611 | 60.3% | — | **51.8%** |
+| Staten Island | 702 | 45.0% | — | **40.0%** |
+| **ALL** | 7,160 | **36.5%** | **31.8%** | **31.8%** |
+
+**Tiered matches the grouped coverage (31.8%, −4.7pp vs exact) — by construction:** an
+O1/O2/O3 subject refuses only if the union O1∪O2∪O3 within 1 mi is still < 8, the same
+condition as merging them into one bucket. The difference is tiered **preserves the
+exact-vs-adjacent distinction** instead of blending classes. Same coverage, honest labels.
+
+## (b) Among non-refusing subjects: fully-exact vs needed fallback
+
+| Borough | Successes | Fully-exact | Used fallback |
+|---|---|---|---|
+| Manhattan | 2,260 | 98.1% | 1.9% |
+| Brooklyn | 1,187 | 93.1% | 6.9% |
+| Staten Island | 421 | 91.7% | 8.3% |
+| Queens | 776 | 82.3% | 17.7% |
+| Bronx | 240 | 81.7% | 18.3% |
+| **ALL** | 4,884 | **93.0%** | **7.0%** (340 subjects) |
+
+Fallback is a **targeted rescue** (340 subjects), not a wholesale change — 93% of
+successful sets remain fully exact-class.
+
+## (c) Comp-set size distribution (tiered successes)
+
+n=4,884 · min 8 · p10 8 · p25 9 · **median 11** · p75 40 · p90 97 · max 214.
+Bands: 8–14 → 2,998 · 15–29 → 473 · 30–59 → 453 · 60–119 → 677 · 120+ → 283.
+
+## Spot-check — formerly-refusing Bronx subjects (now succeed via fallback)
+
+- `2023070046` O1, 8,025 SF → **8 comps: 1 exact (O1), 7 adjacent (7 O2), radius 1.0 mi.**
+  Peers SF 4,110–11,075, all ZIP 10455. The lone exact O1 is assessed mkt 3.5M vs the O2
+  peers' 0.65–1.9M at similar SF — exactly the kind of outlier the screen surfaces.
+- `2023070059` O3, 18,401 SF → 1 exact (O3), 7 adjacent (O2), radius 1.0 mi; peers 10.9k–26.8k SF.
+- `2023270020` O3, 18,500 SF → 1 exact (O3), 7 adjacent (O2), radius 1.0 mi.
+
+Reasonable peers (same neighborhood, SF in band). Where exact is sparse the set is
+adjacent-dominated — and the label says so (e.g. "1 exact, 7 adjacent"), so the
+underwriter sees the composition rather than an undifferentiated blend.
