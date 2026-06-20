@@ -56,6 +56,8 @@ class CompRow(CitedRow):
     longitude: float
     curmkttot: float | None
     curtxbtot: float | None
+    curtrntot: float | None
+    curacttot: float | None
 
 
 @dataclass
@@ -67,8 +69,9 @@ class CompSet:
     radius_used_miles: float | None
     refused: bool
     criteria: dict
-    note: str | None = None     # out_of_scope_v1 / subject_not_found / subject_no_gross_sf
+    note: str | None = None     # out_of_scope_v1 / subject_not_found / insufficient_comps_within_cap
     candidates_within_cap: int = 0  # diagnostic: qualifying comps inside the 1-mile cap
+    sf_band_applied: bool = True    # False when subject lacks gross SF (no size match)
     # fallback accounting (the non-negotiable exact-vs-adjacent labeling)
     fallback_triggered: bool = False
     exact_count: int = 0
@@ -161,17 +164,26 @@ def select_comps(
         "sf_source": subj.get("sf_source"),
         "latitude": subj.get("pluto_latitude"),
         "longitude": subj.get("pluto_longitude"),
+        # subject's own signal values (NEVER entered into its own distribution; used
+        # only to place the subject's percentile against the comps)
+        "curmkttot": subj.get("curmkttot"),
+        "curtxbtot": subj.get("curtxbtot"),
+        "curtrntot": subj.get("curtrntot"),
+        "curacttot": subj.get("curacttot"),
     }
 
     # --- scope: v1 activated product is office only ---
     if not juris.is_activated_product(subj_class, criteria):
         return _refusal(subject_bbl, subject_summary, crit_summary, "out_of_scope_v1")
 
-    # --- subject must anchor the SF band and the distance origin ---
-    if criteria.sf_required and not subj.get("sf"):
-        return _refusal(subject_bbl, subject_summary, crit_summary, "subject_no_gross_sf")
+    # The subject anchors the distance origin (required) and, when it has a reported
+    # gross building area, the SF band. A subject with NO gross SF is NOT refused
+    # wholesale (locked per-signal philosophy): it still gets a class+location comp set
+    # so the assessed-value and tax-bill signals compute; only the $/SF signal refuses
+    # downstream. The SF band is simply not applied.
     if subj.get("pluto_latitude") is None or subj.get("pluto_longitude") is None:
         return _refusal(subject_bbl, subject_summary, crit_summary, "subject_no_coordinates")
+    sf_band_applied = bool(criteria.sf_required and subj.get("sf"))
 
     # --- class tiers: exact set first, then the ladder (distance relaxed before class) ---
     exact_classes = juris.exact_classes(subj_class, criteria)       # [O1] or [O5,O6]
@@ -187,7 +199,7 @@ def select_comps(
     ]
     params: list = [subject_bbl, *all_classes]
 
-    if criteria.sf_required:
+    if sf_band_applied:
         lo = subj["sf"] * (1 - criteria.sf_band)
         hi = subj["sf"] * (1 + criteria.sf_band)
         where.append("sf BETWEEN ? AND ?")
@@ -213,6 +225,7 @@ def select_comps(
             SELECT parcel_id, source_dataset, dataset_version, roll_year, retrieval_date,
                    bldg_class, zip_code, sf, sf_source, pluto_dataset_version,
                    pluto_latitude, pluto_longitude, curmkttot, curtxbtot,
+                   curtrntot, curacttot,
                    {haversine} AS distance_miles
             FROM {comp_table}
             WHERE {' AND '.join(where)}
@@ -244,7 +257,7 @@ def select_comps(
         return CompSet(
             subject_bbl, subject_summary, [], 0, criteria.radius_cap_miles, True,
             crit_summary, note="insufficient_comps_within_cap",
-            candidates_within_cap=len(cand),
+            candidates_within_cap=len(cand), sf_band_applied=sf_band_applied,
         )
 
     radius_used, chosen = hit
@@ -259,6 +272,7 @@ def select_comps(
         crit_summary, candidates_within_cap=len(cand),
         fallback_triggered=fallback_triggered, exact_count=exact_n,
         adjacent_count=len(adj_rows), adjacent_breakdown=breakdown,
+        sf_band_applied=sf_band_applied,
     )
 
 
@@ -285,6 +299,8 @@ def _to_comprow(c: dict, juris: Jurisdiction, criteria: CompCriteria,
         longitude=c["pluto_longitude"],
         curmkttot=c.get("curmkttot"),
         curtxbtot=c.get("curtxbtot"),
+        curtrntot=c.get("curtrntot"),
+        curacttot=c.get("curacttot"),
     )
 
 
