@@ -66,6 +66,7 @@ class CompRow(CitedRow):
     sf: float
     sf_source: str
     sf_dataset_version: str | None
+    year_built: str | None      # DISPLAY ONLY (68% fill); never used to rank or sort
     distance_miles: float
     latitude: float
     longitude: float
@@ -177,6 +178,7 @@ def select_comps(
         "zip_code": subj.get("zip_code"),
         "sf": subj.get("sf"),
         "sf_source": subj.get("sf_source"),
+        "year_built": subj.get("year_built"),
         "latitude": subj.get("pluto_latitude"),
         "longitude": subj.get("pluto_longitude"),
         # subject's own signal values (NEVER entered into its own distribution; used
@@ -246,7 +248,7 @@ def select_comps(
     sql = f"""
         WITH cand AS (
             SELECT parcel_id, source_dataset, dataset_version, roll_year, retrieval_date,
-                   bldg_class, zip_code, sf, sf_source, pluto_dataset_version,
+                   bldg_class, zip_code, sf, sf_source, pluto_dataset_version, year_built,
                    pluto_latitude, pluto_longitude, curmkttot, curtxbtot,
                    curtrntot, curacttot,
                    {haversine} AS distance_miles
@@ -317,6 +319,7 @@ def _to_comprow(c: dict, juris: Jurisdiction, criteria: CompCriteria,
         sf=c["sf"],
         sf_source=c["sf_source"],
         sf_dataset_version=c.get("pluto_dataset_version"),
+        year_built=c.get("year_built"),
         distance_miles=round(c["distance_miles"], 4),
         latitude=c["pluto_latitude"],
         longitude=c["pluto_longitude"],
