@@ -97,6 +97,32 @@ def test_expense_ratio_tax_exempt_refused(client):
     assert r["rejected"] and r["rejection_reason"] == "subject_tax_exempt"
 
 
+def test_radius_tighten_below_min_refuses_at_selected_radius(client):
+    # Fallback subject (8 comps only at 1.0 mi). At 0.25 mi it has < 8 -> refuse, do not
+    # silently widen back out.
+    j = client.get("/api/screen", params={"bbl": "2023070046", "radius": "0.25"}).json()
+    assert j["status"] == "refused" and j["reason"] == "insufficient_comps_within_cap"
+    assert "selected radius" in j["message"] and "0.25" in j["message"]
+
+
+def test_radius_widen_returns_more_via_api(client):
+    base = client.get("/api/screen", params={"bbl": "1000090001"}).json()["comp_meta"]["comp_count"]
+    wide = client.get("/api/screen",
+                      params={"bbl": "1000090001", "radius": "2.0"}).json()["comp_meta"]["comp_count"]
+    assert wide >= base
+
+
+def test_radius_used_display_matches_applied(client):
+    j = client.get("/api/screen", params={"bbl": "1000090001", "radius": "0.5"}).json()
+    assert j["comp_meta"]["radius_used_miles"] == 0.5
+    assert j["radius_control"]["selection"] == "0.5"
+
+
+def test_radius_default_keeps_auto_behavior(client):
+    j = client.get("/api/screen", params={"bbl": "1000090001"}).json()
+    assert j["radius_control"]["selection"] == "default"
+
+
 def test_re_taxes_matches_tax_bill_subject_value(client):
     """Subject RE-taxes line == the Tax Bill chart's subject value (same derived figure)."""
     j = client.get("/api/screen", params={"bbl": "1012770027"}).json()

@@ -46,8 +46,44 @@ CONTEXT = {
 }
 
 
+# Radius toggle (comp-selection parameter). Default = auto 0.5->1.0 mi; override fixes
+# the search radius. Max stated to the user.
+RADIUS_MIN, RADIUS_MAX = 0.25, 2.0
+RADIUS_PRESETS = ["default", "0.25", "0.5", "0.75", "1.0", "1.5", "2.0"]
+
+# Gap magnitude below this reads as "effectively fully phased in".
+PHASE_IN_ZERO_EPS = 0.005
+
+
 def _f(x, nd=2):
     return None if x is None else round(float(x), nd)
+
+
+def _phase_in_note(phase) -> dict:
+    """Phase-In Note: readable variable names + a SIGN-dependent MECHANISM sentence
+    (not a verdict). Raw column names stay in the Provenance footer only."""
+    v = phase.subject_value
+    if v is None:
+        mechanism = "The phase-in gap is unavailable for this parcel."
+    elif v > PHASE_IN_ZERO_EPS:
+        mechanism = ("A positive gap means the transitional (taxable) value is still below "
+                     "the actual assessed value, so the taxable value is ramping up toward a "
+                     "higher assessment over the phase-in period.")
+    elif v < -PHASE_IN_ZERO_EPS:
+        mechanism = ("A negative gap means the transitional (taxable) value currently sits "
+                     "above the actual assessed value, so this year's tax is based on a value "
+                     "higher than the latest assessment, ramping down over the phase-in period.")
+    else:
+        mechanism = "A gap near zero means the assessment is effectively fully phased in."
+    return {
+        "title": "Phase-In Note",
+        "formula": "(actual assessed value − transitional assessed value) ÷ actual assessed value",
+        "subject_value": _f(v, 3),
+        "median": _f(phase.median, 3),
+        "n": phase.n,
+        "mechanism": mechanism,
+        "footer": "Descriptive only — not a verdict on the assessment.",
+    }
 
 
 def _subject_panel(subject: dict | None, resolve: ResolveResult | None,
@@ -189,12 +225,18 @@ def _expense_section(juris, criteria, subject: dict) -> dict:
     }
 
 
-def _refused(stage, reason, message, *, subject=None, resolve=None, extra=None) -> dict:
+def _radius_control(selection: str) -> dict:
+    return {"selection": selection, "presets": RADIUS_PRESETS, "max_miles": RADIUS_MAX}
+
+
+def _refused(stage, reason, message, *, subject=None, resolve=None, extra=None,
+             radius_selection: str = "default") -> dict:
     out = {
         "status": "refused", "stage": stage, "reason": reason, "message": message,
         "disclaimer": DISCLAIMER, "context": CONTEXT,
         "subject": _subject_panel(subject, resolve),
-        "rung3": {"enabled": False, "section": "Implied Cap Rate (From the NOI You Provide)"},
+        "rung3": {"enabled": False, "section": "Calculate Implied Cap Rate With User-Provided NOI"},
+        "radius_control": _radius_control(radius_selection),
     }
     if extra:
         out.update(extra)
@@ -203,20 +245,31 @@ def _refused(stage, reason, message, *, subject=None, resolve=None, extra=None) 
 
 def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
                       juris: Jurisdiction, *, bbl: str | None = None,
-                      resolve: ResolveResult | None = None) -> dict:
-    """Assemble the full page view model from a BBL (or a prior address resolution)."""
+                      resolve: ResolveResult | None = None,
+                      radius_selection: str = "default") -> dict:
+    """Assemble the full page view model from a BBL (or a prior address resolution).
+
+    `criteria` already carries any radius override; `radius_selection` is the label of
+    the chosen radius ('default' or e.g. '0.5'), used for the control + refusal message.
+    """
     # Address resolution refusal (out-of-scope, tax-exempt, address not found, …).
     if resolve is not None and not resolve.ok:
         return _refused("resolve", resolve.reason, resolve.message, resolve=resolve,
-                        subject=None)
+                        subject=None, radius_selection=radius_selection)
     subject_bbl = (resolve.bbl if resolve is not None else bbl)
     if not subject_bbl:
-        return _refused("resolve", "missing_inputs", RESOLVER_MESSAGES["missing_inputs"])
+        return _refused("resolve", "missing_inputs", RESOLVER_MESSAGES["missing_inputs"],
+                        radius_selection=radius_selection)
 
     cs = select_comps(con, subject_bbl, juris, criteria)
     if cs.refused:
-        msg = refusal_message(cs.note) or REFUSAL_MESSAGES.get(cs.note) or cs.note
+        if cs.note == "insufficient_comps_within_cap" and radius_selection != "default":
+            msg = (f"insufficient comparable properties at the selected radius "
+                   f"({radius_selection} mi)")
+        else:
+            msg = refusal_message(cs.note) or REFUSAL_MESSAGES.get(cs.note) or cs.note
         return _refused("comps", cs.note, msg, subject=cs.subject, resolve=resolve,
+                        radius_selection=radius_selection,
                         extra={"radius_used_miles": cs.radius_used_miles,
                                "candidates_within_cap": cs.candidates_within_cap})
 
@@ -252,11 +305,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
             "sf_band_applied": cs.sf_band_applied,
         },
         "signals": signals,
-        "phase_in_gap": {
-            "label": phase.label, "subject_value": _f(phase.subject_value, 4),
-            "median": _f(phase.median, 4), "n": phase.n, "excluded_blank": phase.excluded_blank,
-            "descriptive": True,
-        },
+        "phase_in_note": _phase_in_note(phase),
         "variance": {
             "subject_sf": cs.subject.get("sf"),
             "subject_emv": cs.subject.get("curmkttot"),
@@ -275,6 +324,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         "context": CONTEXT,
         "rung3": {"enabled": False, "section": "Calculate Implied Cap Rate With User-Provided NOI"},
         "expense_ratio": _expense_section(juris, criteria, cs.subject),
+        "radius_control": _radius_control(radius_selection),
     }
 
 

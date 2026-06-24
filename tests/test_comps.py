@@ -186,6 +186,31 @@ def test_no_exempt_comps_in_set(setup):
     assert all(c.curmkttot is not None and c.curmkttot > 0 for c in cs.comps)
 
 
+def test_radius_override_fixed_does_not_autowiden(setup):
+    con, juris, crit = setup
+    tight = crit.model_copy(update={"radius_start_miles": 0.1, "radius_cap_miles": 0.1})
+    cs = select_comps(con, OFFICE_DENSE, juris, tight)
+    if cs.refused:
+        assert cs.note == "insufficient_comps_within_cap" and cs.radius_used_miles == 0.1
+    else:
+        assert cs.radius_used_miles <= 0.1 + 1e-9   # fixed radius, never widens out to 1.0
+
+
+def test_radius_widen_returns_at_least_as_many(setup):
+    con, juris, crit = setup
+    base = select_comps(con, OFFICE_DENSE, juris, crit).count
+    wide = crit.model_copy(update={"radius_start_miles": 2.0, "radius_cap_miles": 2.0})
+    assert select_comps(con, OFFICE_DENSE, juris, wide).count >= base
+
+
+def test_radius_used_matches_applied(setup):
+    con, juris, crit = setup
+    fixed = crit.model_copy(update={"radius_start_miles": 0.5, "radius_cap_miles": 0.5})
+    cs = select_comps(con, OFFICE_DENSE, juris, fixed)
+    if not cs.refused:
+        assert cs.radius_used_miles == 0.5
+
+
 def test_exclusions_table_has_non_positive_reason(setup):
     con, juris, crit = setup
     if con.execute("SELECT count(*) FROM information_schema.tables "

@@ -23,6 +23,9 @@ from .jurisdiction import CompCriteria, get_jurisdiction
 from .rung3 import run_rung3
 from .serialize import (
     DISCLAIMER,
+    RADIUS_MAX,
+    RADIUS_MIN,
+    RADIUS_PRESETS,
     build_expense_ratio_view,
     build_rung3_view,
     build_screen_view,
@@ -51,7 +54,24 @@ def _resolve_input(con, *, bbl, house_number, street, borough, zip_code) -> Reso
     return None
 
 
-def _screen_view(con, *, bbl, house_number, street, borough, zip_code) -> dict | None:
+def _effective_criteria(radius: str):
+    """Resolve the radius override. 'default'/'' -> auto 0.5->1.0 mi (unchanged criteria).
+    A number -> fixed search radius (start = cap = R), clamped to [RADIUS_MIN, RADIUS_MAX]."""
+    sel = (radius or "").strip().lower()
+    if sel in ("", "default"):
+        return CRITERIA, "default"
+    try:
+        r = float(sel)
+    except ValueError:
+        return CRITERIA, "default"
+    r = max(RADIUS_MIN, min(RADIUS_MAX, r))
+    crit = CRITERIA.model_copy(update={"radius_start_miles": r, "radius_cap_miles": r})
+    # Label it as the matching preset string (e.g. 2.0, 1.0) so the control highlights it.
+    label = next((p for p in RADIUS_PRESETS if p != "default" and float(p) == r), f"{r:g}")
+    return crit, label
+
+
+def _screen_view(con, *, bbl, house_number, street, borough, zip_code, radius="") -> dict | None:
     try:
         rr = _resolve_input(con, bbl=bbl, house_number=house_number, street=street,
                             borough=borough, zip_code=zip_code)
@@ -61,7 +81,8 @@ def _screen_view(con, *, bbl, house_number, street, borough, zip_code) -> dict |
                 "rung3": {"enabled": False}}
     if rr is None:
         return None
-    return build_screen_view(con, CRITERIA, JURIS, resolve=rr)
+    crit, radius_selection = _effective_criteria(radius)
+    return build_screen_view(con, crit, JURIS, resolve=rr, radius_selection=radius_selection)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -73,10 +94,10 @@ def home(request: Request):
 
 @app.get("/screen", response_class=HTMLResponse)
 def screen(request: Request, bbl: str = "", house_number: str = "", street: str = "",
-           borough: str = "", zip: str = ""):
+           borough: str = "", zip: str = "", radius: str = ""):
     with _con() as con:
         result = _screen_view(con, bbl=bbl, house_number=house_number, street=street,
-                              borough=borough, zip_code=zip)
+                              borough=borough, zip_code=zip, radius=radius)
     form = {"bbl": bbl, "house_number": house_number, "street": street, "borough": borough, "zip": zip}
     return templates.TemplateResponse(request, "page.html", {
         "result": result, "disclaimer": DISCLAIMER, "form": form,
@@ -86,10 +107,10 @@ def screen(request: Request, bbl: str = "", house_number: str = "", street: str 
 
 @app.get("/api/screen")
 def api_screen(bbl: str = "", house_number: str = "", street: str = "",
-               borough: str = "", zip: str = ""):
+               borough: str = "", zip: str = "", radius: str = ""):
     with _con() as con:
         result = _screen_view(con, bbl=bbl, house_number=house_number, street=street,
-                              borough=borough, zip_code=zip)
+                              borough=borough, zip_code=zip, radius=radius)
     return JSONResponse(result or {"status": "no_input"})
 
 

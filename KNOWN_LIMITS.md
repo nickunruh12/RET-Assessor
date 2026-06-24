@@ -59,6 +59,16 @@ Recorded so the design constraints survive; none of this is built yet.
   control governs both), not to autogenerate alone.
 - **Welcome / landing page.** Deferred; no design constraint recorded yet.
 
+- **[OPEN DECISION] SF-band-width toggle and/or exact-vs-adjacent class-strictness toggle.**
+  Whether to build either is **undecided** — revisit after the custom-pool work. Unlike the
+  radius toggle (which is self-contained and was built now), both of these **reshape the
+  comp set the way a custom pool does**: widening the SF band or loosening class strictness
+  changes which parcels qualify, not just how far out the search reaches. If built, each
+  would need a **"comp-selection parameters were user-adjusted" stamp** (same provenance
+  discipline as user-supplied NOI / operating expense) and **its own validation pass**.
+  Not scaffolded. Open question: do they get built at all, and if so do they share one
+  "parameters adjusted" stamp or carry separate ones.
+
 ## Variance explanation is descriptive, never causal
 
 Allowed: "This comp is assessed 20% higher and differs on: built 2015 vs 1980, class O5 vs O3, 40k SF vs 32k SF." Banned: "This comp is higher because it is newer."

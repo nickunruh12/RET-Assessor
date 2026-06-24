@@ -74,6 +74,17 @@ dl dt { color: var(--muted); }
 .benchmark-note { margin-top: .6rem; }
 .gloss { margin: -.3rem 0 .8rem; }
 
+/* Phase-In Note — small labeled block, neutral. */
+.phase-in-note { margin: 1rem 0 .4rem; padding: .5rem .7rem; background: var(--panel); border-left: 3px solid var(--line); }
+.phase-in-note h3 { margin: 0 0 .35rem; }
+.phase-in-note p { margin: .25rem 0; font-size: .88rem; }
+
+/* Radius toggle — neutral; current selection bold, others are links. */
+.radius-control { font-size: .82rem; color: var(--muted); margin: .4rem 0 .2rem; }
+.radius-control a { margin: 0 .1rem; }
+.radius-current { color: var(--ink); }
+.radius-used { color: var(--ink); }
+
 .refusal { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; margin: 1rem 0; }
 .refusal-msg { font-size: 1rem; margin: 0 0 .3rem; }
 .refusal-meta, .subject-mini { color: var(--muted); font-size: .85rem; }
