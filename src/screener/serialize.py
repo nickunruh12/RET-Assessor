@@ -20,20 +20,20 @@ DISCLAIMER = ("This is a descriptive screen of published assessment data — "
 
 # CONTEXT panel — cited, display-only, visually separated from the SIGNAL section.
 CONTEXT = {
-    "heading": "Context (background only — not a verdict, not advice)",
+    "heading": "Context (Background Only — Not a Verdict, Not Advice)",
     "items": [
-        {"label": "How class-4 is valued",
+        {"label": "How Class-4 Is Valued",
          "text": "NYC DOF values class-4 (commercial) property primarily by income "
                  "(capitalized net operating income), not by price per square foot. This "
                  "screen compares published figures across nearby peers; it does not "
                  "reproduce the assessor's method.",
          "source": "NYC DOF — Determining Your Assessed Value",
          "url": "https://www.nyc.gov/site/finance/property/property-determining-your-assessed-value.page"},
-        {"label": "Class-4 assessment ratio",
+        {"label": "Class-4 Assessment Ratio",
          "text": "Assessed value is set at 45% of market value for class 4.",
          "source": "NYC DOF — Determining Your Assessed Value",
          "url": "https://www.nyc.gov/site/finance/property/property-determining-your-assessed-value.page"},
-        {"label": "FY2026 class-4 tax rate",
+        {"label": "FY2026 Class-4 Tax Rate",
          "text": "10.848%, applied to the transitional taxable value.",
          "source": "NYC DOF — Property Tax Rates",
          "url": "https://www.nyc.gov/site/finance/taxes/property-tax-rates.page"},
@@ -105,13 +105,58 @@ def _signal_view(sig, dist_values: list[float], extra: dict) -> dict:
     return out
 
 
-def _variance_row(d) -> dict:
+def _display_address(d) -> tuple[str | None, str | None]:
+    """Display address: roll (8y4t-faws) primary, PLUTO fallback. Cite the source used."""
+    if d.house_number and d.street_name:
+        return f"{str(d.house_number).strip()} {str(d.street_name).strip()}".strip(), "DOF roll (8y4t-faws)"
+    if d.pluto_address:
+        return d.pluto_address.strip(), "PLUTO"
+    return None, None
+
+
+def _signed_pct(x):
+    return None if x is None else f"{x:+.0f}%"
+
+
+def _delta_sf(abs_delta, pct):
+    if abs_delta is None or pct is None:
+        return "n/a"
+    return f"{abs_delta:+,.0f} SF ({_signed_pct(pct)})"
+
+
+def _delta_emv(abs_delta, pct):
+    if abs_delta is None or pct is None:
+        return "n/a"
+    sign = "-" if abs_delta < 0 else "+"
+    return f"{sign}${abs(abs_delta):,.0f} ({_signed_pct(pct)})"
+
+
+def _variance_row(d, subj: dict) -> dict:
+    """One shared-layout attribute-diff row. Descriptive only; no causal language.
+
+    Display strings are formatted here so the template stays trivial and the signed
+    formatting is consistent. Blanks render as 'n/a' (never zeroed)."""
+    address, address_source = _display_address(d)
+    subj_sf = subj.get("sf")
+    subj_emv = subj.get("curmkttot")
+    sf_abs = (d.sf - subj_sf) if (d.sf is not None and subj_sf) else None
+    emv_abs = (d.curmkttot - subj_emv) if (d.curmkttot is not None and subj_emv) else None
+    exact = d.match_type == "exact"
     return {
-        "parcel_id": d.citation.parcel_id, "bldg_class": d.bldg_class,
-        "match_type": d.match_type, "differs_on": d.differs_on,
-        "assessed_pct_diff": d.assessed_pct_diff, "sf_pct_diff": d.sf_pct_diff,
-        "distance_miles": d.distance_miles, "year_built": d.year_built,
-        "year_built_missing": d.year_built_missing,
+        "parcel_id": d.citation.parcel_id,
+        "address": address or "n/a", "address_source": address_source,
+        "stories_display": "n/a" if d.stories in (None, 0) else f"{d.stories:,.0f}",
+        "comp_sf_display": "n/a" if d.sf is None else f"{d.sf:,.0f}",
+        "sf_vs_subject": _delta_sf(sf_abs, d.sf_pct_diff),
+        "year_built_display": "n/a" if d.year_built_missing else d.year_built,
+        "exact_match_display": "✓" if exact else f"✗ ({d.bldg_class})",
+        "distance_display": f"{d.distance_miles:.2f}",
+        "emv_vs_subject": _delta_emv(emv_abs, d.assessed_pct_diff),
+        # raw values + provenance still travel per row (not rendered in the table cells)
+        "stories": d.stories, "comp_sf": d.sf,
+        "sf_abs_delta": sf_abs, "sf_pct_diff": d.sf_pct_diff,
+        "emv_abs_delta": emv_abs, "emv_pct_diff": d.assessed_pct_diff,
+        "match_type": d.match_type, "bldg_class": d.bldg_class,
         "citation": d.citation.model_dump(mode="json"),
         "sf_dataset_version": d.sf_dataset_version,
     }
@@ -122,7 +167,7 @@ def _refused(stage, reason, message, *, subject=None, resolve=None, extra=None) 
         "status": "refused", "stage": stage, "reason": reason, "message": message,
         "disclaimer": DISCLAIMER, "context": CONTEXT,
         "subject": _subject_panel(subject, resolve),
-        "rung3": {"enabled": False, "section": "Implied Cap Rate (from the NOI you provide)"},
+        "rung3": {"enabled": False, "section": "Implied Cap Rate (From the NOI You Provide)"},
     }
     if extra:
         out.update(extra)
@@ -186,18 +231,22 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
             "descriptive": True,
         },
         "variance": {
+            "subject_sf": cs.subject.get("sf"),
+            "subject_emv": cs.subject.get("curmkttot"),
+            "subject_bldg_class": cs.subject.get("bldg_class"),
+            "stories_column": True,                  # STEP A gate passed (NumFloors 99.83% fill)
             "views": [
                 {"name": v.name, "dimension": v.dimension,
-                 "rows": [_variance_row(d) for d in v.rows]}
+                 "rows": [_variance_row(d, cs.subject) for d in v.rows]}
                 for v in (var.views["nearest_by_distance"],
                           var.views["nearest_by_sf"],
                           var.views["most_different_by_assessed"])
             ],
-            "all_diffs": [_variance_row(d) for d in var.all_diffs],
+            "all_diffs": [_variance_row(d, cs.subject) for d in var.all_diffs],
         },
         "provenance": stats.provenance,
         "context": CONTEXT,
-        "rung3": {"enabled": False, "section": "Implied Cap Rate (from the NOI you provide)"},
+        "rung3": {"enabled": False, "section": "Implied Cap Rate (From the NOI You Provide)"},
     }
 
 

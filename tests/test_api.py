@@ -65,7 +65,8 @@ def test_rung3_opt_in_computes_and_partitioned(client):
     r = client.post("/api/rung3",
                     params={"bbl": "1000090001", "noi": "12000000", "enabled": "true"}).json()
     assert r["computed"] and r["partition"] == "RUNG_3_USER_SUPPLIED"
-    assert r["noi_source"] == "user_supplied" and "based on the NOI you provided" in r["statement"]
+    assert r["noi_source"] == "user_supplied" and r["stamp"] == "based on the NOI you provided"
+    assert r["statement"].startswith("Your NOI of")
 
 
 def test_rung3_junk_rejected(client):

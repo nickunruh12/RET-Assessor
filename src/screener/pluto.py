@@ -41,7 +41,8 @@ RAW_PLUTO_DIR = config.RAW_DIR / "pluto"
 PAGE_SIZE = 50_000
 # Only the columns the join needs. Keeps the raw pull lean (858k lots citywide).
 # latitude/longitude feed distance-based comp ranking (DECISIONS 2026-06-19).
-PLUTO_COLS = "bbl,bldgarea,bldgclass,landuse,yearbuilt,areasource,version,latitude,longitude"
+# numfloors (display-only stories, gated on fill) + address (display-address fallback).
+PLUTO_COLS = "bbl,bldgarea,bldgclass,landuse,yearbuilt,areasource,version,latitude,longitude,numfloors,address"
 
 
 def fetch_pluto() -> dict:
@@ -144,7 +145,9 @@ def join(manifest: dict, db_path: Path | None = None) -> dict:
                 bldgclass                       AS pluto_bldgclass,
                 version                         AS pluto_version,
                 TRY_CAST(latitude AS DOUBLE)   AS latitude,
-                TRY_CAST(longitude AS DOUBLE)  AS longitude
+                TRY_CAST(longitude AS DOUBLE)  AS longitude,
+                TRY_CAST(numfloors AS DOUBLE)  AS numfloors,
+                address                         AS pluto_address
             FROM pluto_raw
             WHERE TRY_CAST(bbl AS BIGINT) IS NOT NULL
             QUALIFY ROW_NUMBER() OVER (PARTITION BY TRY_CAST(bbl AS BIGINT)
@@ -168,6 +171,8 @@ def join(manifest: dict, db_path: Path | None = None) -> dict:
                 p.pluto_version,
                 p.latitude                                  AS pluto_latitude,
                 p.longitude                                 AS pluto_longitude,
+                p.numfloors                                 AS pluto_numfloors,
+                p.pluto_address,
                 CASE WHEN p.bbl_int IS NOT NULL THEN ? ELSE NULL END  AS pluto_source_dataset,
                 CASE WHEN p.bbl_int IS NOT NULL THEN ? ELSE NULL END  AS pluto_dataset_version,
                 CASE WHEN p.bbl_int IS NOT NULL THEN ?::DATE ELSE NULL END AS pluto_retrieval_date,

@@ -103,7 +103,7 @@ def main():
         if status == "ok":
             rung3_off = ('id="rung3-toggle"' in raw and 'id="rung3-body" hidden' in raw
                          and "checked" not in raw)
-            prov = "Provenance — every figure" in raw
+            prov = "Provenance — Every Figure" in raw
             print(f"    RUNG 3 off by default:        {rung3_off}")
             print(f"    provenance accessible:        {prov}")
             ok = ok and rung3_off and prov

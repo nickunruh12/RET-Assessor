@@ -50,16 +50,45 @@
   {% else %}
     {% set s = result.subject %}
     <!-- 2. Subject parcel -->
+    {# Shared comp-table layout used by all three variance subsections + the full set #}
+    {% macro comp_table(rows, stories_col) %}
+    <div class="table-wrap">
+      <table class="comp-table">
+        <thead><tr>
+          <th>BBL</th><th>Address</th>{% if stories_col %}<th>Stories</th>{% endif %}
+          <th>Comp SF</th><th>Comp SF vs Subject</th><th>Year Built</th>
+          <th>Exact Building-Class Match?</th><th>Comp Distance From Subject (mi)</th>
+          <th>Comp Est. Market Value vs Subject</th>
+        </tr></thead>
+        <tbody>
+        {% for r in rows %}
+          <tr>
+            <td>{{ r.parcel_id }}</td>
+            <td>{{ r.address }}<br><span class="src">{{ r.address_source }}</span></td>
+            {% if stories_col %}<td>{{ r.stories_display }}</td>{% endif %}
+            <td>{{ r.comp_sf_display }}</td>
+            <td>{{ r.sf_vs_subject }}</td>
+            <td>{{ r.year_built_display }}</td>
+            <td>{{ r.exact_match_display }}</td>
+            <td>{{ r.distance_display }}</td>
+            <td>{{ r.emv_vs_subject }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endmacro %}
+
     <section class="subject">
-      <h2>Subject parcel</h2>
+      <h2>Subject Parcel</h2>
       <dl>
         {% if s.address %}<dt>Address</dt><dd>{{ s.address }}</dd>{% endif %}
         <dt>BBL</dt><dd>{{ s.bbl }}</dd>
-        <dt>Building class</dt><dd>{{ s.bldg_class }} ({{ s.bucket_label }})</dd>
+        <dt>Building Class</dt><dd>{{ s.bldg_class }} ({{ s.bucket_label }})</dd>
         <dt>Borough / ZIP</dt><dd>{{ s.borough }} · {{ s.zip_code }}</dd>
-        <dt>Gross building area</dt>
+        <dt>Gross Building Area</dt>
         <dd>{% if s.gross_sf %}{{ "{:,.0f}".format(s.gross_sf) }} SF <span class="src">({{ s.sf_source }})</span>{% else %}not reported{% endif %}</dd>
-        <dt>Year Built According to DOF</dt><dd>{% if s.year_built_missing %}not reported{% else %}{{ s.year_built }}{% endif %} <span class="src">(display only, not a comp criterion)</span></dd>
+        <dt>Year Built According to DOF</dt><dd>{% if s.year_built_missing %}not reported{% else %}{{ s.year_built }}{% endif %} <span class="src">(display only)</span></dd>
         <dt>Estimated Market Value According to DOF</dt><dd>{{ "${:,.0f}".format(s.assessed_market_value) }}</dd>
       </dl>
       <p class="comp-meta">
@@ -74,7 +103,7 @@
 
     <!-- 3. Three SIGNAL distributions -->
     <section class="signals">
-      <h2>Where the subject sits among its comps</h2>
+      <h2>Where the Subject Sits Among Its Comps</h2>
       {% for sig in result.signals %}
       <div class="signal" data-signal="{{ sig.key }}">
         <h3>{{ sig.label }}</h3>
@@ -100,41 +129,10 @@
         comp median {{ result.phase_in_gap.median }} (descriptive; n={{ result.phase_in_gap.n }})</p>
     </section>
 
-    <!-- 4. Variance views -->
-    <section class="variance">
-      <h2>How each comp differs from the subject</h2>
-      {% for v in result.variance.views %}
-      <div class="vview">
-        <h3>{{ v.name }} <span class="src">[ordered by: {{ v.dimension }}]</span></h3>
-        {% if v.rows %}
-        <table>
-          <thead><tr><th>BBL</th><th>match</th><th>difference</th></tr></thead>
-          <tbody>
-          {% for r in v.rows %}
-            <tr><td>{{ r.parcel_id }}</td><td>{{ r.match_type }}</td><td>{{ r.differs_on }}</td></tr>
-          {% endfor %}
-          </tbody>
-        </table>
-        {% else %}<p class="src">unavailable for this subject</p>{% endif %}
-      </div>
-      {% endfor %}
-      <details class="full-set">
-        <summary>Full comp set ({{ result.variance.all_diffs|length }} comps) — all attribute-diffs</summary>
-        <table>
-          <thead><tr><th>BBL</th><th>match</th><th>difference</th></tr></thead>
-          <tbody>
-          {% for r in result.variance.all_diffs %}
-            <tr><td>{{ r.parcel_id }}</td><td>{{ r.match_type }}</td><td>{{ r.differs_on }}</td></tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </details>
-    </section>
-
-    <!-- 6. RUNG 3 — partitioned, off by default -->
+    <!-- RUNG 3 — partitioned, off by default. Positioned below the charts, above variance. -->
     <section class="rung3" id="rung3">
       <h2>{{ result.rung3.section }}</h2>
-      <label class="toggle"><input type="checkbox" id="rung3-toggle"> Enable implied cap rate (uses an NOI you provide)</label>
+      <label class="toggle"><input type="checkbox" id="rung3-toggle"> Calculate Implied Cap Rate</label>
       <div id="rung3-body" hidden>
         <input type="text" id="rung3-noi" placeholder="your NOI ($)">
         <button id="rung3-go" type="button">Compute</button>
@@ -142,6 +140,22 @@
           separate from the public figures above.</p>
         <div id="rung3-result"></div>
       </div>
+    </section>
+
+    <!-- 4. Variance views — shared column layout, re-sorted per subsection -->
+    <section class="variance">
+      <h2>How Each Comp Differs From the Subject</h2>
+      {% for v in result.variance.views %}
+      <div class="vview">
+        <h3>{{ v.name }} <span class="src">[ordered by: {{ v.dimension }}]</span></h3>
+        {% if v.rows %}{{ comp_table(v.rows, result.variance.stories_column) }}
+        {% else %}<p class="src">unavailable for this subject</p>{% endif %}
+      </div>
+      {% endfor %}
+      <details class="full-set">
+        <summary>Full Comp Set ({{ result.variance.all_diffs|length }} Comps)</summary>
+        {{ comp_table(result.variance.all_diffs, result.variance.stories_column) }}
+      </details>
     </section>
   {% endif %}
 
@@ -162,7 +176,7 @@
   {% if result and result.provenance %}
   <footer class="provenance">
     <details>
-      <summary>Provenance — every figure on this page traces here</summary>
+      <summary>Provenance — Every Figure on This Page Traces Here</summary>
       <ul>
         <li>Roll: {{ result.provenance.source_dataset }} · version {{ result.provenance.dataset_version }} ·
           roll year {{ result.provenance.roll_year }} · retrieved {{ result.provenance.retrieval_date }}</li>

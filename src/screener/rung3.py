@@ -115,8 +115,10 @@ def compute_rung3(subject_market_value, market_value_citation: Citation | None,
     # 4. The one number. Possessive framing, stamped, market value cited, NOI uncited.
     cap = noi / subject_market_value
     cite = market_value_citation.model_dump(mode="json") if market_value_citation else None
+    # Sentence drops the "(based on the NOI you provided)" parenthetical; the stamp is
+    # still carried in `stamp` and rendered as the page's footer line below the sentence.
     statement = (f"Your NOI of ${noi:,.0f} implies a {cap * 100:.2f}% cap rate on the "
-                 f"DOF market value of ${subject_market_value:,.0f} ({STAMP}).")
+                 f"DOF market value of ${subject_market_value:,.0f}.")
     return _result(
         subject_bbl, computed=True, implied_cap_rate=round(cap, 6),
         implied_cap_rate_pct=round(cap * 100, 4), statement=statement,

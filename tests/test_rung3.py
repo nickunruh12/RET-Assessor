@@ -30,9 +30,10 @@ def test_normal_noi_computes_correct_cap_rate():
 
 def test_output_is_stamped_and_possessive():
     r = compute_rung3(10_000_000, _cite(), 700_000, "1000000001", enabled=True)
-    assert STAMP in r.statement
+    assert r.stamp == STAMP                                     # stamp carried (page footer line)
     assert r.statement.lower().startswith("your noi")          # possessive framing
     assert "the cap rate is" not in r.statement.lower()         # never authoritative phrasing
+    assert "(based on the noi you provided)" not in r.statement.lower()  # parenthetical removed
 
 
 def test_market_value_cited_noi_uncited():

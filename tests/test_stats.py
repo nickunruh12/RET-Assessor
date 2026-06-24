@@ -19,7 +19,8 @@ def _comp(parcel_id, curmkttot, sf=10000.0, curtxbtot=None, curtrntot=None,
                           retrieval_date=date(2026, 6, 19), parcel_id=parcel_id),
         bldg_class=bldg_class, bucket="O1", match_type=match_type,
         sf=sf, sf_source="pluto_bldgarea", sf_dataset_version="64uk-42ks 26v1",
-        year_built="1980", distance_miles=0.1, latitude=40.7, longitude=-74.0,
+        year_built="1980", house_number="1", street_name="Main St",
+        pluto_address="1 Main St", stories=5.0, distance_miles=0.1, latitude=40.7, longitude=-74.0,
         curmkttot=curmkttot, curtxbtot=curtxbtot, curtrntot=curtrntot, curacttot=curacttot,
     )
 

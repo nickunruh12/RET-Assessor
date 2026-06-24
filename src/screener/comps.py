@@ -67,6 +67,10 @@ class CompRow(CitedRow):
     sf_source: str
     sf_dataset_version: str | None
     year_built: str | None      # DISPLAY ONLY (68% fill); never used to rank or sort
+    house_number: str | None    # roll display-address (primary)
+    street_name: str | None
+    pluto_address: str | None   # PLUTO display-address (fallback)
+    stories: float | None       # PLUTO NumFloors — DISPLAY ONLY; never used to rank or sort
     distance_miles: float
     latitude: float
     longitude: float
@@ -179,6 +183,10 @@ def select_comps(
         "sf": subj.get("sf"),
         "sf_source": subj.get("sf_source"),
         "year_built": subj.get("year_built"),
+        "house_number": subj.get("house_number"),
+        "street_name": subj.get("street_name"),
+        "pluto_address": subj.get("pluto_address"),
+        "stories": subj.get("pluto_numfloors"),
         "latitude": subj.get("pluto_latitude"),
         "longitude": subj.get("pluto_longitude"),
         # subject's own signal values (NEVER entered into its own distribution; used
@@ -249,6 +257,7 @@ def select_comps(
         WITH cand AS (
             SELECT parcel_id, source_dataset, dataset_version, roll_year, retrieval_date,
                    bldg_class, zip_code, sf, sf_source, pluto_dataset_version, year_built,
+                   house_number, street_name, pluto_address, pluto_numfloors,
                    pluto_latitude, pluto_longitude, curmkttot, curtxbtot,
                    curtrntot, curacttot,
                    {haversine} AS distance_miles
@@ -320,6 +329,10 @@ def _to_comprow(c: dict, juris: Jurisdiction, criteria: CompCriteria,
         sf_source=c["sf_source"],
         sf_dataset_version=c.get("pluto_dataset_version"),
         year_built=c.get("year_built"),
+        house_number=c.get("house_number"),
+        street_name=c.get("street_name"),
+        pluto_address=c.get("pluto_address"),
+        stories=c.get("pluto_numfloors"),
         distance_miles=round(c["distance_miles"], 4),
         latitude=c["pluto_latitude"],
         longitude=c["pluto_longitude"],

@@ -195,6 +195,8 @@ def load_to_duckdb(manifest: dict, db_path: Path | None = None) -> dict:
                 tax_class        VARCHAR,
                 bldg_class       VARCHAR,
                 zip_code         VARCHAR,
+                house_number     VARCHAR,           -- roll housenum_lo (display address)
+                street_name      VARCHAR,           -- roll street_name (display address)
                 year_built       VARCHAR,           -- display-only (68% fill)
                 gross_sqft       DOUBLE,            -- gross-building-area fallback when PLUTO misses
                 curmkttot        DOUBLE,            -- market value: distribution basis
@@ -217,6 +219,8 @@ def load_to_duckdb(manifest: dict, db_path: Path | None = None) -> dict:
                 {config.COL_TAX_CLASS}          AS tax_class,
                 {config.COL_BLDG_CLASS}         AS bldg_class,
                 {config.COL_ZIP}                AS zip_code,
+                housenum_lo                     AS house_number,
+                street_name                     AS street_name,
                 {config.COL_YEAR_BUILT}         AS year_built,
                 TRY_CAST({config.COL_GROSS_SQFT} AS DOUBLE)        AS gross_sqft,
                 TRY_CAST({config.VALUE_FIELD_MARKET} AS DOUBLE)    AS curmkttot,

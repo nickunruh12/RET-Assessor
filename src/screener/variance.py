@@ -57,6 +57,10 @@ class VarianceRow(CitedRow):
     year_built: str | None               # display only
     year_built_missing: bool
     subject_year_built: str | None
+    house_number: str | None             # display address (roll primary)
+    street_name: str | None
+    pluto_address: str | None            # display address (PLUTO fallback)
+    stories: float | None                # display only; never used to rank or sort
     sf_dataset_version: str | None
     differs_on: str
 
@@ -131,6 +135,10 @@ def _to_variance_row(comp: CompRow, subj: dict) -> VarianceRow:
         year_built=comp.year_built,
         year_built_missing=_year_missing(comp.year_built),
         subject_year_built=subj.get("year_built"),
+        house_number=comp.house_number,
+        street_name=comp.street_name,
+        pluto_address=comp.pluto_address,
+        stories=comp.stories,
         sf_dataset_version=comp.sf_dataset_version,
         differs_on=_differs_on(comp, subj, assessed_pct, sf_pct),
     )
@@ -162,7 +170,7 @@ def compute_variance(cs: CompSet, view_size: int = 5) -> VarianceResult:
 
     # 1. Nearest by DISTANCE — single dimension: distance_miles (asc).
     views["nearest_by_distance"] = VarianceView(
-        "Nearest by distance", "distance_miles",
+        "Nearest by Distance", "distance_miles",
         sorted(diffs, key=lambda d: d.distance_miles)[:view_size],
     )
 
@@ -174,11 +182,11 @@ def compute_variance(cs: CompSet, view_size: int = 5) -> VarianceResult:
             key=lambda d: abs(d.sf_pct_diff),
         )
         views["nearest_by_sf"] = VarianceView(
-            "Nearest by gross building area", "abs(sf_pct_diff)", sf_ranked[:view_size]
+            "Nearest by Gross Building Area", "abs(sf_pct_diff)", sf_ranked[:view_size]
         )
     else:
         views["nearest_by_sf"] = VarianceView(
-            "Nearest by gross building area (unavailable — subject has no gross building area)",
+            "Nearest by Gross Building Area (unavailable — subject has no gross building area)",
             "abs(sf_pct_diff)", [],
         )
 
@@ -189,7 +197,7 @@ def compute_variance(cs: CompSet, view_size: int = 5) -> VarianceResult:
         key=lambda d: abs(d.assessed_pct_diff), reverse=True,
     )
     views["most_different_by_assessed"] = VarianceView(
-        "Most different by assessed value", "abs(assessed_pct_diff)", val_ranked[:view_size]
+        "Most Different by Estimated Market Value", "abs(market_value_pct_diff)", val_ranked[:view_size]
     )
 
     return VarianceResult(

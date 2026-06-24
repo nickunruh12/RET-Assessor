@@ -19,7 +19,8 @@ def _comp(pid, curmkttot, sf, dist, bldg_class, year_built, match_type="exact"):
                           roll_year="2027", retrieval_date=date(2026, 6, 19), parcel_id=pid),
         bldg_class=bldg_class, bucket="O3", match_type=match_type,
         sf=sf, sf_source="pluto_bldgarea", sf_dataset_version="64uk-42ks 26v1",
-        year_built=year_built, distance_miles=dist, latitude=40.7, longitude=-74.0,
+        year_built=year_built, house_number="10", street_name="Broad St",
+        pluto_address="10 Broad St", stories=8.0, distance_miles=dist, latitude=40.7, longitude=-74.0,
         curmkttot=curmkttot, curtxbtot=None, curtrntot=None, curacttot=None,
     )
 
