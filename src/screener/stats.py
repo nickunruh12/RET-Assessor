@@ -140,20 +140,28 @@ def compute_stats(cs: CompSet, criteria: CompCriteria) -> StatsResult:
         "sf_pluto_versions": pluto_versions,
         "tax_rate_applied": rate,
         "percentile_basis": PERCENTILE_BASIS,
+        # Raw source columns behind each chart (titles drop these for readability;
+        # kept here so every figure still traces to its exact roll field).
+        "signal_fields": {
+            "Estimated Market Value According to DOF": "curmkttot",
+            "Tax Bill (10.848% class-4 rate)": "curtxbtot x 0.10848",
+            "Market Value Per Gross Building Area": "curmkttot / gross building area",
+            "Phase-in gap": "(curacttot - curtrntot) / curacttot",
+        },
     }
 
     signals: dict[str, SignalStats] = {}
 
     # 1. Estimated market value — all comps. (Matches DOF's public "Estimated Market
-    #    Value" line; the underlying field is curmkttot.)
+    #    Value" line; the underlying field is curmkttot — see provenance.)
     signals["assessed_value_market"] = _signal_from_pairs(
-        "assessed_value_market", "Estimated Market Value According to DOF (curmkttot)",
+        "assessed_value_market", "Estimated Market Value According to DOF",
         "$", "all comps", [c.curmkttot for c in comps], subj.get("curmkttot"),
     )
 
     # 2. Tax bill — all comps; transitional taxable x FY2026 class-4 rate.
     signals["tax_bill"] = _signal_from_pairs(
-        "tax_bill", f"Tax bill (curtxbtot x {rate})", "$ (tax)", "all comps",
+        "tax_bill", "Tax Bill (10.848% class-4 rate)", "$ (tax)", "all comps",
         [c.curtxbtot * rate if c.curtxbtot is not None else None for c in comps],
         subj.get("curtxbtot") * rate if subj.get("curtxbtot") is not None else None,
     )
@@ -179,7 +187,7 @@ def compute_stats(cs: CompSet, criteria: CompCriteria) -> StatsResult:
         ]
         subj_psf = subj["curmkttot"] / subj["sf"] if subj.get("curmkttot") is not None else None
         sig = _signal_from_pairs(
-            "mv_per_gross_sf", "Market value per gross building area (curmkttot / gross SF)",
+            "mv_per_gross_sf", "Market Value Per Gross Building Area",
             "$/gross_sf", "comps with usable gross building area", comp_psf, subj_psf,
         )
         sig.notes.append(f"denominator = gross building area; comp SF sources: "

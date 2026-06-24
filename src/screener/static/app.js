@@ -54,10 +54,16 @@ function stripPlot(canvas, sig) {
 
 function renderCharts(data) {
   if (!data || data.status !== "ok") return;
+  if (typeof Chart === "undefined") {           // CDN blocked/offline: skip, don't throw
+    console.warn("Chart.js not loaded; skipping distribution charts.");
+    return;
+  }
   for (const sig of data.signals) {
     if (sig.refused) continue;
     const canvas = document.getElementById("chart-" + sig.key);
-    if (canvas) stripPlot(canvas, sig);
+    if (!canvas) continue;
+    try { stripPlot(canvas, sig); }
+    catch (e) { console.error("chart render failed for " + sig.key, e); }  // isolate per chart
   }
 }
 
@@ -89,6 +95,7 @@ function wireRung3(data) {
 
 (function () {
   const data = dataEl();
-  renderCharts(data);
-  wireRung3(data);
+  // Decouple: a chart failure must NEVER prevent RUNG 3 (or anything else) from wiring.
+  try { renderCharts(data); } catch (e) { console.error("renderCharts failed:", e); }
+  try { wireRung3(data); } catch (e) { console.error("wireRung3 failed:", e); }
 })();

@@ -168,6 +168,8 @@
           roll year {{ result.provenance.roll_year }} · retrieved {{ result.provenance.retrieval_date }}</li>
         <li>Gross-building-area source (PLUTO): {{ result.provenance.sf_pluto_versions|join(", ") }}</li>
         <li>Tax rate applied: {{ result.provenance.tax_rate_applied }}</li>
+        <li>Source fields:
+          {% for title, field in result.provenance.signal_fields.items() %}{{ title }} = <code>{{ field }}</code>{% if not loop.last %} · {% endif %}{% endfor %}</li>
         <li>Percentile basis: {{ result.provenance.percentile_basis }}</li>
         <li>{{ result.provenance.year_built_note }}</li>
       </ul>

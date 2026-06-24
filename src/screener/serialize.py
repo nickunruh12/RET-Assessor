@@ -122,7 +122,7 @@ def _refused(stage, reason, message, *, subject=None, resolve=None, extra=None) 
         "status": "refused", "stage": stage, "reason": reason, "message": message,
         "disclaimer": DISCLAIMER, "context": CONTEXT,
         "subject": _subject_panel(subject, resolve),
-        "rung3": {"enabled": False, "section": "RUNG 3 (user-supplied, off by default)"},
+        "rung3": {"enabled": False, "section": "Implied Cap Rate (from the NOI you provide)"},
     }
     if extra:
         out.update(extra)
@@ -197,7 +197,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         },
         "provenance": stats.provenance,
         "context": CONTEXT,
-        "rung3": {"enabled": False, "section": "RUNG 3 (user-supplied, off by default)"},
+        "rung3": {"enabled": False, "section": "Implied Cap Rate (from the NOI you provide)"},
     }
 
 
