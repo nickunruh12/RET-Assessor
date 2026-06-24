@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NYC Class-4 Assessment Screen</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <!-- 1. Disclaimer — always rendered, above the numbers -->
+  <p class="disclaimer">{{ result.disclaimer if result else disclaimer }}</p>
+
+  <header>
+    <h1>NYC class-4 commercial assessment screen</h1>
+    <form class="lookup" method="get" action="/screen">
+      <fieldset>
+        <legend>Look up by address</legend>
+        <input type="text" name="house_number" placeholder="house no." value="{{ form.house_number or '' }}">
+        <input type="text" name="street" placeholder="street" value="{{ form.street or '' }}">
+        <input type="text" name="borough" placeholder="borough" value="{{ form.borough or '' }}">
+        <input type="text" name="zip" placeholder="or ZIP" value="{{ form.zip or '' }}">
+        <button type="submit">Screen address</button>
+      </fieldset>
+    </form>
+    <form class="lookup" method="get" action="/screen">
+      <fieldset>
+        <legend>or by BBL</legend>
+        <input type="text" name="bbl" placeholder="10-digit BBL" value="{{ form.bbl or '' }}">
+        <button type="submit">Screen BBL</button>
+      </fieldset>
+    </form>
+  </header>
+
+  {% if result %}
+  {% if result.status == "refused" %}
+    {# Refusal states render as clear messages, never blanks #}
+    <section class="refusal">
+      <p class="refusal-msg">{{ result.message }}</p>
+      <p class="refusal-meta">reason: {{ result.reason }} (stage: {{ result.stage }})</p>
+      {% if result.subject %}
+        {% with s = result.subject %}
+        <div class="subject-mini">
+          BBL {{ s.bbl }}{% if s.bldg_class %} · class {{ s.bldg_class }}{% endif %}
+          {% if s.borough %} · {{ s.borough }}{% endif %}{% if s.zip_code %} · ZIP {{ s.zip_code }}{% endif %}
+        </div>
+        {% endwith %}
+      {% endif %}
+    </section>
+  {% else %}
+    {% set s = result.subject %}
+    <!-- 2. Subject parcel -->
+    <section class="subject">
+      <h2>Subject parcel</h2>
+      <dl>
+        {% if s.address %}<dt>Address</dt><dd>{{ s.address }}</dd>{% endif %}
+        <dt>BBL</dt><dd>{{ s.bbl }}</dd>
+        <dt>Building class</dt><dd>{{ s.bldg_class }} ({{ s.bucket_label }})</dd>
+        <dt>Borough / ZIP</dt><dd>{{ s.borough }} · {{ s.zip_code }}</dd>
+        <dt>Gross building area</dt>
+        <dd>{% if s.gross_sf %}{{ "{:,.0f}".format(s.gross_sf) }} SF <span class="src">({{ s.sf_source }})</span>{% else %}not reported{% endif %}</dd>
+        <dt>Year built</dt><dd>{% if s.year_built_missing %}not reported{% else %}{{ s.year_built }}{% endif %} <span class="src">(display only)</span></dd>
+        <dt>Assessed market value</dt><dd>{{ "${:,.0f}".format(s.assessed_market_value) }}</dd>
+      </dl>
+      <p class="comp-meta">
+        comp set: {{ result.comp_meta.comp_count }} comps · radius used: {{ result.comp_meta.radius_used_miles }} mi ·
+        {{ result.comp_meta.composition.exact_count }} exact / {{ result.comp_meta.composition.adjacent_count }} adjacent
+        {% if not result.comp_meta.sf_band_applied %} · (no gross-SF band: subject SF not reported){% endif %}
+      </p>
+      {% if result.comp_meta.low_exact_caution %}
+        <p class="caution">{{ result.comp_meta.caution_message }}</p>
+      {% endif %}
+    </section>
+
+    <!-- 3. Three SIGNAL distributions -->
+    <section class="signals">
+      <h2>Where the subject sits among its comps</h2>
+      {% for sig in result.signals %}
+      <div class="signal" data-signal="{{ sig.key }}">
+        <h3>{{ sig.label }}</h3>
+        {% if sig.refused %}
+          <p class="signal-refusal">{{ sig.message }}</p>
+        {% else %}
+          <p class="signal-stats">
+            your percentile: {{ sig.subject_percentile }}th ·
+            n = {{ sig.n }} comps{% if sig.excluded_blank %} ({{ sig.excluded_blank }} excluded, blank){% endif %} ·
+            radius used: {{ sig.radius_used_miles }} mi
+          </p>
+          <canvas class="strip" id="chart-{{ sig.key }}" height="120"></canvas>
+          <p class="signal-readout">
+            subject: {{ "{:,.2f}".format(sig.subject_value) }} ·
+            median: {{ "{:,.2f}".format(sig.median) }} ·
+            range {{ "{:,.2f}".format(sig.minimum) }}–{{ "{:,.2f}".format(sig.maximum) }}
+          </p>
+          {% if sig.sf_source_label %}<p class="src sf-src">{{ sig.sf_source_label }}</p>{% endif %}
+        {% endif %}
+      </div>
+      {% endfor %}
+      <p class="phase-in src">{{ result.phase_in_gap.label }} — subject {{ result.phase_in_gap.subject_value }},
+        comp median {{ result.phase_in_gap.median }} (descriptive; n={{ result.phase_in_gap.n }})</p>
+    </section>
+
+    <!-- 4. Variance views -->
+    <section class="variance">
+      <h2>How each comp differs from the subject</h2>
+      {% for v in result.variance.views %}
+      <div class="vview">
+        <h3>{{ v.name }} <span class="src">[ordered by: {{ v.dimension }}]</span></h3>
+        {% if v.rows %}
+        <table>
+          <thead><tr><th>BBL</th><th>match</th><th>difference</th></tr></thead>
+          <tbody>
+          {% for r in v.rows %}
+            <tr><td>{{ r.parcel_id }}</td><td>{{ r.match_type }}</td><td>{{ r.differs_on }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}<p class="src">unavailable for this subject</p>{% endif %}
+      </div>
+      {% endfor %}
+      <details class="full-set">
+        <summary>Full comp set ({{ result.variance.all_diffs|length }} comps) — all attribute-diffs</summary>
+        <table>
+          <thead><tr><th>BBL</th><th>match</th><th>difference</th></tr></thead>
+          <tbody>
+          {% for r in result.variance.all_diffs %}
+            <tr><td>{{ r.parcel_id }}</td><td>{{ r.match_type }}</td><td>{{ r.differs_on }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </details>
+    </section>
+
+    <!-- 6. RUNG 3 — partitioned, off by default -->
+    <section class="rung3" id="rung3">
+      <h2>{{ result.rung3.section }}</h2>
+      <label class="toggle"><input type="checkbox" id="rung3-toggle"> Enable implied cap rate (uses an NOI you provide)</label>
+      <div id="rung3-body" hidden>
+        <input type="text" id="rung3-noi" placeholder="your NOI ($)">
+        <button id="rung3-go" type="button">Compute</button>
+        <p class="src">Off by default. The result is stamped “based on the NOI you provided” and is kept
+          separate from the public figures above.</p>
+        <div id="rung3-result"></div>
+      </div>
+    </section>
+  {% endif %}
+
+  <!-- 5. CONTEXT panel — cited, visually separated -->
+  {% if result and result.context %}
+  <section class="context">
+    <h2>{{ result.context.heading }}</h2>
+    {% for item in result.context['items'] %}
+    <div class="ctx-item">
+      <strong>{{ item.label }}.</strong> {{ item.text }}
+      <a class="src" href="{{ item.url }}" target="_blank" rel="noopener">{{ item.source }}</a>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <!-- Provenance — accessible for every figure on the page -->
+  {% if result and result.provenance %}
+  <footer class="provenance">
+    <details>
+      <summary>Provenance — every figure on this page traces here</summary>
+      <ul>
+        <li>Roll: {{ result.provenance.source_dataset }} · version {{ result.provenance.dataset_version }} ·
+          roll year {{ result.provenance.roll_year }} · retrieved {{ result.provenance.retrieval_date }}</li>
+        <li>Gross-building-area source (PLUTO): {{ result.provenance.sf_pluto_versions|join(", ") }}</li>
+        <li>Tax rate applied: {{ result.provenance.tax_rate_applied }}</li>
+        <li>Percentile basis: {{ result.provenance.percentile_basis }}</li>
+        <li>{{ result.provenance.year_built_note }}</li>
+      </ul>
+    </details>
+  </footer>
+  {% endif %}
+  {% endif %}
+
+  <script id="screen-data" type="application/json">{{ result_json | safe }}</script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

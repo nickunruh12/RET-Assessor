@@ -1,0 +1,94 @@
+/* Renders the neutral distribution strip-plots and wires the RUNG 3 toggle.
+ *
+ * NO-VERDICT RENDERING (enforced here):
+ *  - Neutral grays only. No red/amber/green; nothing colored to imply good/bad.
+ *  - The subject is distinguished by a LABEL + point shape, NOT by an alarm color.
+ *  - No threshold lines, no shaded zones, no "normal range" box, no box plot.
+ *    Just the comp points, with subject and median marked neutrally.
+ *  - Honest axis: framed by the actual data range (min..max), never cropped.
+ *  - Labels state facts only: "subject", "median", "comps".
+ */
+const INK = "#1c1c1c", COMP = "#b4b4b4", SUBJECT_RING = "#1c1c1c", MEDIAN = "#6b6b6b";
+
+function dataEl() {
+  const el = document.getElementById("screen-data");
+  if (!el || !el.textContent.trim()) return null;
+  try { return JSON.parse(el.textContent); } catch (e) { return null; }
+}
+
+// Deterministic small y-jitter so overlapping comps are visible (no randomness).
+function jitter(i) { return (((i * 2654435761) % 1000) / 1000 - 0.5) * 0.8; }
+
+function stripPlot(canvas, sig) {
+  const comps = sig.distribution || [];
+  if (!comps.length) return;
+  const all = comps.concat([sig.subject_value, sig.median]).filter(v => v != null);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const pad = (hi - lo) * 0.02 || Math.abs(hi) * 0.02 || 1;  // symmetric, honest
+
+  new Chart(canvas.getContext("2d"), {
+    type: "scatter",
+    data: {
+      datasets: [
+        { label: "comps", data: comps.map((v, i) => ({ x: v, y: jitter(i) })),
+          backgroundColor: COMP, pointRadius: 4, pointHoverRadius: 5 },
+        { label: "median", data: [{ x: sig.median, y: 0 }],
+          backgroundColor: MEDIAN, pointStyle: "rectRot", pointRadius: 7, pointBorderColor: MEDIAN },
+        { label: "subject", data: [{ x: sig.subject_value, y: 0 }],
+          backgroundColor: "#ffffff", borderColor: SUBJECT_RING, pointBorderWidth: 2, pointRadius: 8 },
+      ],
+    },
+    options: {
+      animation: false, responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { min: lo - pad, max: hi + pad, ticks: { color: MEDIAN } },
+        y: { display: false, min: -1, max: 1 },
+      },
+      plugins: {
+        legend: { position: "top", labels: { color: INK, usePointStyle: true, boxWidth: 8 } },
+        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.x.toLocaleString()}` } },
+      },
+    },
+  });
+}
+
+function renderCharts(data) {
+  if (!data || data.status !== "ok") return;
+  for (const sig of data.signals) {
+    if (sig.refused) continue;
+    const canvas = document.getElementById("chart-" + sig.key);
+    if (canvas) stripPlot(canvas, sig);
+  }
+}
+
+function wireRung3(data) {
+  const toggle = document.getElementById("rung3-toggle");
+  const body = document.getElementById("rung3-body");
+  if (!toggle || !body) return;
+  toggle.addEventListener("change", () => { body.hidden = !toggle.checked; });
+
+  const go = document.getElementById("rung3-go");
+  if (!go) return;
+  go.addEventListener("click", async () => {
+    const out = document.getElementById("rung3-result");
+    const noi = document.getElementById("rung3-noi").value;
+    const bbl = data && data.subject ? data.subject.bbl : null;
+    if (!bbl) { out.textContent = "No subject parcel to compute against."; return; }
+    const params = new URLSearchParams({ bbl, noi, enabled: "true" });
+    const resp = await fetch("/api/rung3?" + params.toString(), { method: "POST" });
+    const r = await resp.json();
+    if (r.computed) {
+      out.innerHTML = `<p>${r.statement}</p>` +
+        `<p class="rung3-stamp">NOI: user-supplied (no citation) · market value cited to ` +
+        `${r.market_value_citation.source_dataset}@${r.market_value_citation.roll_year}</p>`;
+    } else {
+      out.innerHTML = `<p>${r.message}</p>`;
+    }
+  });
+}
+
+(function () {
+  const data = dataEl();
+  renderCharts(data);
+  wireRung3(data);
+})();
