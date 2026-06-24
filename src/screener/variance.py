@@ -50,7 +50,9 @@ class VarianceRow(CitedRow):
     match_type: str
     distance_miles: float
     curmkttot: float | None
-    assessed_pct_diff: float | None      # (comp - subject) / subject, %
+    curtxbtot: float | None
+    assessed_pct_diff: float | None      # (comp - subject) / subject EMV, %
+    emv_psf_pct_diff: float | None       # (comp - subject) EMV-per-gross-SF, %  (sort key)
     sf: float | None
     subject_sf: float | None
     sf_pct_diff: float | None
@@ -118,9 +120,16 @@ def _differs_on(comp: CompRow, subj: dict, assessed_pct: float | None,
     return "; ".join(parts)
 
 
+def _psf(value: float | None, sf: float | None) -> float | None:
+    return (value / sf) if (value is not None and sf) else None
+
+
 def _to_variance_row(comp: CompRow, subj: dict) -> VarianceRow:
     assessed_pct = _pct_diff(comp.curmkttot, subj.get("curmkttot"))
     sf_pct = _pct_diff(comp.sf, subj.get("sf"))
+    # EMV-per-gross-SF % diff — the sort key for the "most different" view so it matches
+    # the displayed EMV-PSF column.
+    emv_psf_pct = _pct_diff(_psf(comp.curmkttot, comp.sf), _psf(subj.get("curmkttot"), subj.get("sf")))
     return VarianceRow(
         citation=comp.citation,
         bldg_class=comp.bldg_class,
@@ -128,7 +137,9 @@ def _to_variance_row(comp: CompRow, subj: dict) -> VarianceRow:
         match_type=comp.match_type,
         distance_miles=comp.distance_miles,
         curmkttot=comp.curmkttot,
+        curtxbtot=comp.curtxbtot,
         assessed_pct_diff=assessed_pct,
+        emv_psf_pct_diff=emv_psf_pct,
         sf=comp.sf,
         subject_sf=subj.get("sf"),
         sf_pct_diff=sf_pct,
@@ -190,14 +201,15 @@ def compute_variance(cs: CompSet, view_size: int = 5) -> VarianceResult:
             "abs(sf_pct_diff)", [],
         )
 
-    # 3. Most DIFFERENT by assessed value — single dimension: |assessed_pct_diff| (desc),
-    #    both directions retained (the sign stays visible on each row).
+    # 3. Most DIFFERENT by Estimated Market Value — ranked by the EMV-PER-GROSS-SF % diff
+    #    so the sort key matches the displayed EMV-PSF column. Comps without gross SF have
+    #    no PSF and are not rankable here. Both directions retained (sign visible per row).
     val_ranked = sorted(
-        (d for d in diffs if d.assessed_pct_diff is not None),
-        key=lambda d: abs(d.assessed_pct_diff), reverse=True,
+        (d for d in diffs if d.emv_psf_pct_diff is not None),
+        key=lambda d: abs(d.emv_psf_pct_diff), reverse=True,
     )
     views["most_different_by_assessed"] = VarianceView(
-        "Most Different by Estimated Market Value", "abs(market_value_pct_diff)", val_ranked[:view_size]
+        "Most Different by Estimated Market Value", "abs(EMV-per-gross-SF % diff)", val_ranked[:view_size]
     )
 
     return VarianceResult(

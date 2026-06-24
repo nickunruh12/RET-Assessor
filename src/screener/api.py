@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import config
+from .comps import select_comps
 from .expense_ratio import run_expense_ratio
 from .geocode import GeoclientConfigError, ResolveResult, _validate_bbl, resolve_address
 from .jurisdiction import CompCriteria, get_jurisdiction
@@ -25,7 +26,6 @@ from .serialize import (
     DISCLAIMER,
     RADIUS_MAX,
     RADIUS_MIN,
-    RADIUS_PRESETS,
     build_expense_ratio_view,
     build_rung3_view,
     build_screen_view,
@@ -66,9 +66,14 @@ def _effective_criteria(radius: str):
         return CRITERIA, "default"
     r = max(RADIUS_MIN, min(RADIUS_MAX, r))
     crit = CRITERIA.model_copy(update={"radius_start_miles": r, "radius_cap_miles": r})
-    # Label it as the matching preset string (e.g. 2.0, 1.0) so the control highlights it.
-    label = next((p for p in RADIUS_PRESETS if p != "default" and float(p) == r), f"{r:g}")
-    return crit, label
+    return crit, f"{r:g}"
+
+
+def _fixed_radius_criteria(radius: float):
+    """Criteria with a fixed search radius (start = cap = clamped R). Used for both the
+    full screen override and the lightweight live count — same comp definition."""
+    r = max(RADIUS_MIN, min(RADIUS_MAX, radius))
+    return CRITERIA.model_copy(update={"radius_start_miles": r, "radius_cap_miles": r}), r
 
 
 def _screen_view(con, *, bbl, house_number, street, borough, zip_code, radius="") -> dict | None:
@@ -126,3 +131,24 @@ def api_expense_ratio(bbl: str = Query(...), opex: str = Query("")):
     with _con() as con:
         result = run_expense_ratio(con, bbl.strip(), opex, CRITERIA)
     return JSONResponse(build_expense_ratio_view(result))
+
+
+@app.get("/api/comp_count")
+def api_comp_count(bbl: str = Query(...), radius: float = Query(...)):
+    """Lightweight live-count for the slider drag: qualifying comps at a FIXED radius.
+    Reuses the comp definition (select_comps); returns ONLY the count, no stats/payload."""
+    crit, r = _fixed_radius_criteria(radius)
+    with _con() as con:
+        cs = select_comps(con, bbl.strip(), JURIS, crit)
+    # On success cs.count is the selected set (>= min). On an insufficient-comps refusal
+    # cs.count is 0, but the qualifying pool that fell short is candidates_within_cap —
+    # that is the honest "how many qualify at this radius" for the dead-zone preview.
+    count = cs.count if not cs.refused else cs.candidates_within_cap
+    return JSONResponse({
+        "radius": round(r, 2),
+        "count": count,
+        "refused": cs.refused,
+        "below_min": count < crit.min_comp_count,
+        "min_comp_count": crit.min_comp_count,
+        "note": cs.note,
+    })

@@ -113,10 +113,38 @@ function wireExpenseRatio(data) {
   });
 }
 
+// Radius slider — OVERRIDE mode. Drag shows a live comp count (cheap count endpoint,
+// debounced); release re-runs the full screen once at the settled radius.
+function wireRadius() {
+  const ctl = document.querySelector(".radius-control");
+  const slider = document.getElementById("radius-slider");
+  const live = document.getElementById("radius-live");
+  if (!ctl || !slider || !live) return;
+  const bbl = ctl.dataset.bbl;
+  let timer = null;
+
+  slider.addEventListener("input", () => {            // DURING drag — count only
+    const r = slider.value;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(async () => {
+      try {
+        const j = await (await fetch(`/api/comp_count?bbl=${bbl}&radius=${r}`)).json();
+        live.textContent = `radius ${j.radius} mi · ${j.count} comps` +
+          (j.below_min ? ` — below the ${j.min_comp_count}-comp minimum` : "");
+      } catch (e) { /* preview is best-effort */ }
+    }, 120);                                            // ~120ms debounce
+  });
+
+  slider.addEventListener("change", () => {           // ON release — one full re-run
+    window.location = `/screen?bbl=${bbl}&radius=${slider.value}`;
+  });
+}
+
 (function () {
   const data = dataEl();
   // Decouple: a chart failure must NEVER prevent the user-input tools from wiring.
   try { renderCharts(data); } catch (e) { console.error("renderCharts failed:", e); }
   try { wireRung3(data); } catch (e) { console.error("wireRung3 failed:", e); }
   try { wireExpenseRatio(data); } catch (e) { console.error("wireExpenseRatio failed:", e); }
+  try { wireRadius(); } catch (e) { console.error("wireRadius failed:", e); }
 })();

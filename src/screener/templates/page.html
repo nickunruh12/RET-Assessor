@@ -8,16 +8,23 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  {# Radius toggle — re-runs the screen at the chosen comp search radius. Available on
-     both result and refusal pages so a tightened radius can be widened back. #}
-  {% macro radius_control(rc, bbl) %}
-  {% if rc and bbl %}
-  <div class="radius-control">
-    <span class="src">Comp search radius (override; max {{ rc.max_miles }} mi) —</span>
-    {% for opt in rc.presets %}
-      {%- set label = 'default (auto 0.5–1.0 mi)' if opt == 'default' else opt + ' mi' -%}
-      {% if opt == rc.selection %}<strong class="radius-current">{{ label }}</strong>{% else %}<a href="/screen?bbl={{ bbl }}&amp;radius={{ opt }}">{{ label }}</a>{% endif %}{% if not loop.last %} · {% endif %}
-    {% endfor %}
+  {# Radius control — TWO distinct modes: AUTO (the tool expands 0.5->1.0 mi) as a
+     separate affordance, and OVERRIDE (a continuous slider, fixed radius, no auto-widen).
+     Slider drag shows a live comp count; release re-runs the full screen. #}
+  {% macro radius_control(rc, bbl, radius_used) %}
+  {% if rc and rc.show and bbl %}
+  <div class="radius-control" data-bbl="{{ bbl }}">
+    <p class="radius-mode">
+      Mode: <strong>{% if rc.mode == 'override' %}OVERRIDE — fixed radius, no auto-widen{% else %}AUTO — the tool expands 0.5–1.0 mi{% endif %}</strong>
+      · <strong class="radius-used">Radius used: {{ radius_used }} mi</strong>
+    </p>
+    <div class="radius-affordances">
+      <a class="radius-auto{% if rc.mode == 'auto' %} active{% endif %}" href="/screen?bbl={{ bbl }}&amp;radius=default">Default (auto 0.5–1.0 mi)</a>
+      <span class="radius-slider-wrap">Override radius:
+        <input type="range" id="radius-slider" min="{{ rc.min }}" max="{{ rc.max }}" step="0.01" value="{{ rc.handle }}">
+        <span id="radius-live" class="src"></span>
+      </span>
+    </div>
   </div>
   {% endif %}
   {% endmacro %}
@@ -58,7 +65,7 @@
           BBL {{ s.bbl }}{% if s.bldg_class %} · class {{ s.bldg_class }}{% endif %}
           {% if s.borough %} · {{ s.borough }}{% endif %}{% if s.zip_code %} · ZIP {{ s.zip_code }}{% endif %}
         </div>
-        {{ radius_control(result.radius_control, s.bbl) }}
+        {{ radius_control(result.radius_control, s.bbl, result.radius_used_miles) }}
         {% endwith %}
       {% endif %}
     </section>
@@ -73,7 +80,7 @@
           <th>BBL</th><th>Address</th>{% if stories_col %}<th>Stories</th>{% endif %}
           <th>Comp SF</th><th>Comp SF vs Subject</th><th>Year Built</th>
           <th>Exact Building-Class Match?</th><th>Comp Distance From Subject (mi)</th>
-          <th>Comp Est. Market Value vs Subject</th>
+          <th>Comp Est. Market Value PSF vs Subject</th><th>Comp Tax PSF vs Subject</th>
         </tr></thead>
         <tbody>
         {% for r in rows %}
@@ -86,7 +93,8 @@
             <td>{{ r.year_built_display }}</td>
             <td>{{ r.exact_match_display }}</td>
             <td>{{ r.distance_display }}</td>
-            <td>{{ r.emv_vs_subject }}</td>
+            <td>{{ r.emv_psf_vs_subject }}</td>
+            <td>{{ r.tax_psf_vs_subject }}</td>
           </tr>
         {% endfor %}
         </tbody>
@@ -115,7 +123,7 @@
         {{ result.comp_meta.composition.exact_count }} exact / {{ result.comp_meta.composition.adjacent_count }} adjacent
         {% if not result.comp_meta.sf_band_applied %} · (no gross-SF band: subject SF not reported){% endif %}
       </p>
-      {{ radius_control(result.radius_control, s.bbl) }}
+      {{ radius_control(result.radius_control, s.bbl, result.comp_meta.radius_used_miles) }}
       {% if result.comp_meta.low_exact_caution %}
         <p class="caution">{{ result.comp_meta.caution_message }}</p>
       {% endif %}

@@ -46,10 +46,11 @@ CONTEXT = {
 }
 
 
-# Radius toggle (comp-selection parameter). Default = auto 0.5->1.0 mi; override fixes
-# the search radius. Max stated to the user.
-RADIUS_MIN, RADIUS_MAX = 0.25, 2.0
-RADIUS_PRESETS = ["default", "0.25", "0.5", "0.75", "1.0", "1.5", "2.0"]
+# Radius control (comp-selection parameter). Two distinct modes:
+#  * AUTO (default): the tool chooses — start 0.5, auto-expand to 1.0 mi cap, min 8.
+#  * OVERRIDE (the slider): a continuous radius in [RADIUS_MIN, RADIUS_MAX]; fixed, no
+#    auto-widen. The slider handle rests at RADIUS_REST.
+RADIUS_MIN, RADIUS_MAX, RADIUS_REST = 0.1, 2.0, 0.5
 
 # Gap magnitude below this reads as "effectively fully phased in".
 PHASE_IN_ZERO_EPS = 0.005
@@ -166,23 +167,41 @@ def _delta_sf(abs_delta, pct):
     return f"{abs_delta:+,.0f} SF ({_signed_pct(pct)})"
 
 
-def _delta_emv(abs_delta, pct):
+def _psf(value, sf):
+    return (value / sf) if (value is not None and sf) else None
+
+
+def _delta_psf(abs_delta, pct):
+    """'+$83 PSF (+24%)' or 'n/a'. Per-SF dollars: 0 dp when >= $10, else 2 dp."""
     if abs_delta is None or pct is None:
         return "n/a"
     sign = "-" if abs_delta < 0 else "+"
-    return f"{sign}${abs(abs_delta):,.0f} ({_signed_pct(pct)})"
+    mag = f"{abs(abs_delta):,.0f}" if abs(abs_delta) >= 10 else f"{abs(abs_delta):,.2f}"
+    return f"{sign}${mag} PSF ({_signed_pct(pct)})"
 
 
-def _variance_row(d, subj: dict) -> dict:
+def _variance_row(d, subj: dict, rate: float) -> dict:
     """One shared-layout attribute-diff row. Descriptive only; no causal language.
 
-    Display strings are formatted here so the template stays trivial and the signed
-    formatting is consistent. Blanks render as 'n/a' (never zeroed)."""
+    The market-value and tax comparisons are PER GROSS SF (PSF) — no raw-dollar column.
+    Comps without gross SF render 'n/a' in both PSF columns (never zeroed/fabricated).
+    Display strings are formatted here so the template stays trivial."""
     address, address_source = _display_address(d)
     subj_sf = subj.get("sf")
-    subj_emv = subj.get("curmkttot")
     sf_abs = (d.sf - subj_sf) if (d.sf is not None and subj_sf) else None
-    emv_abs = (d.curmkttot - subj_emv) if (d.curmkttot is not None and subj_emv) else None
+
+    # EMV per gross SF (curmkttot / SF) vs subject.
+    comp_emv_psf, subj_emv_psf = _psf(d.curmkttot, d.sf), _psf(subj.get("curmkttot"), subj_sf)
+    emv_psf_abs = (comp_emv_psf - subj_emv_psf) if (comp_emv_psf is not None and subj_emv_psf) else None
+
+    # Tax per gross SF ((curtxbtot x rate) / SF) vs subject — same derived tax figure.
+    comp_tax = d.curtxbtot * rate if d.curtxbtot is not None else None
+    subj_tax = subj["curtxbtot"] * rate if subj.get("curtxbtot") is not None else None
+    comp_tax_psf, subj_tax_psf = _psf(comp_tax, d.sf), _psf(subj_tax, subj_sf)
+    tax_psf_abs = (comp_tax_psf - subj_tax_psf) if (comp_tax_psf is not None and subj_tax_psf) else None
+    tax_psf_pct = ((comp_tax_psf - subj_tax_psf) / subj_tax_psf * 100) \
+        if (comp_tax_psf is not None and subj_tax_psf) else None
+
     exact = d.match_type == "exact"
     return {
         "parcel_id": d.citation.parcel_id,
@@ -193,11 +212,12 @@ def _variance_row(d, subj: dict) -> dict:
         "year_built_display": "n/a" if d.year_built_missing else d.year_built,
         "exact_match_display": "✓" if exact else f"✗ ({d.bldg_class})",
         "distance_display": f"{d.distance_miles:.2f}",
-        "emv_vs_subject": _delta_emv(emv_abs, d.assessed_pct_diff),
+        "emv_psf_vs_subject": _delta_psf(emv_psf_abs, d.emv_psf_pct_diff),
+        "tax_psf_vs_subject": _delta_psf(tax_psf_abs, tax_psf_pct),
         # raw values + provenance still travel per row (not rendered in the table cells)
         "stories": d.stories, "comp_sf": d.sf,
         "sf_abs_delta": sf_abs, "sf_pct_diff": d.sf_pct_diff,
-        "emv_abs_delta": emv_abs, "emv_pct_diff": d.assessed_pct_diff,
+        "emv_psf_pct_diff": d.emv_psf_pct_diff, "tax_psf_pct_diff": tax_psf_pct,
         "match_type": d.match_type, "bldg_class": d.bldg_class,
         "citation": d.citation.model_dump(mode="json"),
         "sf_dataset_version": d.sf_dataset_version,
@@ -225,18 +245,26 @@ def _expense_section(juris, criteria, subject: dict) -> dict:
     }
 
 
-def _radius_control(selection: str) -> dict:
-    return {"selection": selection, "presets": RADIUS_PRESETS, "max_miles": RADIUS_MAX}
+def _radius_control(selection: str, show: bool) -> dict:
+    mode = "auto" if selection == "default" else "override"
+    handle = RADIUS_REST if mode == "auto" else float(selection)
+    return {
+        "mode": mode, "selection": selection, "handle": handle,
+        "min": RADIUS_MIN, "max": RADIUS_MAX, "show": show,
+    }
 
 
 def _refused(stage, reason, message, *, subject=None, resolve=None, extra=None,
              radius_selection: str = "default") -> dict:
+    # The radius control is only meaningful where a comp pool exists and radius can fix
+    # the outcome — i.e. an insufficient-comps refusal (so the user can widen back).
+    show = reason == "insufficient_comps_within_cap"
     out = {
         "status": "refused", "stage": stage, "reason": reason, "message": message,
         "disclaimer": DISCLAIMER, "context": CONTEXT,
         "subject": _subject_panel(subject, resolve),
         "rung3": {"enabled": False, "section": "Calculate Implied Cap Rate With User-Provided NOI"},
-        "radius_control": _radius_control(radius_selection),
+        "radius_control": _radius_control(radius_selection, show),
     }
     if extra:
         out.update(extra)
@@ -313,18 +341,19 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
             "stories_column": True,                  # STEP A gate passed (NumFloors 99.83% fill)
             "views": [
                 {"name": v.name, "dimension": v.dimension,
-                 "rows": [_variance_row(d, cs.subject) for d in v.rows]}
+                 "rows": [_variance_row(d, cs.subject, criteria.class4_tax_rate) for d in v.rows]}
                 for v in (var.views["nearest_by_distance"],
                           var.views["nearest_by_sf"],
                           var.views["most_different_by_assessed"])
             ],
-            "all_diffs": [_variance_row(d, cs.subject) for d in var.all_diffs],
+            "all_diffs": [_variance_row(d, cs.subject, criteria.class4_tax_rate)
+                          for d in var.all_diffs],
         },
         "provenance": stats.provenance,
         "context": CONTEXT,
         "rung3": {"enabled": False, "section": "Calculate Implied Cap Rate With User-Provided NOI"},
         "expense_ratio": _expense_section(juris, criteria, cs.subject),
-        "radius_control": _radius_control(radius_selection),
+        "radius_control": _radius_control(radius_selection, show=True),
     }
 
 

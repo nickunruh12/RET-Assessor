@@ -97,6 +97,28 @@ def test_expense_ratio_tax_exempt_refused(client):
     assert r["rejected"] and r["rejection_reason"] == "subject_tax_exempt"
 
 
+def test_variance_rows_have_two_psf_columns_no_raw_emv(client):
+    j = client.get("/api/screen", params={"bbl": "1013000001"}).json()
+    row = j["variance"]["views"][0]["rows"][0]
+    assert "emv_psf_vs_subject" in row and "tax_psf_vs_subject" in row
+    assert "emv_vs_subject" not in row          # raw market-value column removed
+    assert "PSF" in row["emv_psf_vs_subject"] and "PSF" in row["tax_psf_vs_subject"]
+
+
+def test_most_different_sorted_by_emv_psf(client):
+    j = client.get("/api/screen", params={"bbl": "1013000001"}).json()
+    md = next(v for v in j["variance"]["views"] if "Most Different" in v["name"])
+    assert "EMV-per-gross-SF" in md["dimension"]
+    mags = [abs(r["emv_psf_pct_diff"]) for r in md["rows"] if r["emv_psf_pct_diff"] is not None]
+    assert mags == sorted(mags, reverse=True)
+
+
+def test_no_sf_subject_renders_psf_na(client):
+    j = client.get("/api/screen", params={"bbl": "3053480042"}).json()
+    row = j["variance"]["views"][0]["rows"][0]
+    assert row["emv_psf_vs_subject"] == "n/a" and row["tax_psf_vs_subject"] == "n/a"
+
+
 def test_radius_tighten_below_min_refuses_at_selected_radius(client):
     # Fallback subject (8 comps only at 1.0 mi). At 0.25 mi it has < 8 -> refuse, do not
     # silently widen back out.
@@ -120,7 +142,35 @@ def test_radius_used_display_matches_applied(client):
 
 def test_radius_default_keeps_auto_behavior(client):
     j = client.get("/api/screen", params={"bbl": "1000090001"}).json()
-    assert j["radius_control"]["selection"] == "default"
+    rc = j["radius_control"]
+    assert rc["selection"] == "default" and rc["mode"] == "auto" and rc["handle"] == 0.5
+
+
+def test_radius_override_mode_and_handle(client):
+    rc = client.get("/api/screen",
+                    params={"bbl": "1000090001", "radius": "0.7"}).json()["radius_control"]
+    assert rc["mode"] == "override" and rc["handle"] == 0.7
+
+
+def test_comp_count_endpoint_is_lightweight(client):
+    j = client.get("/api/comp_count", params={"bbl": "1000090001", "radius": "0.5"}).json()
+    assert set(j) >= {"radius", "count", "below_min", "min_comp_count"}
+    assert "signals" not in j and "variance" not in j     # count only, no full payload
+    assert j["radius"] == 0.5 and isinstance(j["count"], int)
+
+
+def test_comp_count_below_min_in_dead_zone(client):
+    # Fallback subject: at 0.25 mi fewer than 8 qualify -> below_min flagged, count > 0.
+    j = client.get("/api/comp_count", params={"bbl": "2023070046", "radius": "0.25"}).json()
+    assert j["below_min"] is True and j["count"] < 8
+
+
+def test_comp_count_wide_at_least_tight(client):
+    tight = client.get("/api/comp_count",
+                       params={"bbl": "1000090001", "radius": "0.3"}).json()["count"]
+    wide = client.get("/api/comp_count",
+                      params={"bbl": "1000090001", "radius": "2.0"}).json()["count"]
+    assert wide >= tight
 
 
 def test_re_taxes_matches_tax_bill_subject_value(client):
