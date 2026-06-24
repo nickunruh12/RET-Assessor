@@ -145,6 +145,7 @@ def compute_stats(cs: CompSet, criteria: CompCriteria) -> StatsResult:
         "signal_fields": {
             "Estimated Market Value According to DOF": "curmkttot",
             "Tax Bill (10.848% class-4 rate)": "curtxbtot x 0.10848",
+            "Real Estate Taxes (subject)": "curtxbtot x 0.10848",
             "Market Value Per Gross Building Area": "curmkttot / gross building area",
             "Phase-in gap": "(curacttot - curtrntot) / curacttot",
         },

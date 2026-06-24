@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NYC Class-4 Assessment Screen</title>
+  <title>NYC Class-4 Commercial Assessment Screen</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -12,7 +12,7 @@
   <p class="disclaimer">{{ result.disclaimer if result else disclaimer }}</p>
 
   <header>
-    <h1>NYC class-4 commercial assessment screen</h1>
+    <h1>NYC Class-4 Commercial Assessment Screen</h1>
     <form class="lookup" method="get" action="/screen">
       <fieldset>
         <legend>Look up by address</legend>
@@ -88,8 +88,11 @@
         <dt>Borough / ZIP</dt><dd>{{ s.borough }} · {{ s.zip_code }}</dd>
         <dt>Gross Building Area</dt>
         <dd>{% if s.gross_sf %}{{ "{:,.0f}".format(s.gross_sf) }} SF <span class="src">({{ s.sf_source }})</span>{% else %}not reported{% endif %}</dd>
-        <dt>Year Built According to DOF</dt><dd>{% if s.year_built_missing %}not reported{% else %}{{ s.year_built }}{% endif %} <span class="src">(display only)</span></dd>
+        <dt>Year Built According to DOF</dt><dd>{% if s.year_built_missing %}not reported{% else %}{{ s.year_built }}{% endif %}</dd>
         <dt>Estimated Market Value According to DOF</dt><dd>{{ "${:,.0f}".format(s.assessed_market_value) }}</dd>
+        {% if s.real_estate_taxes is not none %}
+        <dt>Real Estate Taxes (Est. From DOF Taxable Value × Rate)</dt><dd>{{ "${:,.0f}".format(s.real_estate_taxes) }}</dd>
+        {% endif %}
       </dl>
       <p class="comp-meta">
         comp set: {{ result.comp_meta.comp_count }} comps · radius used: {{ result.comp_meta.radius_used_miles }} mi ·
@@ -104,6 +107,8 @@
     <!-- 3. Three SIGNAL distributions -->
     <section class="signals">
       <h2>Where the Subject Sits Among Its Comps</h2>
+      <p class="gloss src">Percentile = the share of comps at or below the subject on this metric.
+        It shows where the subject ranks, not whether the value is right or wrong.</p>
       {% for sig in result.signals %}
       <div class="signal" data-signal="{{ sig.key }}">
         <h3>{{ sig.label }}</h3>
@@ -129,17 +134,29 @@
         comp median {{ result.phase_in_gap.median }} (descriptive; n={{ result.phase_in_gap.n }})</p>
     </section>
 
-    <!-- RUNG 3 — partitioned, off by default. Positioned below the charts, above variance. -->
+    <!-- RUNG 3 — partitioned, user-supplied. Always expanded; computes only on Compute. -->
     <section class="rung3" id="rung3">
       <h2>{{ result.rung3.section }}</h2>
-      <label class="toggle"><input type="checkbox" id="rung3-toggle"> Calculate Implied Cap Rate</label>
-      <div id="rung3-body" hidden>
+      <div class="userbox">
         <input type="text" id="rung3-noi" placeholder="your NOI ($)">
         <button id="rung3-go" type="button">Compute</button>
-        <p class="src">Off by default. The result is stamped “based on the NOI you provided” and is kept
-          separate from the public figures above.</p>
-        <div id="rung3-result"></div>
       </div>
+      <p class="src">The result is stamped “based on the NOI you provided” and is kept
+        separate from the public figures above.</p>
+      <div id="rung3-result"></div>
+    </section>
+
+    <!-- 8. Expense Ratio Check — partitioned, user-supplied; same style, always expanded. -->
+    <section class="rung3" id="expense-ratio">
+      <h2>{{ result.expense_ratio.section }}</h2>
+      <div class="userbox">
+        <input type="text" id="opex-input" placeholder="your operating expense ($)">
+        <button id="opex-go" type="button">Compute</button>
+      </div>
+      <div id="opex-result"></div>
+      {% if result.expense_ratio.benchmark_note %}
+      <p class="src benchmark-note">{{ result.expense_ratio.benchmark_note }}</p>
+      {% endif %}
     </section>
 
     <!-- 4. Variance views — shared column layout, re-sorted per subsection -->

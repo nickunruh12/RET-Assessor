@@ -50,7 +50,8 @@ def _f(x, nd=2):
     return None if x is None else round(float(x), nd)
 
 
-def _subject_panel(subject: dict | None, resolve: ResolveResult | None) -> dict | None:
+def _subject_panel(subject: dict | None, resolve: ResolveResult | None,
+                   rate: float | None = None) -> dict | None:
     if subject is None:
         return None
     addr = None
@@ -58,6 +59,10 @@ def _subject_panel(subject: dict | None, resolve: ResolveResult | None) -> dict 
         bits = [resolve.house_number, resolve.street]
         loc = resolve.borough or (f"ZIP {resolve.zip_code}" if resolve.zip_code else None)
         addr = ", ".join([b for b in [" ".join(x for x in bits if x), loc] if b]) or None
+    # Real estate taxes — the SAME derived figure used for the Tax Bill chart
+    # (curtxbtot x rate). Not recomputed differently.
+    txb = subject.get("curtxbtot")
+    re_taxes = (txb * rate) if (rate is not None and txb is not None) else None
     return {
         "address": addr,
         "bbl": subject.get("parcel_id"),
@@ -70,6 +75,7 @@ def _subject_panel(subject: dict | None, resolve: ResolveResult | None) -> dict 
         "year_built": subject.get("year_built"),
         "year_built_missing": subject.get("year_built") in (None, "", "0"),
         "assessed_market_value": subject.get("curmkttot"),
+        "real_estate_taxes": re_taxes,
     }
 
 
@@ -162,6 +168,27 @@ def _variance_row(d, subj: dict) -> dict:
     }
 
 
+def _expense_section(juris, criteria, subject: dict) -> dict:
+    """Expense Ratio Check section + the DYNAMIC benchmark note (config-driven).
+
+    The note renders ONLY when a range exists for the subject's (metro, product_type).
+    No range -> no note (never invented, never an empty placeholder)."""
+    metro = criteria.metro_name
+    product = juris.product_type(subject.get("bldg_class"), criteria)
+    note = None
+    rng = criteria.expense_ratio_benchmarks.get(metro, {}).get(product) if product else None
+    if rng:
+        lo, hi = rng
+        article = "an" if product[:1].lower() in "aeiou" else "a"
+        note = (f"{lo:.0f}–{hi:.0f}% = typical range for the real estate tax share of "
+                f"operating expenses for {article} {product} building in {metro} "
+                f"(general rule of thumb, not a sourced benchmark).")
+    return {
+        "section": "Expense Ratio Check",
+        "metro": metro, "product_type": product, "benchmark_note": note,
+    }
+
+
 def _refused(stage, reason, message, *, subject=None, resolve=None, extra=None) -> dict:
     out = {
         "status": "refused", "stage": stage, "reason": reason, "message": message,
@@ -211,7 +238,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
     return {
         "status": "ok",
         "disclaimer": DISCLAIMER,
-        "subject": _subject_panel(cs.subject, resolve),
+        "subject": _subject_panel(cs.subject, resolve, criteria.class4_tax_rate),
         "comp_meta": {
             "comp_count": cs.count,
             "radius_used_miles": cs.radius_used_miles,
@@ -246,7 +273,8 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         },
         "provenance": stats.provenance,
         "context": CONTEXT,
-        "rung3": {"enabled": False, "section": "Implied Cap Rate (From the NOI You Provide)"},
+        "rung3": {"enabled": False, "section": "Calculate Implied Cap Rate With User-Provided NOI"},
+        "expense_ratio": _expense_section(juris, criteria, cs.subject),
     }
 
 
@@ -259,6 +287,18 @@ def build_rung3_view(result) -> dict:
         "user_noi": result.user_noi, "noi_source": result.noi_source,
         "market_value": result.market_value,
         "market_value_citation": result.market_value_citation,
+        "rejected": result.rejected, "rejection_reason": result.rejection_reason,
+        "message": result.message,
+    }
+
+
+def build_expense_ratio_view(result) -> dict:
+    """Serialize an ExpenseRatioResult into its stamped section."""
+    return {
+        "partition": result.partition, "computed": result.computed,
+        "statement": result.statement, "stamp": result.stamp,
+        "ratio_pct": result.ratio_pct, "real_estate_taxes": result.real_estate_taxes,
+        "user_opex": result.user_opex, "opex_source": result.opex_source,
         "rejected": result.rejected, "rejection_reason": result.rejection_reason,
         "message": result.message,
     }

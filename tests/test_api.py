@@ -78,3 +78,28 @@ def test_rung3_junk_rejected(client):
 def test_screen_html_renders_for_each_state(client):
     for bbl in ("1000090001", "3053480042", "1000380001"):
         assert client.get("/screen", params={"bbl": bbl}).status_code == 200
+
+
+def test_expense_ratio_computes(client):
+    r = client.post("/api/expense_ratio", params={"bbl": "1000090001", "opex": "20000000"}).json()
+    assert r["computed"] and r["partition"] == "EXPENSE_RATIO_USER_SUPPLIED"
+    assert r["opex_source"] == "user_supplied" and r["ratio_pct"] is not None
+    assert "real estate taxes derived from 8y4t-faws@2027 (curtxbtot × 0.10848)" in r["stamp"]
+
+
+def test_expense_ratio_junk_rejected(client):
+    r = client.post("/api/expense_ratio", params={"bbl": "1000090001", "opex": "-5"}).json()
+    assert r["rejected"] and not r["computed"]
+
+
+def test_expense_ratio_tax_exempt_refused(client):
+    r = client.post("/api/expense_ratio", params={"bbl": "1000380001", "opex": "20000000"}).json()
+    assert r["rejected"] and r["rejection_reason"] == "subject_tax_exempt"
+
+
+def test_re_taxes_matches_tax_bill_subject_value(client):
+    """Subject RE-taxes line == the Tax Bill chart's subject value (same derived figure)."""
+    j = client.get("/api/screen", params={"bbl": "1012770027"}).json()
+    re_taxes = j["subject"]["real_estate_taxes"]
+    tax_sig = next(s for s in j["signals"] if s["key"] == "tax_bill")
+    assert abs(re_taxes - tax_sig["subject_value"]) < 1.0

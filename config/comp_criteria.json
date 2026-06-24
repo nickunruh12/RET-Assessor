@@ -55,6 +55,17 @@
   "low_exact_caution_threshold": 3,
   "_low_exact_caution_doc": "When a SUCCESSFUL comp set has fewer than this many exact-class comps, attach a visible caution ('comp set is largely adjacent-class, interpret accordingly'). Warn, never refuse (DECISIONS 2026-06-20). Tunable, logged for Phase 6.",
 
+  "metro_name": "New York City",
+  "_metro_name_doc": "Display name for this jurisdiction's metro, used in the expense-ratio benchmark note. NYC plugin renders 'New York City'.",
+
+  "product_type_labels": {"O": "office", "K": "retail", "F": "industrial", "E": "warehouse"},
+  "_product_type_labels_doc": "Building-class first letter -> product-type word for display (e.g. the expense-ratio note). v1 activates office only; others are mapped ahead of activation.",
+
+  "expense_ratio_benchmarks": {
+    "New York City": {"office": [40, 50]}
+  },
+  "_expense_ratio_benchmarks_doc": "Per-(metro, product_type) rule-of-thumb range for the real-estate-tax share of operating expenses, as [LOW, HIGH] percents. The note renders ONLY when a range exists for the subject's (metro, product_type). Populated for NYC+office = 40-50 only; add more (metro, product_type) entries later. NOT a sourced benchmark.",
+
   "class4_tax_rate": 0.10848,
   "_class4_tax_rate_doc": "FY2026 class-4 tax rate (DECISIONS). Multiplies curtxbtot (transitional taxable) into the tax-bill SIGNAL. CONTEXT layer."
 }

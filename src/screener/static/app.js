@@ -67,18 +67,18 @@ function renderCharts(data) {
   }
 }
 
-function wireRung3(data) {
-  const toggle = document.getElementById("rung3-toggle");
-  const body = document.getElementById("rung3-body");
-  if (!toggle || !body) return;
-  toggle.addEventListener("change", () => { body.hidden = !toggle.checked; });
+function subjectBbl(data) {
+  return data && data.subject ? data.subject.bbl : null;
+}
 
+// RUNG 3 — always-visible input + Compute (no toggle). Computes only on click.
+function wireRung3(data) {
   const go = document.getElementById("rung3-go");
   if (!go) return;
   go.addEventListener("click", async () => {
     const out = document.getElementById("rung3-result");
     const noi = document.getElementById("rung3-noi").value;
-    const bbl = data && data.subject ? data.subject.bbl : null;
+    const bbl = subjectBbl(data);
     if (!bbl) { out.textContent = "No subject parcel to compute against."; return; }
     const params = new URLSearchParams({ bbl, noi, enabled: "true" });
     const resp = await fetch("/api/rung3?" + params.toString(), { method: "POST" });
@@ -93,9 +93,30 @@ function wireRung3(data) {
   });
 }
 
+// Expense Ratio Check — same discipline; ratio = subject real estate taxes / user opex.
+function wireExpenseRatio(data) {
+  const go = document.getElementById("opex-go");
+  if (!go) return;
+  go.addEventListener("click", async () => {
+    const out = document.getElementById("opex-result");
+    const opex = document.getElementById("opex-input").value;
+    const bbl = subjectBbl(data);
+    if (!bbl) { out.textContent = "No subject parcel to compute against."; return; }
+    const params = new URLSearchParams({ bbl, opex });
+    const resp = await fetch("/api/expense_ratio?" + params.toString(), { method: "POST" });
+    const r = await resp.json();
+    if (r.computed) {
+      out.innerHTML = `<p>${r.statement}</p><p class="rung3-stamp">${r.stamp}</p>`;
+    } else {
+      out.innerHTML = `<p>${r.message}</p>`;
+    }
+  });
+}
+
 (function () {
   const data = dataEl();
-  // Decouple: a chart failure must NEVER prevent RUNG 3 (or anything else) from wiring.
+  // Decouple: a chart failure must NEVER prevent the user-input tools from wiring.
   try { renderCharts(data); } catch (e) { console.error("renderCharts failed:", e); }
   try { wireRung3(data); } catch (e) { console.error("wireRung3 failed:", e); }
+  try { wireExpenseRatio(data); } catch (e) { console.error("wireExpenseRatio failed:", e); }
 })();

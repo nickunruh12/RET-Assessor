@@ -65,6 +65,12 @@ class NYC:
             return "Unknown"
         return criteria.office_bucket_labels.get(bucket, bucket)
 
+    # --- product type (for the expense-ratio benchmark note) ---------------
+    def product_type(self, bldg_class: str | None, criteria: CompCriteria) -> str | None:
+        """Map a building class to its product-type word (e.g. O* -> 'office')."""
+        letter = (bldg_class or "").strip()[:1]
+        return criteria.product_type_labels.get(letter)
+
     # --- condo exclusion ---------------------------------------------------
     def condo_clause(self, criteria: CompCriteria) -> tuple[str, list]:
         if not criteria.exclude_condo_unit_lots:

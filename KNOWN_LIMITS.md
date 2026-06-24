@@ -45,6 +45,20 @@ v1 ships **Office (`O*`) only** (see DECISIONS.md). Expansion is deliberately se
   - (c) **Never compute a stabilization-adjusted value internally** — that would be a tool-invented estimate that crosses the honesty line.
   - Stabilized-unit counts would come from DOF rent-stabilization / tax-bill registration data — a **separate cited join with its own vintage.** **Revisit this explicitly when class 2 is built.**
 
+## Deferred UI paths (backlog — design notes recorded, NOT scaffolded)
+
+Recorded so the design constraints survive; none of this is built yet.
+
+- **Custom comp-pool path.** A future mode where the user supplies their own comp set
+  instead of the tool screening one. **When built, custom-pool output must carry a
+  visible "comps were user-provided, not screened by the tool" stamp** — a provenance
+  label held to the same discipline as the user-supplied NOI / operating-expense stamps,
+  so a user-assembled set can never be mistaken for a tool-screened one.
+- **Radius toggle.** A future control to adjust the comp search radius. **When built, the
+  radius toggle applies to BOTH the autogenerate path and the custom-comp-pool path** (one
+  control governs both), not to autogenerate alone.
+- **Welcome / landing page.** Deferred; no design constraint recorded yet.
+
 ## Variance explanation is descriptive, never causal
 
 Allowed: "This comp is assessed 20% higher and differs on: built 2015 vs 1980, class O5 vs O3, 40k SF vs 32k SF." Banned: "This comp is higher because it is newer."

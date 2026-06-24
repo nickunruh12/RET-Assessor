@@ -58,6 +58,11 @@ class CompCriteria(BaseModel):
     low_exact_caution_threshold: int = 3
     class4_tax_rate: float = 0.10848
 
+    # expense-ratio benchmark note (dynamic, config-driven)
+    metro_name: str = ""
+    product_type_labels: dict[str, str] = {}
+    expense_ratio_benchmarks: dict[str, dict[str, list[float]]] = {}
+
     @classmethod
     def load(cls, path: Path | None = None) -> "CompCriteria":
         path = path or config.COMP_CRITERIA_PATH
@@ -108,6 +113,10 @@ class Jurisdiction(Protocol):
 
     def condo_clause(self, criteria: CompCriteria) -> tuple[str, list]:
         """(sql_fragment, params) EXCLUDING condo unit lots; ('TRUE', []) if disabled."""
+        ...
+
+    def product_type(self, bldg_class: str | None, criteria: CompCriteria) -> str | None:
+        """Product-type word for a building class (e.g. O* -> 'office'); None if unmapped."""
         ...
 
 

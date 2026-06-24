@@ -101,16 +101,23 @@ def main():
         ok = ok and disclaimer_above and not word_hits
 
         if status == "ok":
-            rung3_off = ('id="rung3-toggle"' in raw and 'id="rung3-body" hidden' in raw
-                         and "checked" not in raw)
+            # RUNG 3 + expense ratio: always-visible inputs, but NO computed result on load
+            # (opt-in: nothing computed until the user clicks Compute).
+            inputs_present = ('id="rung3-noi"' in raw and 'id="rung3-go"' in raw
+                              and 'id="opex-input"' in raw and 'id="opex-go"' in raw)
+            no_result_on_load = "implies a" not in raw.lower() and "operating expense you provided" not in raw.lower()
             prov = "Provenance — Every Figure" in raw
-            print(f"    RUNG 3 off by default:        {rung3_off}")
+            print(f"    user-input tools present, no result on load: {inputs_present and no_result_on_load}")
             print(f"    provenance accessible:        {prov}")
-            ok = ok and rung3_off and prov
+            ok = ok and inputs_present and no_result_on_load and prov
+            # expense-ratio benchmark note for office subjects (NYC + office configured)
+            note = ("40–50% = typical range" in raw and "office building in New York City" in raw)
+            print(f"    expense benchmark note (NYC office): {note}")
+            ok = ok and note
         else:
-            rung3_absent = 'id="rung3-toggle"' not in raw  # no analysis -> no RUNG 3 to enable
-            print(f"    RUNG 3 not offered on refusal: {rung3_absent}")
-            ok = ok and rung3_absent
+            tools_absent = 'id="rung3-noi"' not in raw and 'id="opex-input"' not in raw
+            print(f"    user-input tools not offered on refusal: {tools_absent}")
+            ok = ok and tools_absent
 
         if label == "c_no_sf":
             psf = ("gross building area missing for this parcel" in raw

@@ -17,10 +17,16 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import config
+from .expense_ratio import run_expense_ratio
 from .geocode import GeoclientConfigError, ResolveResult, _validate_bbl, resolve_address
 from .jurisdiction import CompCriteria, get_jurisdiction
 from .rung3 import run_rung3
-from .serialize import DISCLAIMER, build_rung3_view, build_screen_view
+from .serialize import (
+    DISCLAIMER,
+    build_expense_ratio_view,
+    build_rung3_view,
+    build_screen_view,
+)
 
 _HERE = Path(__file__).resolve().parent
 app = FastAPI(title="NYC Class-4 Assessment Screen")
@@ -92,3 +98,10 @@ def api_rung3(bbl: str = Query(...), noi: str = Query(""), enabled: bool = Query
     with _con() as con:
         result = run_rung3(con, bbl.strip(), noi, enabled=enabled)
     return JSONResponse(build_rung3_view(result))
+
+
+@app.post("/api/expense_ratio")
+def api_expense_ratio(bbl: str = Query(...), opex: str = Query("")):
+    with _con() as con:
+        result = run_expense_ratio(con, bbl.strip(), opex, CRITERIA)
+    return JSONResponse(build_expense_ratio_view(result))
