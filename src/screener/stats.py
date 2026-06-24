@@ -144,10 +144,11 @@ def compute_stats(cs: CompSet, criteria: CompCriteria) -> StatsResult:
 
     signals: dict[str, SignalStats] = {}
 
-    # 1. Assessed (market) value — all comps.
+    # 1. Estimated market value — all comps. (Matches DOF's public "Estimated Market
+    #    Value" line; the underlying field is curmkttot.)
     signals["assessed_value_market"] = _signal_from_pairs(
-        "assessed_value_market", "Assessed market value (curmkttot)", "$", "all comps",
-        [c.curmkttot for c in comps], subj.get("curmkttot"),
+        "assessed_value_market", "Estimated Market Value According to DOF (curmkttot)",
+        "$", "all comps", [c.curmkttot for c in comps], subj.get("curmkttot"),
     )
 
     # 2. Tax bill — all comps; transitional taxable x FY2026 class-4 rate.

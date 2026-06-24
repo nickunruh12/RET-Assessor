@@ -59,8 +59,8 @@
         <dt>Borough / ZIP</dt><dd>{{ s.borough }} · {{ s.zip_code }}</dd>
         <dt>Gross building area</dt>
         <dd>{% if s.gross_sf %}{{ "{:,.0f}".format(s.gross_sf) }} SF <span class="src">({{ s.sf_source }})</span>{% else %}not reported{% endif %}</dd>
-        <dt>Year built</dt><dd>{% if s.year_built_missing %}not reported{% else %}{{ s.year_built }}{% endif %} <span class="src">(display only)</span></dd>
-        <dt>Assessed market value</dt><dd>{{ "${:,.0f}".format(s.assessed_market_value) }}</dd>
+        <dt>Year Built According to DOF</dt><dd>{% if s.year_built_missing %}not reported{% else %}{{ s.year_built }}{% endif %} <span class="src">(display only, not a comp criterion)</span></dd>
+        <dt>Estimated Market Value According to DOF</dt><dd>{{ "${:,.0f}".format(s.assessed_market_value) }}</dd>
       </dl>
       <p class="comp-meta">
         comp set: {{ result.comp_meta.comp_count }} comps · radius used: {{ result.comp_meta.radius_used_miles }} mi ·
@@ -86,7 +86,7 @@
             n = {{ sig.n }} comps{% if sig.excluded_blank %} ({{ sig.excluded_blank }} excluded, blank){% endif %} ·
             radius used: {{ sig.radius_used_miles }} mi
           </p>
-          <canvas class="strip" id="chart-{{ sig.key }}" height="120"></canvas>
+          <div class="chart-box"><canvas class="strip" id="chart-{{ sig.key }}"></canvas></div>
           <p class="signal-readout">
             subject: {{ "{:,.2f}".format(sig.subject_value) }} ·
             median: {{ "{:,.2f}".format(sig.median) }} ·
