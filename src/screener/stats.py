@@ -162,7 +162,7 @@ def compute_stats(cs: CompSet, criteria: CompCriteria) -> StatsResult:
 
     # 2. Tax bill — all comps; transitional taxable x FY2026 class-4 rate.
     signals["tax_bill"] = _signal_from_pairs(
-        "tax_bill", "Tax Bill (10.848% class-4 rate)", "$ (tax)", "all comps",
+        "tax_bill", "Tax Bill (10.848% Class-4 Rate)", "$ (tax)", "all comps",
         [c.curtxbtot * rate if c.curtxbtot is not None else None for c in comps],
         subj.get("curtxbtot") * rate if subj.get("curtxbtot") is not None else None,
     )

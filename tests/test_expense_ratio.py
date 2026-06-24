@@ -15,7 +15,7 @@ def test_normal_ratio_computes():
     r = compute_expense_ratio(100_000, 250_000, STAMP_ROLL, RATE, "1")
     assert r.computed and not r.rejected
     assert r.ratio_pct == 40.0
-    assert r.statement == ("Your real estate taxes of $100,000 are 40% of the operating "
+    assert r.statement == ("Your real estate taxes of $100,000 are 40.00% of the operating "
                            "expense you provided ($250,000).")
     assert r.real_estate_taxes == 100_000 and r.user_opex == 250_000
 

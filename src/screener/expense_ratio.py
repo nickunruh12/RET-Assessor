@@ -97,7 +97,8 @@ def compute_expense_ratio(real_estate_taxes, user_opex, roll_stamp: str, rate: f
         return _result(subject_bbl, rejected=True, rejection_reason=reason, message=msg, stamp=stamp)
 
     ratio = real_estate_taxes / opex
-    statement = (f"Your real estate taxes of ${real_estate_taxes:,.0f} are {ratio * 100:.0f}% "
+    # Whole-dollar figures: 0 dp. The ratio is division-produced: exactly 2 dp.
+    statement = (f"Your real estate taxes of ${real_estate_taxes:,.0f} are {ratio * 100:.2f}% "
                  f"of the operating expense you provided (${opex:,.0f}).")
     return _result(subject_bbl, computed=True, statement=statement, stamp=stamp,
                    ratio_pct=round(ratio * 100, 2), real_estate_taxes=real_estate_taxes,

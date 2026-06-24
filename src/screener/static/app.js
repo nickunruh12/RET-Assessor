@@ -123,13 +123,16 @@ function wireRadius() {
   const bbl = ctl.dataset.bbl;
   let timer = null;
 
-  slider.addEventListener("input", () => {            // DURING drag — count only
+  slider.addEventListener("input", () => {            // DURING drag — readout + count only
     const r = slider.value;
+    // Immediate readout: the exact value that will be submitted on release and shown as
+    // "Radius used". parseFloat normalizes like the server's %g (1.0 -> "1", 0.5 -> "0.5").
+    live.textContent = `${parseFloat(r)} mi`;
     if (timer) clearTimeout(timer);
     timer = setTimeout(async () => {
       try {
         const j = await (await fetch(`/api/comp_count?bbl=${bbl}&radius=${r}`)).json();
-        live.textContent = `radius ${j.radius} mi · ${j.count} comps` +
+        live.textContent = `${j.radius} mi · ${j.count} comps` +
           (j.below_min ? ` — below the ${j.min_comp_count}-comp minimum` : "");
       } catch (e) { /* preview is best-effort */ }
     }, 120);                                            // ~120ms debounce

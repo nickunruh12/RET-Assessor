@@ -16,7 +16,7 @@
   <div class="radius-control" data-bbl="{{ bbl }}">
     <p class="radius-mode">
       Mode: <strong>{% if rc.mode == 'override' %}OVERRIDE — fixed radius, no auto-widen{% else %}AUTO — the tool expands 0.5–1.0 mi{% endif %}</strong>
-      · <strong class="radius-used">Radius used: {{ radius_used }} mi</strong>
+      · <strong class="radius-used">Radius used: {{ "%g"|format(radius_used) }} mi</strong>
     </p>
     <div class="radius-affordances">
       <a class="radius-auto{% if rc.mode == 'auto' %} active{% endif %}" href="/screen?bbl={{ bbl }}&amp;radius=default">Default (auto 0.5–1.0 mi)</a>
@@ -118,7 +118,7 @@
         {% endif %}
       </dl>
       <p class="comp-meta">
-        <strong class="radius-used">Radius used: {{ result.comp_meta.radius_used_miles }} mi</strong>
+        <strong class="radius-used">Radius used: {{ "%g"|format(result.comp_meta.radius_used_miles) }} mi</strong>
         · comp set: {{ result.comp_meta.comp_count }} comps ·
         {{ result.comp_meta.composition.exact_count }} exact / {{ result.comp_meta.composition.adjacent_count }} adjacent
         {% if not result.comp_meta.sf_band_applied %} · (no gross-SF band: subject SF not reported){% endif %}
@@ -141,15 +141,15 @@
           <p class="signal-refusal">{{ sig.message }}</p>
         {% else %}
           <p class="signal-stats">
-            your percentile: {{ sig.subject_percentile }}th ·
+            your percentile: {{ sig.subject_percentile_display }}th ·
             n = {{ sig.n }} comps{% if sig.excluded_blank %} ({{ sig.excluded_blank }} excluded, blank){% endif %} ·
             radius used: {{ sig.radius_used_miles }} mi
           </p>
           <div class="chart-box"><canvas class="strip" id="chart-{{ sig.key }}"></canvas></div>
           <p class="signal-readout">
-            subject: {{ "{:,.2f}".format(sig.subject_value) }} ·
-            median: {{ "{:,.2f}".format(sig.median) }} ·
-            range {{ "{:,.2f}".format(sig.minimum) }}–{{ "{:,.2f}".format(sig.maximum) }}
+            subject: {{ sig.subject_value_display }} ·
+            median: {{ sig.median_display }} ·
+            range {{ sig.minimum_display }}–{{ sig.maximum_display }}
           </p>
           {% if sig.sf_source_label %}<p class="src sf-src">{{ sig.sf_source_label }}</p>{% endif %}
         {% endif %}

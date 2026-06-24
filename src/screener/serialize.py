@@ -79,8 +79,8 @@ def _phase_in_note(phase) -> dict:
     return {
         "title": "Phase-In Note",
         "formula": "(actual assessed value − transitional assessed value) ÷ actual assessed value",
-        "subject_value": _f(v, 3),
-        "median": _f(phase.median, 3),
+        "subject_value": _f(v, 2),
+        "median": _f(phase.median, 2),
         "n": phase.n,
         "mechanism": mechanism,
         "footer": "Descriptive only — not a verdict on the assessment.",
@@ -132,6 +132,13 @@ def _signal_distributions(cs: CompSet, rate: float) -> dict[str, list[float]]:
     }
 
 
+def _signal_num(v, unit):
+    """Display a signal value: PSF (division) -> 2 dp; whole-dollar figures -> 0 dp."""
+    if v is None:
+        return "n/a"
+    return f"{v:,.2f}" if "gross_sf" in unit else f"{v:,.0f}"
+
+
 def _signal_view(sig, dist_values: list[float], extra: dict) -> dict:
     out = {
         "key": sig.key, "label": sig.label, "unit": sig.unit,
@@ -143,6 +150,12 @@ def _signal_view(sig, dist_values: list[float], extra: dict) -> dict:
         "subject_value": _f(sig.subject_value), "subject_percentile": sig.subject_percentile,
         "distribution": [round(float(v), 4) for v in dist_values] if not sig.refused else [],
         "notes": sig.notes,
+        # display strings (precision per item 2): whole $ -> 0 dp, PSF -> 2 dp, percentile -> 2 dp
+        "subject_value_display": _signal_num(sig.subject_value, sig.unit),
+        "median_display": _signal_num(sig.median, sig.unit),
+        "minimum_display": _signal_num(sig.minimum, sig.unit),
+        "maximum_display": _signal_num(sig.maximum, sig.unit),
+        "subject_percentile_display": f"{sig.subject_percentile:.2f}" if sig.subject_percentile is not None else "n/a",
     }
     out.update(extra)
     return out
@@ -158,10 +171,23 @@ def _display_address(d) -> tuple[str | None, str | None]:
 
 
 def _signed_pct(x):
-    return None if x is None else f"{x:+.0f}%"
+    """Percentages -> EXACTLY 2 dp. A genuine zero shows '0.00%' (never suppressed)."""
+    if x is None:
+        return None
+    r = round(x, 2)
+    return "0.00%" if r == 0 else f"{r:+.2f}%"
+
+
+def _signed_dollar_psf(x):
+    """Per-SF dollar delta -> EXACTLY 2 dp. A genuine zero shows '$0.00' (never suppressed)."""
+    r = round(x, 2)
+    if r == 0:
+        return "$0.00"
+    return f"{'-' if r < 0 else '+'}${abs(r):,.2f}"
 
 
 def _delta_sf(abs_delta, pct):
+    # Gross SF is a whole count (0 dp); the percent part is division-produced (2 dp).
     if abs_delta is None or pct is None:
         return "n/a"
     return f"{abs_delta:+,.0f} SF ({_signed_pct(pct)})"
@@ -172,12 +198,10 @@ def _psf(value, sf):
 
 
 def _delta_psf(abs_delta, pct):
-    """'+$83 PSF (+24%)' or 'n/a'. Per-SF dollars: 0 dp when >= $10, else 2 dp."""
+    """'+$322.00 PSF (+93.12%)' / '$0.00 PSF (0.00%)' / 'n/a'. PSF $ and % both 2 dp."""
     if abs_delta is None or pct is None:
         return "n/a"
-    sign = "-" if abs_delta < 0 else "+"
-    mag = f"{abs(abs_delta):,.0f}" if abs(abs_delta) >= 10 else f"{abs(abs_delta):,.2f}"
-    return f"{sign}${mag} PSF ({_signed_pct(pct)})"
+    return f"{_signed_dollar_psf(abs_delta)} PSF ({_signed_pct(pct)})"
 
 
 def _variance_row(d, subj: dict, rate: float) -> dict:
