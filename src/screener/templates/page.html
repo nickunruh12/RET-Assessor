@@ -134,6 +134,9 @@
       <h2>Where the Subject Sits Among Its Comps</h2>
       <p class="gloss src">Percentile = the share of comps at or below the subject on this metric.
         It shows where the subject ranks, not whether the value is right or wrong.</p>
+      {% if result.cross_borough_note %}
+      <p class="cross-borough-note">{{ result.cross_borough_note }}</p>
+      {% endif %}
       {% for sig in result.signals %}
       <div class="signal" data-signal="{{ sig.key }}">
         <h3>{{ sig.label }}</h3>

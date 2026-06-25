@@ -92,10 +92,16 @@ def _subject_panel(subject: dict | None, resolve: ResolveResult | None,
     if subject is None:
         return None
     addr = None
-    if resolve is not None:
+    if resolve is not None and (resolve.house_number or resolve.street):
         bits = [resolve.house_number, resolve.street]
         loc = resolve.borough or (f"ZIP {resolve.zip_code}" if resolve.zip_code else None)
         addr = ", ".join([b for b in [" ".join(x for x in bits if x), loc] if b]) or None
+    if not addr:
+        # BBL re-run (no geocoded address): fall back to the parcel's roll/PLUTO address
+        # so the Address line stays visible across re-runs.
+        roll = " ".join(x for x in [subject.get("house_number"), subject.get("street_name")] if x).strip()
+        loc = subject.get("borough") or (f"ZIP {subject.get('zip_code')}" if subject.get("zip_code") else None)
+        addr = ", ".join([b for b in [roll, loc] if b]) or subject.get("pluto_address") or None
     # Real estate taxes — the SAME derived figure used for the Tax Bill chart
     # (curtxbtot x rate). Not recomputed differently.
     txb = subject.get("curtxbtot")
@@ -269,6 +275,25 @@ def _expense_section(juris, criteria, subject: dict) -> dict:
     }
 
 
+def _cross_borough_note(cs, juris) -> str | None:
+    """Descriptive note when the comp set spans boroughs (any cross-borough comp, whether
+    from default auto-expand or a manual radius override). None if all same-borough."""
+    subj_boro = cs.subject.get("borough")
+    counts: dict[str, int] = {}
+    for c in cs.comps:
+        b = juris.borough_of(c.citation.parcel_id)
+        counts[b] = counts.get(b, 0) + 1
+    others = sorted(((b, n) for b, n in counts.items() if b != subj_boro), key=lambda x: -x[1])
+    if not others:
+        return None
+    n = len(cs.comps)
+    parts = [f"{counts.get(subj_boro, 0)} of {n} comps in {subj_boro} (subject borough)"]
+    parts += [f"{cnt} in {b}" for b, cnt in others]
+    return ("Comp set spans boroughs: " + ", ".join(parts) +
+            ". Comps outside the subject's borough may sit in a different submarket; "
+            "interpret accordingly.")
+
+
 def _radius_control(selection: str, show: bool) -> dict:
     mode = "auto" if selection == "default" else "override"
     handle = RADIUS_REST if mode == "auto" else float(selection)
@@ -357,6 +382,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
             "sf_band_applied": cs.sf_band_applied,
         },
         "signals": signals,
+        "cross_borough_note": _cross_borough_note(cs, juris),
         "phase_in_note": _phase_in_note(phase),
         "variance": {
             "subject_sf": cs.subject.get("sf"),

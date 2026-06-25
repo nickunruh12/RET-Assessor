@@ -76,18 +76,48 @@ def _fixed_radius_criteria(radius: float):
     return CRITERIA.model_copy(update={"radius_start_miles": r, "radius_cap_miles": r}), r
 
 
-def _screen_view(con, *, bbl, house_number, street, borough, zip_code, radius="") -> dict | None:
+def _screen_view(con, *, bbl, house_number, street, borough, zip_code, radius=""):
+    """Returns (result_dict_or_None, resolved_bbl_or_None). resolved_bbl is the parcel
+    actually screened, used to repopulate the form on re-runs that carried only the BBL."""
     try:
         rr = _resolve_input(con, bbl=bbl, house_number=house_number, street=street,
                             borough=borough, zip_code=zip_code)
     except GeoclientConfigError as e:
         return {"status": "refused", "stage": "resolve", "reason": "geoclient_unconfigured",
                 "message": str(e), "disclaimer": DISCLAIMER, "subject": None, "context": None,
-                "rung3": {"enabled": False}}
+                "rung3": {"enabled": False}}, None
     if rr is None:
-        return None
+        return None, None
     crit, radius_selection = _effective_criteria(radius)
-    return build_screen_view(con, crit, JURIS, resolve=rr, radius_selection=radius_selection)
+    result = build_screen_view(con, crit, JURIS, resolve=rr, radius_selection=radius_selection)
+    return result, rr.bbl
+
+
+def _build_form(con, effective_bbl, typed: dict) -> dict:
+    """Persist the screened parcel's identity in the input bar. The address is looked up
+    from the BBL in the roll (PLUTO fallback) so it stays populated even when the re-run
+    URL carried only bbl + radius. Falls back to the typed values when there is no BBL."""
+    form = {"bbl": (effective_bbl or typed.get("bbl") or "").strip(),
+            "house_number": (typed.get("house_number") or "").strip(),
+            "street": (typed.get("street") or "").strip(),
+            "borough": (typed.get("borough") or "").strip(),
+            "zip": (typed.get("zip") or "").strip()}
+    if not effective_bbl:
+        return form
+    row = con.execute(
+        """SELECT parcel_id, house_number, street_name, zip_code, pluto_address
+           FROM parcels WHERE parcel_id = ?""", [effective_bbl.strip()],
+    ).fetchone()
+    if not row:                      # resolved BBL not in the class-4 roll (out of scope)
+        form["bbl"] = effective_bbl.strip()
+        return form
+    pid, hn, st, zp, paddr = row
+    house, street = (hn or "").strip(), (st or "").strip()
+    if not house and not street and paddr:    # roll address absent -> PLUTO fallback
+        street = paddr.strip()
+    form.update({"bbl": pid, "house_number": house, "street": street,
+                 "borough": JURIS.borough_of(pid), "zip": (zp or "").strip()})
+    return form
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -100,10 +130,11 @@ def home(request: Request):
 @app.get("/screen", response_class=HTMLResponse)
 def screen(request: Request, bbl: str = "", house_number: str = "", street: str = "",
            borough: str = "", zip: str = "", radius: str = ""):
+    typed = {"bbl": bbl, "house_number": house_number, "street": street, "borough": borough, "zip": zip}
     with _con() as con:
-        result = _screen_view(con, bbl=bbl, house_number=house_number, street=street,
-                              borough=borough, zip_code=zip, radius=radius)
-    form = {"bbl": bbl, "house_number": house_number, "street": street, "borough": borough, "zip": zip}
+        result, resolved_bbl = _screen_view(con, bbl=bbl, house_number=house_number, street=street,
+                                            borough=borough, zip_code=zip, radius=radius)
+        form = _build_form(con, resolved_bbl or bbl, typed)
     return templates.TemplateResponse(request, "page.html", {
         "result": result, "disclaimer": DISCLAIMER, "form": form,
         "result_json": json.dumps(result, default=str) if result else "null",
@@ -114,8 +145,8 @@ def screen(request: Request, bbl: str = "", house_number: str = "", street: str 
 def api_screen(bbl: str = "", house_number: str = "", street: str = "",
                borough: str = "", zip: str = "", radius: str = ""):
     with _con() as con:
-        result = _screen_view(con, bbl=bbl, house_number=house_number, street=street,
-                              borough=borough, zip_code=zip, radius=radius)
+        result, _ = _screen_view(con, bbl=bbl, house_number=house_number, street=street,
+                                 borough=borough, zip_code=zip, radius=radius)
     return JSONResponse(result or {"status": "no_input"})
 
 

@@ -59,6 +59,15 @@ Recorded so the design constraints survive; none of this is built yet.
   control governs both), not to autogenerate alone.
 - **Welcome / landing page.** Deferred; no design constraint recorded yet.
 
+- **[OPEN DECISION] Same-borough-default comp pull with explicit cross-borough opt-in.**
+  The more correct long-term refinement over today's **disclosure-only** cross-borough note:
+  default the comp pull to the subject's borough and require an explicit user opt-in to
+  reach across a borough line, rather than pulling cross-borough comps and merely
+  disclosing it. **Caveat:** borough is a **crude submarket proxy** — it does not capture
+  intra-borough submarket lines (e.g. Midtown vs Downtown within Manhattan), so this is a
+  first-cut boundary, not a true submarket fix. Revisit alongside the custom-pool work; not
+  built now.
+
 - **[OPEN DECISION] SF-band-width toggle and/or exact-vs-adjacent class-strictness toggle.**
   Whether to build either is **undecided** — revisit after the custom-pool work. Unlike the
   radius toggle (which is self-contained and was built now), both of these **reshape the

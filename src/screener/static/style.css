@@ -32,6 +32,8 @@ dl dt { color: var(--muted); }
 .src { color: var(--faint); font-size: .82rem; }
 .comp-meta { color: var(--muted); font-size: .85rem; }
 .caution { color: var(--ink); background: var(--panel); border-left: 3px solid var(--line); padding: .5rem .7rem; font-size: .88rem; }
+/* Cross-borough composition note — prominent but neutral (no alert color). */
+.cross-borough-note { color: var(--ink); background: var(--panel); border-left: 3px solid var(--muted); padding: .55rem .8rem; font-size: .9rem; margin: .2rem 0 1rem; }
 
 .signal { margin: 1rem 0 1.4rem; }
 .signal-stats { font-size: .9rem; color: var(--ink); margin: .2rem 0; }

@@ -1,6 +1,7 @@
 """API + view-model tests. Skipped if the DB isn't built. The geocode network step is
 not exercised here (BBL path); live geocoding is covered in scripts/validate_geocode.py.
 """
+import re
 import warnings
 
 import pytest
@@ -78,6 +79,55 @@ def test_rung3_junk_rejected(client):
 def test_screen_html_renders_for_each_state(client):
     for bbl in ("1000090001", "3053480042", "1000380001"):
         assert client.get("/screen", params={"bbl": bbl}).status_code == 200
+
+
+# --- Part 1: input persistence (form reflects the screened parcel from the BBL) -------
+def _field(html, name):
+    m = re.search(rf'name="{name}"[^>]*value="([^"]*)"', html)
+    return m.group(1) if m else None
+
+
+def test_form_populates_address_for_bbl_entered(client):
+    html = client.get("/screen", params={"bbl": "1013000001"}).text
+    assert _field(html, "bbl") == "1013000001"
+    assert _field(html, "house_number") == "230"
+    assert _field(html, "street") == "PARK AVENUE"
+    assert _field(html, "borough") == "Manhattan"
+    assert _field(html, "zip") == "10169"
+
+
+def test_form_persists_address_on_radius_rerun_bbl_only(client):
+    # URL carries only bbl + radius (no address params) — address must still populate.
+    html = client.get("/screen", params={"bbl": "1013000001", "radius": "0.43"}).text
+    assert _field(html, "house_number") == "230" and _field(html, "street") == "PARK AVENUE"
+    assert _field(html, "borough") == "Manhattan"
+
+
+def test_form_persists_on_refusal_page(client):
+    # Tight radius -> refusal; the screened parcel's identity must still show in the form.
+    html = client.get("/screen", params={"bbl": "4000790030", "radius": "0.1"}).text
+    assert "refusal" in html
+    assert _field(html, "bbl") == "4000790030"
+    assert _field(html, "street") == "JACKSON AVENUE" and _field(html, "borough") == "Queens"
+
+
+# --- Part 2: cross-borough composition note -------------------------------------------
+def test_cross_borough_note_on_manual_override(client):
+    j = client.get("/api/screen", params={"bbl": "4000790030", "radius": "2.0"}).json()
+    note = j["cross_borough_note"]
+    assert note and "Comp set spans boroughs" in note
+    assert "Queens (subject borough)" in note and "Manhattan" in note
+
+
+def test_cross_borough_note_fires_on_default_autoexpand(client):
+    j = client.get("/api/screen", params={"bbl": "1000220028"}).json()
+    assert j["status"] == "ok"
+    assert j["cross_borough_note"] and "Brooklyn" in j["cross_borough_note"]
+
+
+def test_no_cross_borough_note_when_all_same_borough(client):
+    j = client.get("/api/screen", params={"bbl": "1013000001"}).json()
+    assert j["cross_borough_note"] is None
 
 
 def test_expense_ratio_computes(client):
