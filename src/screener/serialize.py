@@ -278,6 +278,7 @@ def _signal_view(sig, dist_values: list[float], extra: dict) -> dict:
         "notes": sig.notes,
         # display strings (precision per item 2): whole $ -> 0 dp, PSF -> 2 dp, percentile -> 2 dp
         "subject_value_display": _signal_num(sig.subject_value, sig.unit),
+        "mean_display": _signal_num(sig.mean, sig.unit),
         "median_display": _signal_num(sig.median, sig.unit),
         "minimum_display": _signal_num(sig.minimum, sig.unit),
         "maximum_display": _signal_num(sig.maximum, sig.unit),

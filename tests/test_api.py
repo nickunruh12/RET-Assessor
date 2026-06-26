@@ -234,6 +234,18 @@ def test_dispersion_present_on_each_nonrefused_signal(client):
         assert d["cv"].startswith("relative spread (CV): ")
 
 
+def test_mean_shown_before_median_and_consistent_with_band(client):
+    j = client.get("/api/screen", params={"bbl": "2023070046"}).json()
+    for sig in j["signals"]:
+        assert sig["mean"] is not None
+        # mean == midpoint of the +/-1 SD band, and CV == SD / mean (the visible mean)
+        lo, hi = (float(p.replace("$", "").replace(",", ""))
+                  for p in sig["dispersion"]["sd_band"].split(": ")[1].split(" (")[0].split(" – "))
+        assert abs(sig["mean"] - (lo + hi) / 2) < (0.01 if "gross_sf" in sig["unit"] else 1.0)
+    html = client.get("/screen", params={"bbl": "2023070046"}).text
+    assert html.index("mean:") < html.index("median:")     # mean sits before median on line 1
+
+
 def test_dispersion_none_when_signal_refused(client):
     # no-SF subject -> per-SF signal refused -> no dispersion for it; the other two still have it
     j = client.get("/api/screen", params={"bbl": "3053480042"}).json()
