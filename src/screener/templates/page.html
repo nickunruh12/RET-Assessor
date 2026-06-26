@@ -156,11 +156,20 @@
             median: {{ sig.median_display }} ·
             range {{ sig.minimum_display }}–{{ sig.maximum_display }}
           </p>
+          {% if sig.dispersion %}
+          <p class="src signal-dispersion">
+            {{ sig.dispersion.sd_band }}<br>
+            {{ sig.dispersion.iqr }} · {{ sig.dispersion.cv }}
+          </p>
+          {% endif %}
           {% if sig.sf_source_label %}<p class="src sf-src">{{ sig.sf_source_label }}</p>{% endif %}
           {% if sig.caveat %}<p class="src signal-caveat">{{ sig.caveat }}</p>{% endif %}
         {% endif %}
       </div>
       {% endfor %}
+      {% if result.signals|selectattr('dispersion')|list %}
+      <p class="src dispersion-caveat">{{ result.dispersion_caveat }}</p>
+      {% endif %}
       <div class="phase-in-note">
         {% set pin = result.phase_in_note %}
         <h3>{{ pin.title }}</h3>

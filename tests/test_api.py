@@ -223,6 +223,42 @@ def test_comp_count_wide_at_least_tight(client):
     assert wide >= tight
 
 
+def test_dispersion_present_on_each_nonrefused_signal(client):
+    j = client.get("/api/screen", params={"bbl": "1013000001"}).json()
+    for sig in j["signals"]:
+        assert sig["refused"] is False
+        d = sig["dispersion"]
+        assert d is not None
+        assert d["sd_band"].startswith("±1 SD: ")
+        assert d["iqr"].startswith("middle 50% of comps: ")
+        assert d["cv"].startswith("relative spread (CV): ")
+
+
+def test_dispersion_none_when_signal_refused(client):
+    # no-SF subject -> per-SF signal refused -> no dispersion for it; the other two still have it
+    j = client.get("/api/screen", params={"bbl": "3053480042"}).json()
+    by_key = {s["key"]: s for s in j["signals"]}
+    assert by_key["mv_per_gross_sf"]["dispersion"] is None
+    assert by_key["assessed_value_market"]["dispersion"] is not None
+    assert by_key["tax_bill"]["dispersion"] is not None
+
+
+def test_per_sf_dispersion_uses_same_excluded_list_as_distribution(client):
+    j = client.get("/api/screen", params={"bbl": "2023070046"}).json()
+    sig = next(s for s in j["signals"] if s["key"] == "mv_per_gross_sf")
+    # dispersion is computed from the chart's value list, so the n that frames it is the
+    # SAME per-SF n (no-SF comps already excluded there).
+    assert len(sig["distribution"]) == sig["n"]
+    assert sig["dispersion"] is not None
+
+
+def test_dispersion_caveat_rendered_once_in_html(client):
+    html = client.get("/screen", params={"bbl": "1013000001"}).text
+    assert html.count('class="src dispersion-caveat"') == 1   # rendered exactly once
+    assert "sensitive to extreme values" in html
+    assert "outlier" not in html.lower()                      # banned word stays out
+
+
 def test_re_taxes_matches_tax_bill_subject_value(client):
     """Subject RE-taxes line == the Tax Bill chart's subject value (same derived figure)."""
     j = client.get("/api/screen", params={"bbl": "1012770027"}).json()

@@ -7,6 +7,8 @@ found) becomes a clear message, never a blank. Provenance travels on every figur
 """
 from __future__ import annotations
 
+import statistics
+
 import duckdb
 
 from .comps import REFUSAL_MESSAGES, CompSet, refusal_message, select_comps
@@ -228,6 +230,41 @@ def _signal_num(v, unit):
     return f"{v:,.2f}" if "gross_sf" in unit else f"{v:,.0f}"
 
 
+# Reliability caveat — rendered ONCE, light font. "outlier" is a banned word (render_check),
+# so the meaning is preserved as "sensitive to extreme values".
+DISPERSION_CAVEAT = ("Standard deviation and CV reflect this comp set (n shown); small sets "
+                     "are sensitive to extreme values. The middle-50% range is more robust "
+                     "on thin pools.")
+
+
+def _money(v, unit):
+    """Dollar/PSF figure WITH a $ sign for the dispersion sub-line: PSF -> 2 dp, whole-dollar
+    -> 0 dp. Sign-aware so a ±1 SD lower bound below zero reads '-$X', not '$-X'."""
+    if v is None:
+        return "n/a"
+    nd = 2 if "gross_sf" in unit else 0
+    return f"{'-' if v < 0 else ''}${abs(v):,.{nd}f}"
+
+
+def _dispersion_stats(values: list[float], unit: str) -> dict | None:
+    """Descriptive spread for ONE distribution, in its own units, computed from the SAME comp
+    value list that feeds that chart (the per-SF list already excludes no-SF comps). Three
+    metrics only — POPULATION SD band, interquartile range, coefficient of variation. No
+    variance/mode/z-score/CI; no projection, inference, or verdict."""
+    vals = [float(v) for v in values]
+    if len(vals) < 2:
+        return None
+    mean = statistics.fmean(vals)
+    sd = statistics.pstdev(vals)                                  # POPULATION standard deviation
+    q1, _q2, q3 = statistics.quantiles(vals, n=4, method="inclusive")  # 25th / 75th percentile
+    cv = "n/a" if mean <= 0 else f"{sd / mean * 100:.2f}%"        # guard: never divide by mean<=0
+    return {
+        "sd_band": f"±1 SD: {_money(mean - sd, unit)} – {_money(mean + sd, unit)} (SD {_money(sd, unit)})",
+        "iqr": f"middle 50% of comps: {_money(q1, unit)} – {_money(q3, unit)}",
+        "cv": f"relative spread (CV): {cv}",
+    }
+
+
 def _signal_view(sig, dist_values: list[float], extra: dict) -> dict:
     out = {
         "key": sig.key, "label": sig.label, "unit": sig.unit,
@@ -245,6 +282,8 @@ def _signal_view(sig, dist_values: list[float], extra: dict) -> dict:
         "minimum_display": _signal_num(sig.minimum, sig.unit),
         "maximum_display": _signal_num(sig.maximum, sig.unit),
         "subject_percentile_display": f"{sig.subject_percentile:.2f}" if sig.subject_percentile is not None else "n/a",
+        # ±1 SD band, IQR, CV — computed from THIS chart's value list (None when refused).
+        "dispersion": None if sig.refused else _dispersion_stats(dist_values, sig.unit),
     }
     out.update(extra)
     return out
@@ -470,6 +509,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
             "sf_band_applied": cs.sf_band_applied,
         },
         "signals": signals,
+        "dispersion_caveat": DISPERSION_CAVEAT,
         "cross_borough_note": _cross_borough_note(cs, juris),
         "phase_in_note": _phase_in_note(phase, cs.subject),
         "variance": {
