@@ -196,6 +196,7 @@ def select_comps(
         "curtrntot": subj.get("curtrntot"),
         "curacttot": subj.get("curacttot"),
         "pytrntot": subj.get("pytrntot"),   # prior-year transitional (py snapshot) for realized YoY
+        "roll_year": subj.get("roll_year"),  # year label for the realized transitional series
     }
 
     # --- scope: v1 activated product is office only ---

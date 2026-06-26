@@ -90,10 +90,25 @@ def _phase_in_bucket(curacttot, curtrntot) -> str | None:
     return f"{_compact_dollars(gap)} ({bucket})"
 
 
+def _transitional_series_points(subject: dict) -> list[tuple[int, float]]:
+    """Published transitional-value points as (year, value), oldest→newest. Years are pulled
+    from the roll (roll_year), never hardcoded. TODAY there are at most two points: the
+    current transitional (curtrntot @ roll_year) and the prior-year snapshot (pytrntot @
+    roll_year−1). This is the ONE place to extend when the two-roll loader adds earlier
+    rolls — the change/series logic downstream is fully generic and needs no edit."""
+    try:
+        ry = int(subject.get("roll_year"))
+    except (TypeError, ValueError):
+        return []
+    raw = {ry: subject.get("curtrntot"), ry - 1: subject.get("pytrntot")}
+    return [(y, v) for y, v in sorted(raw.items()) if v is not None]
+
+
 def _phase_in_note(phase, subject: dict) -> dict:
-    """Phase-In Note: readable mechanism + SUBJECT pending-increase (item 1) + realized
-    YoY transitional change (item 2). Every number is a subtraction of two PUBLISHED roll
-    values or a published prior-year value — no projection, no schedule, never ÷5."""
+    """Phase-In Note: readable mechanism + SUBJECT pending-increase (item 1/3) + realized
+    transitional change as a LABELED year-by-year series (item 2/4). Every number is a
+    subtraction of two PUBLISHED roll values or a published prior-year value — no
+    projection, no schedule, never ÷5."""
     v = phase.subject_value
     if v is None:
         mechanism = "The phase-in gap is unavailable for this parcel."
@@ -108,10 +123,13 @@ def _phase_in_note(phase, subject: dict) -> dict:
     else:
         mechanism = "A gap near zero means the assessment is effectively fully phased in."
 
-    # Item 1 — SUBJECT pending change = actual assessed − transitional assessed (published).
+    # Item 1/3 — SUBJECT pending change = actual assessed − transitional assessed (published),
+    # rendered with the "Transitional Value vs. Assessed Value Gap =" label prefix; the
+    # sign-aware wording (ramping-up / phasing-down / fully-phased) switches on the gap sign.
     act, trn = subject.get("curacttot"), subject.get("curtrntot")
+    PENDING_PREFIX = "Transitional Value vs. Assessed Value Gap"
     if act is None or trn is None:
-        pending = {"display": "n/a",
+        pending = {"prefix": PENDING_PREFIX, "display": "n/a",
                    "label": "approximate taxable-value increase still pending under phase-in",
                    "caveat": None}
     else:
@@ -127,19 +145,25 @@ def _phase_in_note(phase, subject: dict) -> dict:
         else:
             label = "effectively fully phased in — no material pending change"
             caveat = None
-        pending = {"display": _compact_dollars(gap), "label": label, "caveat": caveat}
+        pending = {"prefix": PENDING_PREFIX, "display": _compact_dollars(gap),
+                   "label": label, "caveat": caveat}
 
-    # Item 2 — REALIZED YoY change in transitional value = current − prior-year (py snapshot).
-    py = subject.get("pytrntot")
-    if trn is None or py is None or not py:
+    # Item 2/4 — REALIZED transitional changes as a LABELED, year-by-year series. Loops over
+    # every PUBLISHED transitional point (oldest→newest) and renders only years with real
+    # data — no fabricated/zero-filled years. Today two points exist → ONE labeled change
+    # (e.g. "2027 = +$8.0M (+6.02%)"); the loop extends automatically when more rolls load.
+    points = _transitional_series_points(subject)
+    changes = [(y1, v1 - v0, (v1 - v0) / v0 * 100)
+               for (y0, v0), (y1, v1) in zip(points, points[1:]) if v0]
+    if not changes:
         realized = {"available": False,
                     "message": ("prior-year transitional value not available — realized "
                                 "year-over-year change cannot be shown")}
     else:
-        chg = trn - py
         realized = {"available": True,
-                    "dollars": _compact_dollars(chg),
-                    "pct": _signed_pct(chg / py * 100),
+                    "year_labels": [y for y, _, _ in changes],
+                    "series": "; ".join(
+                        f"{y} = {_compact_dollars(d)} ({_signed_pct(p)})" for y, d, p in changes),
                     "framing": ("Realized change in the transitional (taxable) value versus "
                                 "the prior roll year — descriptive history, not a forecast. "
                                 "The pending figure above is the amount still legally "

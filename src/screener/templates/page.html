@@ -81,7 +81,7 @@
           <th>Comp SF</th><th>Comp SF vs Subject</th><th>Year Built</th>
           <th>Exact Building-Class Match?</th><th>Comp Distance From Subject (mi)</th>
           <th>Comp Est. Market Value PSF vs Subject</th><th>Comp Tax PSF vs Subject</th>
-          <th>Phase-In Gap</th>
+          <th>Phase-In Gap Remaining</th>
         </tr></thead>
         <tbody>
         {% for r in rows %}
@@ -168,15 +168,18 @@
         <p>subject: {{ pin.subject_value }} · comp median: {{ pin.median }}
           (descriptive; n={{ pin.n }})</p>
         <p>{{ pin.mechanism }}</p>
-        <p class="phase-in-pending"><strong>{{ pin.pending.display }}</strong> — {{ pin.pending.label }}.
-          {% if pin.pending.caveat %}<span class="src">{{ pin.pending.caveat }}</span>{% endif %}</p>
+
+        <p class="phase-in-pending">{{ pin.pending.prefix }} =
+          <strong>{{ pin.pending.display }}</strong> — {{ pin.pending.label }}.</p>
+        {% if pin.pending.caveat %}<p class="src phase-in-explain">{{ pin.pending.caveat }}</p>{% endif %}
+
         {% if pin.realized_yoy.available %}
-        <p class="phase-in-yoy">Realized pace: transitional value changed
-          <strong>{{ pin.realized_yoy.dollars }} ({{ pin.realized_yoy.pct }})</strong> versus the prior roll year.
-          <span class="src">{{ pin.realized_yoy.framing }}</span></p>
+        <p class="phase-in-yoy">Transitional Value Changes: {{ pin.realized_yoy.series }}.</p>
+        <p class="src phase-in-explain">{{ pin.realized_yoy.framing }}</p>
         {% else %}
-        <p class="phase-in-yoy src">{{ pin.realized_yoy.message }}</p>
+        <p class="src phase-in-explain">{{ pin.realized_yoy.message }}</p>
         {% endif %}
+
         <p class="src">{{ pin.footer }}</p>
       </div>
     </section>

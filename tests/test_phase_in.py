@@ -1,7 +1,12 @@
 """Phase-In Note + phase-in package (items 1-3). Every number is a subtraction of two
 published roll values or a published prior-year value — no projection, no ÷5, no schedule.
 """
-from screener.serialize import _compact_dollars, _phase_in_bucket, _phase_in_note
+from screener.serialize import (
+    _compact_dollars,
+    _phase_in_bucket,
+    _phase_in_note,
+    _transitional_series_points,
+)
 
 
 class _Phase:
@@ -11,8 +16,8 @@ class _Phase:
         self.n = n
 
 
-def _subj(act=200_000_000, trn=190_000_000, py=185_000_000):
-    return {"curacttot": act, "curtrntot": trn, "pytrntot": py}
+def _subj(act=200_000_000, trn=190_000_000, py=185_000_000, roll_year="2027"):
+    return {"curacttot": act, "curtrntot": trn, "pytrntot": py, "roll_year": roll_year}
 
 
 # --- mechanism branches (existing behaviour) ------------------------------------------
@@ -41,10 +46,11 @@ def test_fixed_descriptive_footer():
         "Descriptive only — not a verdict on the assessment."
 
 
-# --- item 1: subject pending change = curacttot - curtrntot (sign-aware) --------------
+# --- item 1/3: subject pending change = curacttot - curtrntot (labeled, sign-aware) ---
 def test_pending_increase_positive_gap():
     # act 200M, trn 190M -> +10M pending increase (ramping up)
     note = _phase_in_note(_Phase(0.05), _subj(act=200_000_000, trn=190_000_000))
+    assert note["pending"]["prefix"] == "Transitional Value vs. Assessed Value Gap"
     assert note["pending"]["display"] == "$10.0M"
     assert "increase still pending" in note["pending"]["label"]
     assert "not all at once" in note["pending"]["caveat"]
@@ -60,21 +66,45 @@ def test_pending_negative_when_ramping_down():
 def test_pending_na_when_missing():
     note = _phase_in_note(_Phase(None), _subj(act=None, trn=None))
     assert note["pending"]["display"] == "n/a"
+    assert note["pending"]["prefix"] == "Transitional Value vs. Assessed Value Gap"
 
 
-# --- item 2: realized YoY = curtrntot - pytrntot --------------------------------------
-def test_realized_yoy_available():
-    note = _phase_in_note(_Phase(0.0), _subj(trn=140_008_278, py=132_052_680))
+# --- item 2/4: realized transitional series, labeled by actual roll year --------------
+def test_realized_series_single_labeled_year_today():
+    # roll_year 2027, cur 140,008,278 vs py 132,052,680 -> +7,955,598 -> one labeled change
+    note = _phase_in_note(_Phase(0.0), _subj(trn=140_008_278, py=132_052_680, roll_year="2027"))
     assert note["realized_yoy"]["available"] is True
-    assert note["realized_yoy"]["dollars"] == "$8.0M"      # +7,955,598 -> $8.0M
-    assert note["realized_yoy"]["pct"] == "+6.02%"
+    assert note["realized_yoy"]["series"] == "2027 = $8.0M (+6.02%)"
+    assert note["realized_yoy"]["year_labels"] == [2027]   # exactly ONE year, not fabricated
     assert "not a forecast" in note["realized_yoy"]["framing"]
 
 
-def test_realized_yoy_unavailable_graceful():
+def test_realized_series_year_label_tracks_roll_year():
+    # the label must come from roll_year, not be hardcoded
+    note = _phase_in_note(_Phase(0.0), _subj(trn=110, py=100, roll_year="2030"))
+    assert note["realized_yoy"]["year_labels"] == [2030]
+    assert note["realized_yoy"]["series"].startswith("2030 = ")
+
+
+def test_realized_series_no_fabricated_years_when_one_point():
+    # only current transitional present (no prior) -> no change renderable
     note = _phase_in_note(_Phase(0.0), _subj(py=None))
     assert note["realized_yoy"]["available"] is False
     assert "prior-year transitional value not available" in note["realized_yoy"]["message"]
+
+
+def test_realized_series_unavailable_when_no_roll_year():
+    note = _phase_in_note(_Phase(0.0), _subj(roll_year=None))
+    assert note["realized_yoy"]["available"] is False
+
+
+def test_series_points_sorted_and_labeled_by_year():
+    # the single source of truth for which years exist: today exactly two published points,
+    # oldest->newest, labeled cur=roll_year and prior=roll_year-1.
+    pts = _transitional_series_points(_subj(trn=140, py=132, roll_year="2027"))
+    assert pts == [(2026, 132), (2027, 140)]
+    # generic loop would yield N-1 labeled changes for N points (extends when rolls load)
+    assert len(pts) - 1 == 1
 
 
 # --- item 3: comp Phase-In Gap bucket -------------------------------------------------
