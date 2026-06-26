@@ -51,6 +51,8 @@ class VarianceRow(CitedRow):
     distance_miles: float
     curmkttot: float | None
     curtxbtot: float | None
+    curacttot: float | None              # actual assessed (for the comp Phase-In Gap column)
+    curtrntot: float | None              # transitional assessed
     assessed_pct_diff: float | None      # (comp - subject) / subject EMV, %
     emv_psf_pct_diff: float | None       # (comp - subject) EMV-per-gross-SF, %  (sort key)
     sf: float | None
@@ -138,6 +140,8 @@ def _to_variance_row(comp: CompRow, subj: dict) -> VarianceRow:
         distance_miles=comp.distance_miles,
         curmkttot=comp.curmkttot,
         curtxbtot=comp.curtxbtot,
+        curacttot=comp.curacttot,
+        curtrntot=comp.curtrntot,
         assessed_pct_diff=assessed_pct,
         emv_psf_pct_diff=emv_psf_pct,
         sf=comp.sf,

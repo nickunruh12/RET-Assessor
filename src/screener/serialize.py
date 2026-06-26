@@ -52,17 +52,48 @@ CONTEXT = {
 #    auto-widen. The slider handle rests at RADIUS_REST.
 RADIUS_MIN, RADIUS_MAX, RADIUS_REST = 0.1, 2.0, 0.5
 
-# Gap magnitude below this reads as "effectively fully phased in".
+# Gap magnitude below this (as a fraction of actual assessed) reads as "fully phased in".
 PHASE_IN_ZERO_EPS = 0.005
+
+# Item 4 — descriptive caveat by the Tax Bill chart. No calculation, no verdict.
+TAX_BILL_CAVEAT = ("Tax bills reflect current transitional (phased-in) values; buildings "
+                   "mid-phase-in may show temporarily lower bills than their fully-phased level.")
 
 
 def _f(x, nd=2):
     return None if x is None else round(float(x), nd)
 
 
-def _phase_in_note(phase) -> dict:
-    """Phase-In Note: readable variable names + a SIGN-dependent MECHANISM sentence
-    (not a verdict). Raw column names stay in the Provenance footer only."""
+def _compact_dollars(x):
+    """Sign-aware compact dollar figure for phase-in gaps: '$13.2M', '-$9.8M', '$450k'.
+    n/a when missing — never zeroed."""
+    if x is None:
+        return "n/a"
+    sign, a = ("-" if x < 0 else ""), abs(x)
+    if a >= 1e6:
+        return f"{sign}${a / 1e6:,.1f}M"
+    if a >= 1e3:
+        return f"{sign}${a / 1e3:,.0f}k"
+    return f"{sign}${a:,.0f}"
+
+
+def _phase_in_bucket(curacttot, curtrntot) -> str | None:
+    """Comp Phase-In Gap cell: '$1.2M (Ramping Up)' etc. ONLY a subtraction of two
+    published roll values + a sign bucket. None -> 'n/a' (never zeroed). Threshold:
+    |gap| within 0.5% of actual assessed = Fully Phased."""
+    if curacttot is None or curtrntot is None or not curacttot:
+        return None
+    gap = curacttot - curtrntot
+    frac = gap / curacttot
+    bucket = ("Ramping Up" if frac > PHASE_IN_ZERO_EPS
+              else "Ramping Down" if frac < -PHASE_IN_ZERO_EPS else "Fully Phased")
+    return f"{_compact_dollars(gap)} ({bucket})"
+
+
+def _phase_in_note(phase, subject: dict) -> dict:
+    """Phase-In Note: readable mechanism + SUBJECT pending-increase (item 1) + realized
+    YoY transitional change (item 2). Every number is a subtraction of two PUBLISHED roll
+    values or a published prior-year value — no projection, no schedule, never ÷5."""
     v = phase.subject_value
     if v is None:
         mechanism = "The phase-in gap is unavailable for this parcel."
@@ -76,6 +107,44 @@ def _phase_in_note(phase) -> dict:
                      "higher than the latest assessment, ramping down over the phase-in period.")
     else:
         mechanism = "A gap near zero means the assessment is effectively fully phased in."
+
+    # Item 1 — SUBJECT pending change = actual assessed − transitional assessed (published).
+    act, trn = subject.get("curacttot"), subject.get("curtrntot")
+    if act is None or trn is None:
+        pending = {"display": "n/a",
+                   "label": "approximate taxable-value increase still pending under phase-in",
+                   "caveat": None}
+    else:
+        gap = act - trn
+        frac = gap / act if act else 0.0
+        if frac > PHASE_IN_ZERO_EPS:
+            label = "approximate taxable-value increase still pending under phase-in"
+            caveat = "This amount phases in over the remaining years, not all at once."
+        elif frac < -PHASE_IN_ZERO_EPS:
+            label = ("amount by which the transitional (taxable) value currently exceeds the "
+                     "actual assessed value (phasing down)")
+            caveat = "This difference phases out over the remaining years, not all at once."
+        else:
+            label = "effectively fully phased in — no material pending change"
+            caveat = None
+        pending = {"display": _compact_dollars(gap), "label": label, "caveat": caveat}
+
+    # Item 2 — REALIZED YoY change in transitional value = current − prior-year (py snapshot).
+    py = subject.get("pytrntot")
+    if trn is None or py is None or not py:
+        realized = {"available": False,
+                    "message": ("prior-year transitional value not available — realized "
+                                "year-over-year change cannot be shown")}
+    else:
+        chg = trn - py
+        realized = {"available": True,
+                    "dollars": _compact_dollars(chg),
+                    "pct": _signed_pct(chg / py * 100),
+                    "framing": ("Realized change in the transitional (taxable) value versus "
+                                "the prior roll year — descriptive history, not a forecast. "
+                                "The pending figure above is the amount still legally "
+                                "committed to phase in.")}
+
     return {
         "title": "Phase-In Note",
         "formula": "(actual assessed value − transitional assessed value) ÷ actual assessed value",
@@ -83,6 +152,8 @@ def _phase_in_note(phase) -> dict:
         "median": _f(phase.median, 2),
         "n": phase.n,
         "mechanism": mechanism,
+        "pending": pending,
+        "realized_yoy": realized,
         "footer": "Descriptive only — not a verdict on the assessment.",
     }
 
@@ -244,6 +315,9 @@ def _variance_row(d, subj: dict, rate: float) -> dict:
         "distance_display": f"{d.distance_miles:.2f}",
         "emv_psf_vs_subject": _delta_psf(emv_psf_abs, d.emv_psf_pct_diff),
         "tax_psf_vs_subject": _delta_psf(tax_psf_abs, tax_psf_pct),
+        # Item 3 — Phase-In Gap (comp curacttot − curtrntot + sign bucket). Displayed
+        # attribute ONLY: never filters/sorts/drops comps. 'n/a' if either value missing.
+        "phase_in_gap_display": _phase_in_bucket(d.curacttot, d.curtrntot) or "n/a",
         # raw values + provenance still travel per row (not rendered in the table cells)
         "stories": d.stories, "comp_sf": d.sf,
         "sf_abs_delta": sf_abs, "sf_pct_diff": d.sf_pct_diff,
@@ -361,6 +435,8 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         if key == "mv_per_gross_sf":
             extra["sf_source_label"] = _SF_SOURCE_LABEL.get(cs.subject.get("sf_source"),
                                                             "based on gross building area")
+        if key == "tax_bill":
+            extra["caveat"] = TAX_BILL_CAVEAT          # item 4
         signals.append(_signal_view(stats.signals[key], dists[key], extra))
 
     phase = stats.signals["phase_in_gap"]
@@ -383,7 +459,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         },
         "signals": signals,
         "cross_borough_note": _cross_borough_note(cs, juris),
-        "phase_in_note": _phase_in_note(phase),
+        "phase_in_note": _phase_in_note(phase, cs.subject),
         "variance": {
             "subject_sf": cs.subject.get("sf"),
             "subject_emv": cs.subject.get("curmkttot"),

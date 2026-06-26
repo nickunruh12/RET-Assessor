@@ -54,9 +54,9 @@ dl dt { color: var(--muted); }
 /* Shared comp table — fixed layout so all columns fit with NO horizontal scroll;
    headers + cells wrap and are centered. Neutral only. */
 .table-wrap { margin: .3rem 0 1.2rem; border: 1px solid var(--line); border-radius: 6px; }
-.comp-table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: .68rem; }
+.comp-table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: .63rem; }
 .comp-table th, .comp-table td {
-  border-bottom: 1px solid var(--line); padding: .28rem .2rem;
+  border-bottom: 1px solid var(--line); padding: .26rem .16rem;
   text-align: center; vertical-align: top; white-space: normal; word-break: break-word;
 }
 .comp-table th { color: var(--muted); font-weight: 600; background: var(--panel); }

@@ -202,7 +202,8 @@ def load_to_duckdb(manifest: dict, db_path: Path | None = None) -> dict:
                 curmkttot        DOUBLE,            -- market value: distribution basis
                 curtxbtot        DOUBLE,            -- transitional taxable: tax-bill SIGNAL
                 curtrntot        DOUBLE,            -- transitional assessed: phase-in gap
-                curacttot        DOUBLE             -- actual assessed (0.45 x market)
+                curacttot        DOUBLE,            -- actual assessed (0.45 x market)
+                pytrntot         DOUBLE             -- PRIOR-year transitional assessed (py snapshot, published)
             )
             """
         )
@@ -226,7 +227,8 @@ def load_to_duckdb(manifest: dict, db_path: Path | None = None) -> dict:
                 TRY_CAST({config.VALUE_FIELD_MARKET} AS DOUBLE)    AS curmkttot,
                 TRY_CAST({config.VALUE_FIELD_TAXABLE} AS DOUBLE)   AS curtxbtot,
                 TRY_CAST({config.VALUE_FIELD_TRANSITIONAL} AS DOUBLE) AS curtrntot,
-                TRY_CAST({config.VALUE_FIELD_ACTUAL} AS DOUBLE)    AS curacttot
+                TRY_CAST({config.VALUE_FIELD_ACTUAL} AS DOUBLE)    AS curacttot,
+                TRY_CAST(pytrntot AS DOUBLE)                       AS pytrntot
             FROM raw_roll
             WHERE {config.COL_BBL} IS NOT NULL AND {config.COL_BBL} != ''
             QUALIFY ROW_NUMBER() OVER (

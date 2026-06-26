@@ -195,6 +195,7 @@ def select_comps(
         "curtxbtot": subj.get("curtxbtot"),
         "curtrntot": subj.get("curtrntot"),
         "curacttot": subj.get("curacttot"),
+        "pytrntot": subj.get("pytrntot"),   # prior-year transitional (py snapshot) for realized YoY
     }
 
     # --- scope: v1 activated product is office only ---

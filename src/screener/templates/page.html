@@ -81,6 +81,7 @@
           <th>Comp SF</th><th>Comp SF vs Subject</th><th>Year Built</th>
           <th>Exact Building-Class Match?</th><th>Comp Distance From Subject (mi)</th>
           <th>Comp Est. Market Value PSF vs Subject</th><th>Comp Tax PSF vs Subject</th>
+          <th>Phase-In Gap</th>
         </tr></thead>
         <tbody>
         {% for r in rows %}
@@ -95,6 +96,7 @@
             <td>{{ r.distance_display }}</td>
             <td>{{ r.emv_psf_vs_subject }}</td>
             <td>{{ r.tax_psf_vs_subject }}</td>
+            <td>{{ r.phase_in_gap_display }}</td>
           </tr>
         {% endfor %}
         </tbody>
@@ -155,16 +157,27 @@
             range {{ sig.minimum_display }}–{{ sig.maximum_display }}
           </p>
           {% if sig.sf_source_label %}<p class="src sf-src">{{ sig.sf_source_label }}</p>{% endif %}
+          {% if sig.caveat %}<p class="src signal-caveat">{{ sig.caveat }}</p>{% endif %}
         {% endif %}
       </div>
       {% endfor %}
       <div class="phase-in-note">
-        <h3>{{ result.phase_in_note.title }}</h3>
-        <p class="src">Phase-in gap = {{ result.phase_in_note.formula }}</p>
-        <p>subject: {{ result.phase_in_note.subject_value }} · comp median: {{ result.phase_in_note.median }}
-          (descriptive; n={{ result.phase_in_note.n }})</p>
-        <p>{{ result.phase_in_note.mechanism }}</p>
-        <p class="src">{{ result.phase_in_note.footer }}</p>
+        {% set pin = result.phase_in_note %}
+        <h3>{{ pin.title }}</h3>
+        <p class="src">Phase-in gap = {{ pin.formula }}</p>
+        <p>subject: {{ pin.subject_value }} · comp median: {{ pin.median }}
+          (descriptive; n={{ pin.n }})</p>
+        <p>{{ pin.mechanism }}</p>
+        <p class="phase-in-pending"><strong>{{ pin.pending.display }}</strong> — {{ pin.pending.label }}.
+          {% if pin.pending.caveat %}<span class="src">{{ pin.pending.caveat }}</span>{% endif %}</p>
+        {% if pin.realized_yoy.available %}
+        <p class="phase-in-yoy">Realized pace: transitional value changed
+          <strong>{{ pin.realized_yoy.dollars }} ({{ pin.realized_yoy.pct }})</strong> versus the prior roll year.
+          <span class="src">{{ pin.realized_yoy.framing }}</span></p>
+        {% else %}
+        <p class="phase-in-yoy src">{{ pin.realized_yoy.message }}</p>
+        {% endif %}
+        <p class="src">{{ pin.footer }}</p>
       </div>
     </section>
 
