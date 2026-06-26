@@ -108,20 +108,9 @@ def _phase_in_note(phase, subject: dict) -> dict:
     """Phase-In Note: readable mechanism + SUBJECT pending-increase (item 1/3) + realized
     transitional change as a LABELED year-by-year series (item 2/4). Every number is a
     subtraction of two PUBLISHED roll values or a published prior-year value — no
-    projection, no schedule, never ÷5."""
+    projection, no schedule, never ÷5. The sign-aware meaning (ramping up / phasing down /
+    fully phased) is carried by the labeled pending line below — not explained twice."""
     v = phase.subject_value
-    if v is None:
-        mechanism = "The phase-in gap is unavailable for this parcel."
-    elif v > PHASE_IN_ZERO_EPS:
-        mechanism = ("A positive gap means the transitional (taxable) value is still below "
-                     "the actual assessed value, so the taxable value is ramping up toward a "
-                     "higher assessment over the phase-in period.")
-    elif v < -PHASE_IN_ZERO_EPS:
-        mechanism = ("A negative gap means the transitional (taxable) value currently sits "
-                     "above the actual assessed value, so this year's tax is based on a value "
-                     "higher than the latest assessment, ramping down over the phase-in period.")
-    else:
-        mechanism = "A gap near zero means the assessment is effectively fully phased in."
 
     # Item 1/3 — SUBJECT pending change = actual assessed − transitional assessed (published),
     # rendered with the "Transitional Value vs. Assessed Value Gap =" label prefix; the
@@ -175,7 +164,6 @@ def _phase_in_note(phase, subject: dict) -> dict:
         "subject_value": _f(v, 2),
         "median": _f(phase.median, 2),
         "n": phase.n,
-        "mechanism": mechanism,
         "pending": pending,
         "realized_yoy": realized,
         "footer": "Descriptive only — not a verdict on the assessment.",

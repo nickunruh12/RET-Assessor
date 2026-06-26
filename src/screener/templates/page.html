@@ -164,11 +164,9 @@
       <div class="phase-in-note">
         {% set pin = result.phase_in_note %}
         <h3>{{ pin.title }}</h3>
-        <p class="src">Phase-in gap = {{ pin.formula }}</p>
-        <p>subject: {{ pin.subject_value }} · comp median: {{ pin.median }}
-          (descriptive; n={{ pin.n }})</p>
-        <p>{{ pin.mechanism }}</p>
 
+        <!-- Lead with the concrete figures; the sign-aware labeled line carries the
+             ramping-up / phasing-down / fully-phased meaning (no duplicate mechanism). -->
         <p class="phase-in-pending">{{ pin.pending.prefix }} =
           <strong>{{ pin.pending.display }}</strong> — {{ pin.pending.label }}.</p>
         {% if pin.pending.caveat %}<p class="src phase-in-explain">{{ pin.pending.caveat }}</p>{% endif %}
@@ -179,6 +177,10 @@
         {% else %}
         <p class="src phase-in-explain">{{ pin.realized_yoy.message }}</p>
         {% endif %}
+
+        <!-- Abstract ratio demoted to supporting detail, lower and smaller. -->
+        <p class="src phase-in-ratio">subject: {{ pin.subject_value }} · comp median: {{ pin.median }}
+          (descriptive; n={{ pin.n }})<br>Phase-in gap = {{ pin.formula }}</p>
 
         <p class="src">{{ pin.footer }}</p>
       </div>

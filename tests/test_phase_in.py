@@ -20,20 +20,18 @@ def _subj(act=200_000_000, trn=190_000_000, py=185_000_000, roll_year="2027"):
     return {"curacttot": act, "curtrntot": trn, "pytrntot": py, "roll_year": roll_year}
 
 
-# --- mechanism branches (existing behaviour) ------------------------------------------
-def test_positive_gap_branch():
-    note = _phase_in_note(_Phase(0.05), _subj())
-    assert "positive gap" in note["mechanism"] and "ramping up" in note["mechanism"]
+# --- sign-aware meaning now lives ONLY on the labeled pending line (no duplicate) -----
+def test_no_standalone_mechanism_field():
+    # the older standalone sign-explanation sentence is removed; meaning is on the
+    # labeled pending line instead.
+    assert "mechanism" not in _phase_in_note(_Phase(-0.05), _subj())
 
 
-def test_negative_gap_branch():
-    note = _phase_in_note(_Phase(-0.05), _subj())
-    assert "negative gap" in note["mechanism"] and "ramping down" in note["mechanism"]
-
-
-def test_near_zero_branch():
-    note = _phase_in_note(_Phase(0.0), _subj())
-    assert "fully phased in" in note["mechanism"]
+def test_pending_fully_phased_state():
+    # gap within threshold -> fully-phased wording, no caveat
+    note = _phase_in_note(_Phase(0.0), _subj(act=200_000_000, trn=200_000_000))
+    assert "fully phased in" in note["pending"]["label"]
+    assert note["pending"]["caveat"] is None
 
 
 def test_readable_formula_no_raw_columns():
@@ -140,7 +138,7 @@ def test_no_judgment_words():
                    (-0.05, _subj(188_421_300, 198_228_100)),
                    (0.0, _subj(200_000_000, 200_000_000))]:
         note = _phase_in_note(_Phase(v), sub)
-        blob = " ".join([note["mechanism"], note["pending"]["label"],
+        blob = " ".join([note["pending"]["label"],
                          note["realized_yoy"].get("framing", ""),
                          note["pending"].get("caveat") or ""]).lower()
         for banned in ("over-taxation", "over-assessed", "too high", "too low", "drag", "should"):

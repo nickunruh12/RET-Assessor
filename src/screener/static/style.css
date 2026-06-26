@@ -80,6 +80,9 @@ dl dt { color: var(--muted); }
 .phase-in-note { margin: 1rem 0 .4rem; padding: .5rem .7rem; background: var(--panel); border-left: 3px solid var(--line); }
 .phase-in-note h3 { margin: 0 0 .35rem; }
 .phase-in-note p { margin: .25rem 0; font-size: .88rem; }
+.phase-in-note .phase-in-pending strong { font-size: 1.02rem; }
+/* abstract ratio demoted: smaller and set off below the concrete figures */
+.phase-in-note .phase-in-ratio { margin-top: .55rem; font-size: .72rem; }
 
 /* Radius control — neutral. AUTO is a separate affordance; OVERRIDE is the slider. */
 .radius-control { font-size: .82rem; color: var(--muted); margin: .5rem 0 .2rem;
