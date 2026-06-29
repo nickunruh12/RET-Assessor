@@ -108,3 +108,28 @@ def test_full_comp_set_toggle_shows_count_and_styled(client):
     html = client.get("/screen", params={"bbl": "1013000001"}).text
     assert f"View Full Comp Set ({n} Comps)" in html          # live count matches comp set
     assert "full-set-toggle" in html                          # bold/underline styling hook
+
+
+# --- static-asset cache-busting (so edited app.js/style.css actually reach the browser) --
+def test_static_assets_are_cache_busted():
+    from screener.api import ASSET_VERSION
+    assert ASSET_VERSION and len(ASSET_VERSION) >= 8
+    from fastapi.testclient import TestClient
+
+    from screener.api import app
+    for path in ("/", "/screen?bbl=1013000001"):
+        html = TestClient(app).get(path).text
+        assert f"/static/app.js?v={ASSET_VERSION}" in html        # versioned, not bare
+        assert f"/static/style.css?v={ASSET_VERSION}" in html
+        assert 'src="/static/app.js"' not in html                # no un-versioned bare ref
+
+
+def test_asset_version_tracks_content():
+    # the version is a content hash, so a content change yields a different version
+    import hashlib
+
+    from screener.api import _HERE, ASSET_VERSION
+    h = hashlib.sha1()
+    for name in ("app.js", "style.css"):
+        h.update((_HERE / "static" / name).read_bytes())
+    assert ASSET_VERSION == h.hexdigest()[:10]

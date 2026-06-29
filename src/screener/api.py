@@ -36,6 +36,24 @@ app = FastAPI(title="NYC Class-4 Assessment Screen")
 app.mount("/static", StaticFiles(directory=_HERE / "static"), name="static")
 templates = Jinja2Templates(directory=_HERE / "templates")
 
+
+def _asset_version() -> str:
+    """Short content hash of the static assets, appended to their URLs as ?v=... so a
+    browser ALWAYS fetches the current app.js / style.css after a change instead of serving
+    a stale cached copy (the bug behind 'edited the chart but the browser shows the old one').
+    Computed once at import from file contents."""
+    import hashlib
+
+    h = hashlib.sha1()
+    for name in ("app.js", "style.css"):
+        p = _HERE / "static" / name
+        if p.exists():
+            h.update(p.read_bytes())
+    return h.hexdigest()[:10]
+
+
+ASSET_VERSION = _asset_version()
+
 CRITERIA = CompCriteria.load()
 JURIS = get_jurisdiction(CRITERIA.jurisdiction)
 
@@ -131,6 +149,7 @@ def _build_form(con, effective_bbl, typed: dict) -> dict:
 def home(request: Request):
     return templates.TemplateResponse(request, "page.html", {
         "result": None, "result_json": "null", "disclaimer": DISCLAIMER, "form": {},
+        "asset_version": ASSET_VERSION,
     })
 
 
@@ -145,6 +164,7 @@ def screen(request: Request, bbl: str = "", house_number: str = "", street: str 
     return templates.TemplateResponse(request, "page.html", {
         "result": result, "disclaimer": DISCLAIMER, "form": form,
         "result_json": json.dumps(result, default=str) if result else "null",
+        "asset_version": ASSET_VERSION,
     })
 
 
