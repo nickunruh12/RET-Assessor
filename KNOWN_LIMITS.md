@@ -89,11 +89,19 @@ Allowed: "This comp is assessed 20% higher and differs on: built 2015 vs 1980, c
 The Tax Bill region marks parcels (subject banner + comp tag) carrying a **current ICAP**
 abatement, sourced from DOF Property Abatement Detail (`rgyu-ii48`, current snapshot =
 max `extractdt`; `parid`/`tccode` are space-padded and trimmed). **Scope is ICAP only** for
-v1 — it is ~89% of the office abatement signal and the clean building-level case; CERP
-(lease-level), SOLAR/J51/CONDO/COOP (residential or lease noise) are intentionally dropped.
-The flag is **disclosure only**: the tool always plots the full statutory tax bill
+v1 — it is ~89% of the office abatement signal and the clean building-level case. The flag
+is **disclosure only**: the tool always plots the full statutory tax bill
 (`curtxbtot × rate`) for the subject and every comp, abated or not, and the flag never
 filters, sorts, or drops a comp.
+
+- **Why CERP/CRP is dropped from v1 (it is NOT tax-neutral).** CERP/CRP is a **real
+  property tax abatement that reduces a building's tax** — it is not excluded because it
+  "doesn't affect taxes." It is dropped because it is **lease-level**: the benefit is tied
+  to specific commercial *tenant leases*, not to the building, so it does not map cleanly to
+  a building-level abatement flag (one BBL can carry many per-lease CERP rows). It is also a
+  **small share of the office abatement signal — ~35 office BBLs vs ICAP's ~441 (roughly
+  7%)**. SOLAR/J51/CONDO/COOP are dropped as residential or lease-level programs that
+  likewise do not fit the building-level office flag.
 
 - **[KNOWN GAP] PILOT is not detectable from available data.** Major office properties on
   public land (Hudson Yards, World Trade Center, Battery Park City) pay a negotiated PILOT

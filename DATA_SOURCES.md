@@ -17,6 +17,8 @@ Dataset IDs, vintages, retrieval dates, access methods, source tier list. Update
 
 **SODA access note.** Get a free Socrata app token (`X-App-Token` header or `$$app_token=`) to avoid throttling on the multi-million-row roll.
 
+**Vintage drift note.** The three data vintages refresh on **independent cadences** and are not bumped by a single action: the assessment roll (`8y4t-faws`) annually (by fiscal year), PLUTO (`64uk-42ks`) per release, and the ICAP abatement snapshot (`rgyu-ii48`) quarterly (re-run `python -m screener.abatements` to bump it). All three vintages are stamped in the provenance footer, so any drift between them is visible.
+
 ## Context and validation — NYC
 
 - **ACRIS + DOF Rolling Sales** — sale prices. In v1 the purchase-vs-assessed gap runs on the price the *user* supplies; these are the validation/auto-fill source, not a hard dependency. Auto-pulling sale history is a later enhancement.

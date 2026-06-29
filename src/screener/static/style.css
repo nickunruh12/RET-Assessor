@@ -24,7 +24,7 @@ h3 { font-size: .95rem; margin: 1rem 0 .35rem; }
 .lookup { margin: .4rem 0; }
 .lookup fieldset { border: 1px solid var(--line); border-radius: 6px; padding: .5rem .7rem; }
 .lookup legend { font-size: .8rem; color: var(--muted); padding: 0 .3rem; }
-.lookup input { padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 4px; margin: .15rem .25rem .15rem 0; }
+.lookup input, .lookup select { padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 4px; margin: .15rem .25rem .15rem 0; }
 .lookup button, .rung3 button { padding: .35rem .8rem; border: 1px solid var(--muted); background: var(--panel); border-radius: 4px; cursor: pointer; }
 
 dl { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; margin: .4rem 0; }
@@ -64,6 +64,8 @@ dl dt { color: var(--muted); }
 .variance th, .variance td { border-bottom: 1px solid var(--line); padding: .3rem .4rem; text-align: left; vertical-align: top; }
 .variance th { color: var(--muted); font-weight: 600; }
 .full-set summary { cursor: pointer; color: var(--muted); font-size: .85rem; }
+/* stand out from body text per the comp-count toggle request */
+.full-set summary.full-set-toggle { color: var(--ink); font-weight: 700; text-decoration: underline; font-size: .9rem; }
 /* Shared comp table — fixed layout so all columns fit with NO horizontal scroll;
    headers + cells wrap and are centered. Neutral only. */
 .table-wrap { margin: .3rem 0 1.2rem; border: 1px solid var(--line); border-radius: 6px; }

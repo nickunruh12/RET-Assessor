@@ -34,10 +34,10 @@
   "location_mode": "distance",
   "_location_mode_doc": "Comps ranked/collected by great-circle distance from the subject's PLUTO latitude/longitude (DECISIONS 2026-06-19). ZIP is NOT a match criterion.",
 
-  "radius_start_miles": 0.5,
+  "radius_start_miles": 0.25,
   "radius_cap_miles": 1.0,
   "radius_step_miles": 0.1,
-  "_radius_doc": "Radius-first with automatic expansion (DECISIONS 2026-06-19). Collect ALL qualifying comps within radius_start_miles; if fewer than min_comp_count, expand by radius_step_miles toward radius_cap_miles; if still short at the cap, REFUSE. The actual radius used is reported on every result. Radii tunable, logged for Phase 6.",
+  "_radius_doc": "Radius-first with automatic expansion (DECISIONS 2026-06-19; start lowered 0.5->0.25 citywide 2026-06-29). Named ladder (start, step, cap) so a future metro can set its own. Collect ALL qualifying comps within radius_start_miles; if fewer than min_comp_count, expand by radius_step_miles toward radius_cap_miles; if still short at the cap, REFUSE. The actual radius used is reported on every result. This band governs the AUTO ladder ONLY — the manual OVERRIDE slider keeps its own [0.1, 2.0] range and fixes the radius with no auto-expansion. Radii tunable.",
 
   "zip_prefilter": false,
   "_zip_prefilter_doc": "Optional ZIP pre-filter, OFF by default. When true, candidates are additionally restricted to the subject's ZIP before distance ranking. Demoted from a match criterion to an optional pre-filter only.",

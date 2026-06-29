@@ -39,7 +39,13 @@
         <legend>Look up by address</legend>
         <input type="text" name="house_number" placeholder="house no." value="{{ form.house_number or '' }}">
         <input type="text" name="street" placeholder="street" value="{{ form.street or '' }}">
-        <input type="text" name="borough" placeholder="borough" value="{{ form.borough or '' }}">
+        <select name="borough" aria-label="borough">
+          {% set sel = form.borough or '' %}
+          <option value=""{% if not sel %} selected{% endif %}>borough (optional)</option>
+          {% for b in ["Manhattan", "Bronx", "Brooklyn", "Queens", "Staten Island"] %}
+          <option value="{{ b }}"{% if sel == b %} selected{% endif %}>{{ b }}</option>
+          {% endfor %}
+        </select>
         <input type="text" name="zip" placeholder="or ZIP" value="{{ form.zip or '' }}">
         <button type="submit">Screen address</button>
       </fieldset>
@@ -259,7 +265,7 @@
       </div>
       {% endfor %}
       <details class="full-set">
-        <summary>Full Comp Set ({{ result.variance.all_diffs|length }} Comps)</summary>
+        <summary class="full-set-toggle">View Full Comp Set ({{ result.comp_meta.comp_count }} Comps)</summary>
         {{ comp_table(result.variance.all_diffs, result.variance.stories_column) }}
       </details>
     </section>

@@ -113,7 +113,14 @@ def test_screen_html_renders_for_each_state(client):
 # --- Part 1: input persistence (form reflects the screened parcel from the BBL) -------
 def _field(html, name):
     m = re.search(rf'name="{name}"[^>]*value="([^"]*)"', html)
-    return m.group(1) if m else None
+    if m:
+        return m.group(1)
+    # borough is a <select>: read the selected option's value (blank -> "")
+    sel = re.search(rf'name="{name}"[^>]*>(.*?)</select>', html, re.S)
+    if sel:
+        opt = re.search(r'<option value="([^"]*)"[^>]*\bselected\b', sel.group(1))
+        return opt.group(1) if opt else ""
+    return None
 
 
 def test_form_populates_address_for_bbl_entered(client):

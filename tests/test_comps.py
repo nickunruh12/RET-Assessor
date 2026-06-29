@@ -32,7 +32,7 @@ def test_config_loads_office_distance_model():
     c = CompCriteria.load()
     assert c.sf_band == 0.50
     assert c.activated_products == ["O"]
-    assert c.radius_start_miles == 0.5 and c.radius_cap_miles == 1.0
+    assert c.radius_start_miles == 0.25 and c.radius_cap_miles == 1.0   # start lowered 0.5->0.25
     assert c.office_buckets["O5"] == c.office_buckets["O6"]      # grouped
     assert c.office_buckets["O7"] == c.office_buckets["O9"]      # grouped
     assert c.office_buckets["O1"] != c.office_buckets["O2"]      # exact

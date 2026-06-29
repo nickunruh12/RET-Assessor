@@ -8,7 +8,7 @@
  *  - Honest axis: framed by the actual data range (min..max), never cropped.
  *  - Labels state facts only: "subject", "median", "comps".
  */
-const INK = "#1c1c1c", COMP = "#b4b4b4", SUBJECT_RING = "#1c1c1c", MEDIAN = "#6b6b6b";
+const INK = "#1c1c1c", COMP = "#b4b4b4", SUBJECT_RING = "#1c1c1c", MEDIAN = "#6b6b6b", MEAN = "#404040";
 
 function dataEl() {
   const el = document.getElementById("screen-data");
@@ -22,7 +22,7 @@ function jitter(i) { return (((i * 2654435761) % 1000) / 1000 - 0.5) * 0.8; }
 function stripPlot(canvas, sig) {
   const comps = sig.distribution || [];
   if (!comps.length) return;
-  const all = comps.concat([sig.subject_value, sig.median]).filter(v => v != null);
+  const all = comps.concat([sig.subject_value, sig.median, sig.mean]).filter(v => v != null);
   let lo = Math.min(...all), hi = Math.max(...all);
   const pad = (hi - lo) * 0.02 || Math.abs(hi) * 0.02 || 1;  // symmetric, honest
 
@@ -34,6 +34,10 @@ function stripPlot(canvas, sig) {
           backgroundColor: COMP, pointRadius: 4, pointHoverRadius: 5 },
         { label: "median", data: [{ x: sig.median, y: 0 }],
           backgroundColor: MEDIAN, pointStyle: "rectRot", pointRadius: 7, pointBorderColor: MEDIAN },
+        // mean — distinct triangle at the TRUE mean (never nudged); may sit near the
+        // median diamond on symmetric pools, which is expected and correct.
+        { label: "mean", data: [{ x: sig.mean, y: 0 }],
+          backgroundColor: MEAN, pointStyle: "triangle", pointRadius: 7, pointBorderColor: MEAN },
         { label: "subject", data: [{ x: sig.subject_value, y: 0 }],
           backgroundColor: "#ffffff", borderColor: SUBJECT_RING, pointBorderWidth: 2, pointRadius: 8 },
       ],
