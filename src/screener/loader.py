@@ -34,6 +34,12 @@ RAW_ROLL_DIR = config.RAW_DIR / "roll"
 PAGE_SIZE = 50_000  # SODA hard max per page
 WHERE = f"{config.COL_TAX_CLASS}='{config.TAX_CLASS}' AND year='{config.ROLL_YEAR}'"
 
+# Canonical per-parcel dedup: highest period wins (period 3 = Final roll over period 1 =
+# Tentative), tie-broken by latest extract then stable columns. This single ordering is the
+# ONLY place the final-period rule lives; the multi-year taxable-series loader reuses it
+# verbatim (partitioned per BBL-year) rather than writing a second, parallel period filter.
+FINAL_PERIOD_ORDER = "period DESC, extracrdt DESC, easement NULLS FIRST, valref NULLS FIRST"
+
 
 # --------------------------------------------------------------------------- #
 # Provenance
@@ -233,7 +239,7 @@ def load_to_duckdb(manifest: dict, db_path: Path | None = None) -> dict:
             WHERE {config.COL_BBL} IS NOT NULL AND {config.COL_BBL} != ''
             QUALIFY ROW_NUMBER() OVER (
                 PARTITION BY {config.COL_BBL}
-                ORDER BY period DESC, extracrdt DESC, easement NULLS FIRST, valref NULLS FIRST
+                ORDER BY {FINAL_PERIOD_ORDER}
             ) = 1
             """,
             [

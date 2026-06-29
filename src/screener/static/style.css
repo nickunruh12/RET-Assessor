@@ -98,6 +98,11 @@ dl dt { color: var(--muted); }
 .phase-in-note .phase-in-pending strong { font-size: 1.02rem; }
 /* abstract ratio demoted: smaller and set off below the concrete figures */
 .phase-in-note .phase-in-ratio { margin-top: .55rem; font-size: .72rem; }
+/* 5-year transitional-taxable series: one line per roll year, gaps muted */
+.taxable-series { list-style: none; margin: .15rem 0 .35rem; padding: 0; font-size: .84rem; }
+.taxable-series li { margin: .1rem 0; }
+.taxable-series .series-pct { color: var(--muted); font-size: .78rem; }
+.taxable-series .series-gap { color: var(--faint); }
 
 /* Radius control — neutral. AUTO is a separate affordance; OVERRIDE is the slider. */
 .radius-control { font-size: .82rem; color: var(--muted); margin: .5rem 0 .2rem;

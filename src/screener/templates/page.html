@@ -215,7 +215,15 @@
         {% if pin.pending.caveat %}<p class="src phase-in-explain">{{ pin.pending.caveat }}</p>{% endif %}
 
         {% if pin.realized_yoy.available %}
-        <p class="phase-in-yoy">Transitional Value Changes: {{ pin.realized_yoy.series }}.</p>
+        <p class="phase-in-yoy">Transitional (Taxable) Value by Roll Year:</p>
+        <ul class="taxable-series">
+          {% for yr in pin.realized_yoy.years %}
+          <li class="series-{{ yr.status }}">{{ yr.year }}: {{ yr.display }}{% if yr.pct_from_prev %}
+            <span class="series-pct">({{ yr.pct_from_prev }} vs prior year)</span>{% endif %}{% if yr.status == "gap" %}
+            <span class="src">no Final-roll class-4 row this year</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+        <p class="src phase-in-explain">{{ pin.realized_yoy.scope_note }}</p>
         <p class="src phase-in-explain">{{ pin.realized_yoy.framing }}</p>
         {% else %}
         <p class="src phase-in-explain">{{ pin.realized_yoy.message }}</p>

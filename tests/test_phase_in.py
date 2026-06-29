@@ -67,42 +67,61 @@ def test_pending_na_when_missing():
     assert note["pending"]["prefix"] == "Transitional Value vs. Assessed Value Gap"
 
 
-# --- item 2/4: realized transitional series, labeled by actual roll year --------------
-def test_realized_series_single_labeled_year_today():
-    # roll_year 2027, cur 140,008,278 vs py 132,052,680 -> +7,955,598 -> one labeled change
-    note = _phase_in_note(_Phase(0.0), _subj(trn=140_008_278, py=132_052_680, roll_year="2027"))
-    assert note["realized_yoy"]["available"] is True
-    assert note["realized_yoy"]["series"] == "2027 = $8.0M (+6.02%)"
-    assert note["realized_yoy"]["year_labels"] == [2027]   # exactly ONE year, not fabricated
-    assert "not a forecast" in note["realized_yoy"]["framing"]
+# --- item 2/4: 5-year transitional-taxable series (gaps/exempt/tentative, consec %) -----
+def _pt(year, value, period="3", exempt=False):
+    return {"year": year, "value": value, "period": period, "exempt": exempt}
 
 
-def test_realized_series_year_label_tracks_roll_year():
-    # the label must come from roll_year, not be hardcoded
-    note = _phase_in_note(_Phase(0.0), _subj(trn=110, py=100, roll_year="2030"))
-    assert note["realized_yoy"]["year_labels"] == [2030]
-    assert note["realized_yoy"]["series"].startswith("2030 = ")
+def _subj_series(points, roll_year="2027"):
+    return {"curacttot": 200_000_000, "curtrntot": 190_000_000, "roll_year": roll_year,
+            "taxable_series": points}
 
 
-def test_realized_series_no_fabricated_years_when_one_point():
-    # only current transitional present (no prior) -> no change renderable
-    note = _phase_in_note(_Phase(0.0), _subj(py=None))
+def test_full_five_year_series_with_consecutive_pct():
+    pts = [_pt(2023, 100), _pt(2024, 110), _pt(2025, 99), _pt(2026, 99), _pt(2027, 120)]
+    yrs = _phase_in_note(_Phase(0.0), _subj_series(pts))["realized_yoy"]["years"]
+    assert [y["year"] for y in yrs] == [2023, 2024, 2025, 2026, 2027]
+    assert all(y["status"] == "value" for y in yrs)
+    assert yrs[0]["pct_from_prev"] is None                       # no year before the window start
+    assert yrs[1]["pct_from_prev"] == "+10.00%"                  # 100 -> 110
+    assert yrs[3]["pct_from_prev"] == "0.00%"                    # 99 -> 99 genuine zero, not blank
+
+
+def test_missing_year_renders_as_gap_not_zero():
+    pts = [_pt(2023, 100), _pt(2024, 110), _pt(2026, 130), _pt(2027, 140)]   # 2025 absent
+    yrs = _phase_in_note(_Phase(0.0), _subj_series(pts))["realized_yoy"]["years"]
+    g = next(y for y in yrs if y["year"] == 2025)
+    assert g["status"] == "gap" and g["value"] is None and g["display"] == "—"
+    # the gap breaks the consecutive chain: 2026 has no % (prior year 2025 missing)
+    assert next(y for y in yrs if y["year"] == 2026)["pct_from_prev"] is None
+
+
+def test_exempt_year_is_real_zero_distinct_from_gap():
+    pts = [_pt(2023, 100), _pt(2024, 0, exempt=True), _pt(2025, 90), _pt(2026, 95), _pt(2027, 100)]
+    yrs = _phase_in_note(_Phase(0.0), _subj_series(pts))["realized_yoy"]["years"]
+    ex = next(y for y in yrs if y["year"] == 2024)
+    assert ex["status"] == "exempt" and ex["display"] == "$0 (exempt)" and ex["value"] == 0.0
+
+
+def test_newest_year_tentative_fallback_labeled():
+    pts = [_pt(2023, 100), _pt(2024, 110), _pt(2025, 120), _pt(2026, 130),
+           _pt(2027, 140, period="1")]                          # Final not out -> Tentative
+    yrs = _phase_in_note(_Phase(0.0), _subj_series(pts))["realized_yoy"]["years"]
+    newest = next(y for y in yrs if y["year"] == 2027)
+    assert newest["status"] == "tentative" and "(tentative)" in newest["display"]
+
+
+def test_series_falls_back_to_current_year_without_table():
+    # no taxable_series attached -> single current-year point from curtxbtot, never crashes
+    note = _phase_in_note(_Phase(0.0), {"curacttot": 2, "curtrntot": 1, "roll_year": "2027",
+                                        "curtxbtot": 36_180_249})
+    yrs = note["realized_yoy"]["years"]
+    assert [y["year"] for y in yrs] == [2027] and yrs[0]["pct_from_prev"] is None
+
+
+def test_series_unavailable_when_nothing_known():
+    note = _phase_in_note(_Phase(0.0), {"curacttot": 2, "curtrntot": 1, "roll_year": None})
     assert note["realized_yoy"]["available"] is False
-    assert "prior-year transitional value not available" in note["realized_yoy"]["message"]
-
-
-def test_realized_series_unavailable_when_no_roll_year():
-    note = _phase_in_note(_Phase(0.0), _subj(roll_year=None))
-    assert note["realized_yoy"]["available"] is False
-
-
-def test_series_points_sorted_and_labeled_by_year():
-    # the single source of truth for which years exist: today exactly two published points,
-    # oldest->newest, labeled cur=roll_year and prior=roll_year-1.
-    pts = _transitional_series_points(_subj(trn=140, py=132, roll_year="2027"))
-    assert pts == [(2026, 132), (2027, 140)]
-    # generic loop would yield N-1 labeled changes for N points (extends when rolls load)
-    assert len(pts) - 1 == 1
 
 
 # --- item 3: comp Phase-In Gap bucket -------------------------------------------------

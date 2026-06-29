@@ -23,6 +23,10 @@ ABATEMENT_DATASET = "rgyu-ii48"  # DOF Property Abatement Detail — ICAP disclo
 # --- Scope (LOCKED) ---
 TAX_CLASS = "4"              # commercial only, v1
 ROLL_YEAR = "2027"          # FY2027 final roll; 263,023 class-4 rows
+# Multi-year window for the SUBJECT transitional (taxable) series in the Phase-In Note.
+# All years live inside 8y4t-faws (filter widening, not a new source). Named so a future
+# metro can set its own window; ROLL_YEAR stays the canonical current year for everything else.
+ROLL_YEAR_WINDOW = ["2023", "2024", "2025", "2026", "2027"]
 
 # --- Value fields (LOCKED) ---
 VALUE_FIELD_MARKET = "curmkttot"   # distribution / comparison basis

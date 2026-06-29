@@ -11,6 +11,7 @@ import statistics
 
 import duckdb
 
+from . import config
 from .comps import REFUSAL_MESSAGES, CompSet, refusal_message, select_comps
 from .geocode import RESOLVER_MESSAGES, ResolveResult
 from .jurisdiction import CompCriteria, Jurisdiction
@@ -135,18 +136,55 @@ def _phase_in_bucket(curacttot, curtrntot) -> str | None:
     return f"{_compact_dollars(gap)} ({bucket})"
 
 
-def _transitional_series_points(subject: dict) -> list[tuple[int, float]]:
-    """Published transitional-value points as (year, value), oldest→newest. Years are pulled
-    from the roll (roll_year), never hardcoded. TODAY there are at most two points: the
-    current transitional (curtrntot @ roll_year) and the prior-year snapshot (pytrntot @
-    roll_year−1). This is the ONE place to extend when the two-roll loader adds earlier
-    rolls — the change/series logic downstream is fully generic and needs no edit."""
-    try:
-        ry = int(subject.get("roll_year"))
-    except (TypeError, ValueError):
-        return []
-    raw = {ry: subject.get("curtrntot"), ry - 1: subject.get("pytrntot")}
-    return [(y, v) for y, v in sorted(raw.items()) if v is not None]
+def _transitional_series_points(subject: dict) -> list[dict]:
+    """The subject's transitional-taxable (curtxbtot) series, one entry PER roll year in the
+    window (oldest→newest), each: {year, status, display, value, pct_from_prev}.
+
+      status 'value'     — published Final-roll value for that year
+             'tentative' — newest year's Final not out yet; Tentative (period 1) used, labeled
+             'exempt'    — a real $0 (fully-exempt parcel-year) — distinct from a gap
+             'gap'       — NO Final-roll class-4 row that year (missing; never zero/interpolated)
+
+    Percent change is shown only between two CONSECUTIVE calendar years that both have a usable
+    numeric value (prior > 0) — never spanning a gap, never dividing by zero. Pulls from the
+    subject's pre-attached `taxable_series` (loader-built); falls back to the single current-year
+    point (curtxbtot @ roll_year) if that table is unavailable, so nothing breaks without it."""
+    series = subject.get("taxable_series") or []
+    by_year = {p["year"]: p for p in series}
+    if not by_year:
+        # graceful fallback (series table absent): just the current roll year, if known.
+        try:
+            ry = int(subject.get("roll_year"))
+        except (TypeError, ValueError):
+            return []
+        txb = subject.get("curtxbtot")
+        if txb is None:
+            return []
+        return [{"year": ry, "status": "value", "display": f"${_signal_num(txb, '$')}",
+                 "value": txb, "pct_from_prev": None}]
+
+    out, prev_val = [], None
+    for y in sorted(int(w) for w in config.ROLL_YEAR_WINDOW):
+        p = by_year.get(y)
+        if p is None:
+            out.append({"year": y, "status": "gap", "display": "—", "value": None,
+                        "pct_from_prev": None})
+            prev_val = None                       # a gap breaks the consecutive-year chain
+            continue
+        val = p.get("value")
+        if p.get("exempt") or val == 0:
+            entry = {"year": y, "status": "exempt", "display": "$0 (exempt)", "value": 0.0}
+        else:
+            tentative = str(p.get("period")) != "3"
+            entry = {"year": y, "value": val,
+                     "status": "tentative" if tentative else "value",
+                     "display": f"${_signal_num(val, '$')}" + (" (tentative)" if tentative else "")}
+        cur = entry["value"]
+        entry["pct_from_prev"] = (_signed_pct((cur - prev_val) / prev_val * 100)
+                                  if (prev_val and prev_val > 0 and cur is not None) else None)
+        out.append(entry)
+        prev_val = cur
+    return out
 
 
 def _phase_in_note(phase, subject: dict) -> dict:
@@ -182,26 +220,26 @@ def _phase_in_note(phase, subject: dict) -> dict:
         pending = {"prefix": PENDING_PREFIX, "display": _compact_dollars(gap),
                    "label": label, "caveat": caveat}
 
-    # Item 2/4 — REALIZED transitional changes as a LABELED, year-by-year series. Loops over
-    # every PUBLISHED transitional point (oldest→newest) and renders only years with real
-    # data — no fabricated/zero-filled years. Today two points exist → ONE labeled change
-    # (e.g. "2027 = +$8.0M (+6.02%)"); the loop extends automatically when more rolls load.
-    points = _transitional_series_points(subject)
-    changes = [(y1, v1 - v0, (v1 - v0) / v0 * 100)
-               for (y0, v0), (y1, v1) in zip(points, points[1:]) if v0]
-    if not changes:
+    # Item 2/4 — REALIZED transitional-taxable values as a LABELED, year-by-year SERIES across
+    # the roll-year window (2023–2027). Each year shows the subject's Final-roll curtxbtot with
+    # the consecutive-year percent change; gaps render as gaps, exempt as $0/exempt — never
+    # zeroed or interpolated. Subject-only: the comp comparison stays single-year (see note).
+    years = _transitional_series_points(subject)
+    if not years:
         realized = {"available": False,
-                    "message": ("prior-year transitional value not available — realized "
-                                "year-over-year change cannot be shown")}
+                    "message": ("transitional (taxable) value not available — the year-by-year "
+                                "series cannot be shown")}
     else:
         realized = {"available": True,
-                    "year_labels": [y for y, _, _ in changes],
-                    "series": "; ".join(
-                        f"{y} = {_compact_dollars(d)} ({_signed_pct(p)})" for y, d, p in changes),
-                    "framing": ("Realized change in the transitional (taxable) value versus "
-                                "the prior roll year — descriptive history, not a forecast. "
-                                "The pending figure above is the amount still legally "
-                                "committed to phase in.")}
+                    "years": years,
+                    "year_labels": [y["year"] for y in years if y["status"] != "gap"],
+                    "scope_note": ("Subject's transitional (taxable) value by roll year. The "
+                                   "comp-median comparison below stays single-year; a multi-year "
+                                   "comp median is not shown, since comp-set membership and n "
+                                   "shift from year to year."),
+                    "framing": ("Realized transitional (taxable) value by roll year — descriptive "
+                                "history, not a forecast. The pending figure above is the amount "
+                                "still legally committed to phase in.")}
 
     return {
         "title": "Phase-In Note",

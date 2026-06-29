@@ -30,6 +30,7 @@ from . import config
 from .abatements import icap_bbls
 from .jurisdiction import CompCriteria, Jurisdiction, get_jurisdiction
 from .schema import Citation, CitedRow
+from .taxable_series import taxable_series
 
 # Mean Earth radius in miles (for the haversine great-circle distance).
 EARTH_RADIUS_MI = 3958.7613
@@ -203,6 +204,9 @@ def select_comps(
         # DISCLOSURE ONLY — current ICAP abatement (rgyu-ii48). Never changes any computed
         # figure or the refusal logic; drives the subject banner in the UI.
         "has_icap": bool(icap_bbls(con, [subject_bbl])),
+        # 5-year transitional-taxable series (curtxbtot per roll year 2023–2027, final-period).
+        # Subject-only; comp comparison stays single-year. Empty list -> falls back to YoY.
+        "taxable_series": taxable_series(con, subject_bbl),
     }
 
     # --- scope: v1 activated product is office only ---
