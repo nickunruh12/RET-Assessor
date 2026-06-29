@@ -38,7 +38,9 @@ ENV_VAR = "GEOCLIENT_API_KEY"
 RESOLVER_MESSAGES = {
     "address_not_found": "address not found; no BBL could be resolved for the input provided",
     "not_class_4": "out of scope — this parcel is not tax class 4 (commercial)",
-    "missing_inputs": "houseNumber and street are required, plus one of borough or zip",
+    "missing_inputs": "House number, street, and a borough or ZIP are all required to "
+                      "identify the address. House number and street alone can match "
+                      "multiple boroughs.",
     "geoclient_unauthorized": "Geoclient rejected the subscription key (401). "
                               "Check GEOCLIENT_API_KEY in .env.",
 }

@@ -45,11 +45,18 @@ def _con() -> duckdb.DuckDBPyConnection:
 
 
 def _resolve_input(con, *, bbl, house_number, street, borough, zip_code) -> ResolveResult | None:
-    """Produce a ResolveResult from either a BBL or an address (or None if no input)."""
+    """Produce a ResolveResult from a BBL or an address.
+
+    Returns None ONLY when truly nothing was submitted (no BBL, all address fields blank) —
+    the clean empty state. A PARTIAL address (any address field typed but the
+    house+street+(borough|zip) requirement unmet) is handed to resolve_address, which returns
+    the existing missing_inputs refusal (before any key/network access) instead of a silent
+    None that would blank the page.
+    """
     if bbl:
         return _validate_bbl(con, bbl.strip())
-    if house_number and street and (borough or zip_code):
-        return resolve_address(house_number.strip(), street.strip(),
+    if house_number or street or borough or zip_code:
+        return resolve_address((house_number or "").strip(), (street or "").strip(),
                                borough=(borough or None), zip_code=(zip_code or None), con=con)
     return None
 

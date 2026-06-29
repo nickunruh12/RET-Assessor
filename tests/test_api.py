@@ -27,6 +27,35 @@ def test_home_renders_disclaimer(client):
     assert "not a verdict, not tax advice, not an appraisal" in r.text
 
 
+def test_partial_address_surfaces_missing_inputs_refusal_not_blank(client):
+    # house+street present, borough AND zip blank -> visible refusal (not a blank page),
+    # reusing the existing missing_inputs path/message.
+    j = client.get("/api/screen",
+                   params={"house_number": "100", "street": "BROADWAY"}).json()
+    assert j["status"] == "refused" and j["reason"] == "missing_inputs"
+    assert "borough or ZIP" in j["message"] and "multiple boroughs" in j["message"]
+
+
+def test_partial_address_refusal_renders_and_retains_inputs(client):
+    html = client.get("/screen", params={"house_number": "100", "street": "BROADWAY"}).text
+    assert "refusal" in html                                    # refusal box rendered
+    assert _field(html, "house_number") == "100"                # typed values retained
+    assert _field(html, "street") == "BROADWAY"
+
+
+def test_partial_address_only_one_field_also_refuses(client):
+    # any single address field typed but requirement unmet -> missing_inputs (not blank)
+    j = client.get("/api/screen", params={"borough": "Manhattan"}).json()
+    assert j["status"] == "refused" and j["reason"] == "missing_inputs"
+
+
+def test_truly_empty_submit_is_clean_no_input_not_refusal(client):
+    j = client.get("/api/screen", params={}).json()
+    assert j == {"status": "no_input"}                          # None sentinel preserved
+    html = client.get("/screen", params={}).text
+    assert "refusal" not in html                                # no refusal box on empty
+
+
 def test_dense_subject_full_view(client):
     j = client.get("/api/screen", params={"bbl": "1000090001"}).json()
     assert j["status"] == "ok"
