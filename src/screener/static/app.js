@@ -23,6 +23,45 @@ function jitter(i) { return (((i * 2654435761) % 1000) / 1000 - 0.5) * 0.8; }
 // units baked in; works for any metric/property type.
 const COMPACT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+// External HTML tooltip so the comp/subject first line can show a BOLD address with the BBL
+// un-bolded beside it ("<strong>111 BROADWAY</strong> · BBL 1013010033") — a weight a canvas
+// tooltip can't mix inline. Content is identical to before; mean/median stay value-only.
+let _chartTip = null;
+function htmlTip(ctx, sig) {
+  const { chart, tooltip } = ctx;
+  if (!_chartTip) {
+    _chartTip = document.createElement("div");
+    _chartTip.className = "chart-tip";
+    document.body.appendChild(_chartTip);
+  }
+  const dp = tooltip && tooltip.opacity !== 0 && tooltip.dataPoints && tooltip.dataPoints[0];
+  if (!dp) { _chartTip.style.opacity = 0; return; }
+  const lab = dp.dataset.label, d = dp.raw || {};
+  const val = (d.disp != null) ? d.disp : dp.parsed.x.toLocaleString();
+  let html;
+  if (lab === "mean" || lab === "median") {           // statistics, not buildings — value only
+    html = `${esc(lab)}: ${esc(val)}`;
+  } else {
+    const head = (d.address && d.address !== "n/a")
+      ? `<strong>${esc(d.address)}</strong> · BBL ${esc(d.bbl || "n/a")}`
+      : `BBL ${esc(d.bbl || "n/a")}`;
+    const lines = [head];
+    if (lab !== "subject") lines.push("distance: " + esc(d.distance || "n/a"));
+    lines.push("phase-in gap: " + esc(d.gap || "n/a"));
+    lines.push(esc(sig.label) + ": " + esc(val));
+    html = lines.join("<br>");
+  }
+  _chartTip.innerHTML = html;
+  const r = chart.canvas.getBoundingClientRect();
+  _chartTip.style.opacity = 1;
+  _chartTip.style.left = (r.left + window.scrollX + tooltip.caretX) + "px";
+  _chartTip.style.top = (r.top + window.scrollY + tooltip.caretY) + "px";
+}
+
 function stripPlot(canvas, sig) {
   const comps = sig.distribution || [];
   if (!comps.length) return;
@@ -69,25 +108,7 @@ function stripPlot(canvas, sig) {
         legend: { position: "top",
                   labels: { color: INK, usePointStyle: true, boxWidth: 10, padding: 14,
                             font: { size: 12 } } },
-        tooltip: {
-          usePointStyle: true, padding: 9, titleFont: { size: 12 }, bodyFont: { size: 12 },
-          callbacks: {
-            title: () => "",
-            label: (c) => {
-              const lab = c.dataset.label, d = c.raw || {};
-              const val = (d.disp != null) ? d.disp : c.parsed.x.toLocaleString();
-              // mean / median are statistics, not buildings — value only.
-              if (lab === "mean" || lab === "median") return `${lab}: ${val}`;
-              const lines = [];
-              if (d.address && d.address !== "n/a") lines.push(d.address);
-              lines.push("BBL " + (d.bbl || "n/a"));
-              if (lab !== "subject") lines.push("distance: " + (d.distance || "n/a"));
-              lines.push("phase-in gap: " + (d.gap || "n/a"));
-              lines.push(sig.label + ": " + val);
-              return lines;
-            },
-          },
-        },
+        tooltip: { enabled: false, external: (ctx) => htmlTip(ctx, sig) },
       },
     },
   });

@@ -58,6 +58,11 @@ dl dt { color: var(--muted); }
    each resize grows the canvas, which grows the page, which triggers another
    resize — the chart scrolls/grows then vanishes. The bounded box stops that. */
 .chart-box { position: relative; height: 200px; width: 100%; margin: .2rem 0 .4rem; }
+/* external chart tooltip (lets the first line bold the address with the BBL un-bolded) */
+.chart-tip { position: absolute; pointer-events: none; z-index: 30; background: rgba(28,28,28,.92);
+  color: #fff; font-size: .78rem; line-height: 1.4; padding: .4rem .55rem; border-radius: 5px;
+  white-space: nowrap; transform: translate(-50%, -112%); opacity: 0; transition: opacity .08s; }
+.chart-tip strong { font-weight: 700; }
 .chart-box > canvas.strip { position: absolute; inset: 0; display: block; }
 
 .variance table { border-collapse: collapse; width: 100%; font-size: .82rem; margin: .3rem 0 1rem; }

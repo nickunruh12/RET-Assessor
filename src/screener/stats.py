@@ -146,7 +146,7 @@ def compute_stats(cs: CompSet, criteria: CompCriteria) -> StatsResult:
             "Estimated Market Value According to DOF": "curmkttot",
             "Tax Bill (10.848% Class-4 Rate)": "curtxbtot x 0.10848",
             "Real Estate Taxes (subject)": "curtxbtot x 0.10848",
-            "Market Value Per Gross Building Area": "curmkttot / gross building area",
+            "DOF Market Value Per Gross Building Area": "curmkttot / gross building area",
             "Phase-in gap": "(curacttot - curtrntot) / curacttot",
         },
     }
@@ -188,7 +188,7 @@ def compute_stats(cs: CompSet, criteria: CompCriteria) -> StatsResult:
         ]
         subj_psf = subj["curmkttot"] / subj["sf"] if subj.get("curmkttot") is not None else None
         sig = _signal_from_pairs(
-            "mv_per_gross_sf", "Market Value Per Gross Building Area",
+            "mv_per_gross_sf", "DOF Market Value Per Gross Building Area",
             "$/gross_sf", "comps with usable gross building area", comp_psf, subj_psf,
         )
         sig.notes.append(f"denominator = gross building area; comp SF sources: "

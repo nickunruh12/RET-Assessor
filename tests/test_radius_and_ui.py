@@ -124,6 +124,18 @@ def test_static_assets_are_cache_busted():
         assert 'src="/static/app.js"' not in html                # no un-versioned bare ref
 
 
+def test_per_sf_label_is_dof_prefixed_everywhere(client):
+    j = client.get("/api/screen", params={"bbl": "1013000001"}).json()
+    sig = next(s for s in j["signals"] if s["key"] == "mv_per_gross_sf")
+    assert sig["label"] == "DOF Market Value Per Gross Building Area"   # heading/title/tooltip
+    assert "DOF Market Value Per Gross Building Area" in j["provenance"]["signal_fields"]
+    assert "Market Value Per Gross Building Area" not in j["provenance"]["signal_fields"]  # no old key
+    html = client.get("/screen", params={"bbl": "1013000001"}).text
+    # every occurrence of the phrase on the page is the DOF-prefixed one (no bare leftover)
+    assert html.count("Market Value Per Gross Building Area") == \
+        html.count("DOF Market Value Per Gross Building Area") > 0
+
+
 def test_chart_comp_points_carry_tooltip_metadata(client):
     j = client.get("/api/screen", params={"bbl": "1013000001"}).json()
     for sig in j["signals"]:
