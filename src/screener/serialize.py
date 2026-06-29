@@ -172,27 +172,45 @@ def _phase_in_note(phase, subject: dict) -> dict:
     }
 
 
+def _zip5(z) -> str:
+    """First five digits of a ZIP (drops ZIP+4, dashes, whitespace). '' if none."""
+    return "".join(ch for ch in str(z or "") if ch.isdigit())[:5]
+
+
+def _reconciliation_note(resolve: ResolveResult | None, subject: dict) -> str | None:
+    """Descriptive override note (NO refusal): shown only when a user-typed ZIP or borough
+    conflicts with the resolved parcel's PUBLISHED value, so a wrong match is catchable.
+    None on a clean search (correct value, or value omitted, or a BBL-only run)."""
+    if resolve is None:
+        return None
+    parts = []
+    uz, pz = _zip5(resolve.zip_code), _zip5(subject.get("zip_code"))
+    if uz and pz and uz != pz:
+        parts.append(f"You searched ZIP {uz}. The matching parcel's published ZIP is {pz}.")
+    ub = (resolve.borough or "").strip()
+    pb = str(subject.get("borough") or "").strip()
+    if ub and pb and ub.lower() != pb.lower():
+        parts.append(f"You searched borough {ub}. The matching parcel's published borough is {pb}.")
+    return (" ".join(parts) + " Confirm this is the correct building.") if parts else None
+
+
 def _subject_panel(subject: dict | None, resolve: ResolveResult | None,
                    rate: float | None = None) -> dict | None:
     if subject is None:
         return None
-    addr = None
-    if resolve is not None and (resolve.house_number or resolve.street):
-        bits = [resolve.house_number, resolve.street]
-        loc = resolve.borough or (f"ZIP {resolve.zip_code}" if resolve.zip_code else None)
-        addr = ", ".join([b for b in [" ".join(x for x in bits if x), loc] if b]) or None
-    if not addr:
-        # BBL re-run (no geocoded address): fall back to the parcel's roll/PLUTO address
-        # so the Address line stays visible across re-runs.
-        roll = " ".join(x for x in [subject.get("house_number"), subject.get("street_name")] if x).strip()
-        loc = subject.get("borough") or (f"ZIP {subject.get('zip_code')}" if subject.get("zip_code") else None)
-        addr = ", ".join([b for b in [roll, loc] if b]) or subject.get("pluto_address") or None
+    # Identity line is built ONLY from the resolved parcel's PUBLISHED fields (roll address
+    # primary, PLUTO fallback) — never the user-typed house/street/borough/ZIP. The ZIP shown
+    # here and on the Borough/ZIP row are therefore the SAME published value.
+    roll = " ".join(x for x in [subject.get("house_number"), subject.get("street_name")] if x).strip()
+    loc = subject.get("borough") or (f"ZIP {subject.get('zip_code')}" if subject.get("zip_code") else None)
+    addr = ", ".join([b for b in [roll, loc] if b]) or subject.get("pluto_address") or None
     # Real estate taxes — the SAME derived figure used for the Tax Bill chart
     # (curtxbtot x rate). Not recomputed differently.
     txb = subject.get("curtxbtot")
     re_taxes = (txb * rate) if (rate is not None and txb is not None) else None
     return {
         "address": addr,
+        "reconciliation_note": _reconciliation_note(resolve, subject),
         "bbl": subject.get("parcel_id"),
         "bldg_class": subject.get("bldg_class"),
         "bucket_label": subject.get("bucket_label"),

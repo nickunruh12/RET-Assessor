@@ -119,6 +119,9 @@
         <dt>Real Estate Taxes (Est. From DOF Taxable Value × Rate)</dt><dd>{{ "${:,.0f}".format(s.real_estate_taxes) }}</dd>
         {% endif %}
       </dl>
+      {% if s.reconciliation_note %}
+      <p class="reconcile-note">{{ s.reconciliation_note }}</p>
+      {% endif %}
       <p class="comp-meta">
         <strong class="radius-used">Radius used: {{ "%g"|format(result.comp_meta.radius_used_miles) }} mi</strong>
         · comp set: {{ result.comp_meta.comp_count }} comps ·
