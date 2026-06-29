@@ -86,7 +86,7 @@
         <tbody>
         {% for r in rows %}
           <tr>
-            <td>{{ r.parcel_id }}</td>
+            <td>{{ r.parcel_id }}{% if r.has_icap %} <span class="icap-tag" title="Current ICAP abatement (rgyu-ii48). Plotted tax is the full statutory amount.">ICAP</span>{% endif %}</td>
             <td>{{ r.address }}<br><span class="src">{{ r.address_source }}</span></td>
             {% if stories_col %}<td>{{ r.stories_display }}</td>{% endif %}
             <td>{{ r.comp_sf_display }}</td>
@@ -136,6 +136,10 @@
 
     <!-- 3. Three SIGNAL distributions -->
     <section class="signals">
+      {% if result.icap_banner %}
+      <p class="icap-banner">{{ result.icap_banner.message }}
+        <span class="src">Source: {{ result.icap_banner.dataset }} · extract {{ result.icap_banner.extractdt }}</span></p>
+      {% endif %}
       <h2>Where the Subject Sits Among Its Comps</h2>
       <p class="gloss src">Percentile = the share of comps at or below the subject on this metric.
         It shows where the subject ranks, not whether the value is right or wrong.</p>
@@ -168,6 +172,26 @@
           {% endif %}
           {% if sig.sf_source_label %}<p class="src sf-src">{{ sig.sf_source_label }}</p>{% endif %}
           {% if sig.caveat %}<p class="src signal-caveat">{{ sig.caveat }}</p>{% endif %}
+
+          {# Tax Bill region: methodology derivation (Item 1) + statutory-basis & PILOT
+             caveats (Items 2-3). Disclosure only — no computed number changes. #}
+          {% if sig.key == "tax_bill" %}
+            {% set tm = result.tax_methodology %}
+            {% if tm %}
+            <div class="tax-method">
+              <p class="tax-method-head">How this Tax Bill is derived (published values):</p>
+              <ol class="tax-method-chain">
+                <li>Estimated Market Value (DOF): ${{ tm.market_value_display }}</li>
+                <li>× 45% class-4 assessment ratio = Actual Assessed Value: ${{ tm.actual_assessed_display }}</li>
+                <li>Transitional (taxable) value, as phased in by DOF: ${{ tm.transitional_display }}</li>
+                <li>× FY2026 class-4 rate {{ tm.rate_pct }} = <strong>Tax Bill: ${{ tm.tax_bill_display }}</strong></li>
+              </ol>
+              <p class="src">{{ tm.note }}</p>
+            </div>
+            {% endif %}
+            <p class="src tax-basis-caveat">{{ result.comp_basis_caveat }}</p>
+            <p class="src pilot-caveat">{{ result.pilot_caveat }}</p>
+          {% endif %}
         {% endif %}
       </div>
       {% endfor %}
@@ -263,6 +287,9 @@
         <li>Roll: {{ result.provenance.source_dataset }} · version {{ result.provenance.dataset_version }} ·
           roll year {{ result.provenance.roll_year }} · retrieved {{ result.provenance.retrieval_date }}</li>
         <li>Gross-building-area source (PLUTO): {{ result.provenance.sf_pluto_versions|join(", ") }}</li>
+        {% if result.provenance.abatement_extractdt %}
+        <li>ICAP abatement source: {{ result.provenance.abatement_dataset }} · extract {{ result.provenance.abatement_extractdt }}</li>
+        {% endif %}
         <li>Tax rate applied: {{ result.provenance.tax_rate_applied }}</li>
         <li>Source fields:
           {% for title, field in result.provenance.signal_fields.items() %}{{ title }} = <code>{{ field }}</code>{% if not loop.last %} · {% endif %}{% endfor %}</li>

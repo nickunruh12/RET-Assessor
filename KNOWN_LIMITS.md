@@ -83,3 +83,22 @@ Recorded so the design constraints survive; none of this is built yet.
 ## Variance explanation is descriptive, never causal
 
 Allowed: "This comp is assessed 20% higher and differs on: built 2015 vs 1980, class O5 vs O3, 40k SF vs 32k SF." Banned: "This comp is higher because it is newer."
+
+## Abatement disclosure is ICAP-only; PILOT is undetectable
+
+The Tax Bill region marks parcels (subject banner + comp tag) carrying a **current ICAP**
+abatement, sourced from DOF Property Abatement Detail (`rgyu-ii48`, current snapshot =
+max `extractdt`; `parid`/`tccode` are space-padded and trimmed). **Scope is ICAP only** for
+v1 — it is ~89% of the office abatement signal and the clean building-level case; CERP
+(lease-level), SOLAR/J51/CONDO/COOP (residential or lease noise) are intentionally dropped.
+The flag is **disclosure only**: the tool always plots the full statutory tax bill
+(`curtxbtot × rate`) for the subject and every comp, abated or not, and the flag never
+filters, sorts, or drops a comp.
+
+- **[KNOWN GAP] PILOT is not detectable from available data.** Major office properties on
+  public land (Hudson Yards, World Trade Center, Battery Park City) pay a negotiated PILOT
+  instead of standard tax. PILOT does not appear in `rgyu-ii48`, and the `subject_tax_exempt`
+  refusal does NOT catch them — e.g. `1000840036` (7 WTC, O4) carries a $555M positive
+  market value and screens normally. A standing, **always-on** PILOT caveat under the Tax
+  Bill chart discloses this; the tool makes no attempt to detect PILOT parcels. Revisit only
+  if a PILOT/exempt-property source is identified.

@@ -18,6 +18,7 @@ SODA_BASE = "https://data.cityofnewyork.us/resource/{dataset}.json"
 
 ROLL_DATASET = "8y4t-faws"   # DOF Property Valuation & Assessment Data (classes 1-4)
 PLUTO_DATASET = "64uk-42ks"  # DCP PLUTO — physical characteristics, BldgArea
+ABATEMENT_DATASET = "rgyu-ii48"  # DOF Property Abatement Detail — ICAP disclosure (v1)
 
 # --- Scope (LOCKED) ---
 TAX_CLASS = "4"              # commercial only, v1

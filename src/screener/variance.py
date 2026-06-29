@@ -66,6 +66,7 @@ class VarianceRow(CitedRow):
     pluto_address: str | None            # display address (PLUTO fallback)
     stories: float | None                # display only; never used to rank or sort
     sf_dataset_version: str | None
+    has_icap: bool                       # DISCLOSURE ONLY — current ICAP abatement (rgyu-ii48)
     differs_on: str
 
 
@@ -155,6 +156,7 @@ def _to_variance_row(comp: CompRow, subj: dict) -> VarianceRow:
         pluto_address=comp.pluto_address,
         stories=comp.stories,
         sf_dataset_version=comp.sf_dataset_version,
+        has_icap=getattr(comp, "has_icap", False),
         differs_on=_differs_on(comp, subj, assessed_pct, sf_pct),
     )
 

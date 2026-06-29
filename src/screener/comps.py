@@ -27,6 +27,7 @@ from datetime import date
 import duckdb
 
 from . import config
+from .abatements import icap_bbls
 from .jurisdiction import CompCriteria, Jurisdiction, get_jurisdiction
 from .schema import Citation, CitedRow
 
@@ -78,6 +79,8 @@ class CompRow(CitedRow):
     curtxbtot: float | None
     curtrntot: float | None
     curacttot: float | None
+    has_icap: bool = False      # DISCLOSURE ONLY — current ICAP abatement (rgyu-ii48);
+                                # never filters/sorts the comp or changes its statutory tax
 
 
 @dataclass
@@ -197,6 +200,9 @@ def select_comps(
         "curacttot": subj.get("curacttot"),
         "pytrntot": subj.get("pytrntot"),   # prior-year transitional (py snapshot) for realized YoY
         "roll_year": subj.get("roll_year"),  # year label for the realized transitional series
+        # DISCLOSURE ONLY — current ICAP abatement (rgyu-ii48). Never changes any computed
+        # figure or the refusal logic; drives the subject banner in the UI.
+        "has_icap": bool(icap_bbls(con, [subject_bbl])),
     }
 
     # --- scope: v1 activated product is office only ---
@@ -298,6 +304,11 @@ def select_comps(
 
     radius_used, chosen = hit
     comps = [_to_comprow(c, juris, criteria, exact_set) for c in chosen]
+    # DISCLOSURE ONLY — tag comps carrying a current ICAP abatement (one lookup for the set).
+    # Never filters/sorts/drops a comp and never changes its plotted statutory tax.
+    icap = icap_bbls(con, [c.citation.parcel_id for c in comps])
+    for c in comps:
+        c.has_icap = c.citation.parcel_id in icap
     exact_n = sum(1 for c in comps if c.match_type == "exact")
     adj_rows = [c for c in comps if c.match_type == "adjacent"]
     breakdown: dict = {}

@@ -35,6 +35,15 @@ dl dt { color: var(--muted); }
 /* Cross-borough composition note — prominent but neutral (no alert color). */
 .cross-borough-note { color: var(--ink); background: var(--panel); border-left: 3px solid var(--muted); padding: .55rem .8rem; font-size: .9rem; margin: .2rem 0 1rem; }
 .reconcile-note { color: var(--ink); background: var(--panel); border-left: 3px solid var(--muted); padding: .55rem .8rem; font-size: .9rem; margin: .4rem 0 0; }
+/* ICAP disclosure: conditional subject banner + always-on comp tag (display only) */
+.icap-banner { color: var(--ink); background: var(--panel); border-left: 3px solid var(--muted); padding: .55rem .8rem; font-size: .9rem; margin: 0 0 1rem; }
+.icap-banner .src { display: block; margin-top: .2rem; }
+.icap-tag { display: inline-block; font-size: .6rem; font-weight: 700; letter-spacing: .03em; padding: .05rem .25rem; border: 1px solid var(--muted); border-radius: 3px; color: var(--muted); vertical-align: middle; }
+/* Tax-methodology derivation chain under the Tax Bill chart (Item 1) */
+.tax-method { margin: .4rem 0 .2rem; }
+.tax-method-head { font-size: .82rem; margin: .2rem 0; }
+.tax-method-chain { font-size: .8rem; margin: .15rem 0 .35rem 1.1rem; padding: 0; line-height: 1.45; }
+.tax-basis-caveat, .pilot-caveat { font-size: .76rem; margin: .25rem 0 0; }
 
 .signal { margin: 1rem 0 1.4rem; }
 .signal-stats { font-size: .9rem; color: var(--ink); margin: .2rem 0; }

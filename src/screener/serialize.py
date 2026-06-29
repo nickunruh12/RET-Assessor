@@ -15,6 +15,7 @@ from .comps import REFUSAL_MESSAGES, CompSet, refusal_message, select_comps
 from .geocode import RESOLVER_MESSAGES, ResolveResult
 from .jurisdiction import CompCriteria, Jurisdiction
 from .stats import compute_stats
+from .abatements import icap_vintage
 from .variance import compute_variance
 
 DISCLAIMER = ("This is a descriptive screen of published assessment data — "
@@ -60,6 +61,48 @@ PHASE_IN_ZERO_EPS = 0.005
 # Item 4 — descriptive caveat by the Tax Bill chart. No calculation, no verdict.
 TAX_BILL_CAVEAT = ("Tax bills reflect current transitional (phased-in) values; buildings "
                    "mid-phase-in may show temporarily lower bills than their fully-phased level.")
+
+# Item 1 — clarifying line under the tax-methodology derivation (static, no verdict).
+TAX_METHOD_NOTE = ("The tax is levied on the transitional (taxable) value, not on the 45% "
+                   "actual assessed value. During a phase-in the two differ (see Phase-In "
+                   "Note). This bill is the statutory amount before any ICAP, J-51, or PILOT "
+                   "abatement.")
+
+# Item 2 — comp statutory-basis caveat (static, always shown under the Tax Bill chart).
+COMP_BASIS_CAVEAT = ("Comp tax bills are the statutory amount (transitional taxable value × "
+                     "rate) computed identically for every comp. Comps on an abatement may "
+                     "pay less than the figure shown. The uniform basis is intentional, so "
+                     "comps are compared on the same fully-taxed footing.")
+
+# Item 3 — PILOT caveat (static, ALWAYS shown; PILOT is not detectable from available data).
+PILOT_CAVEAT = ("Some major office properties (for example Hudson Yards, the World Trade "
+                "Center, Battery Park City) pay a negotiated PILOT instead of standard "
+                "property tax. The tool cannot identify PILOT parcels, so a PILOT building's "
+                "plotted tax bill may not reflect what it actually pays.")
+
+# Item 5 — ICAP subject banner (conditional: only when the SUBJECT BBL has a current ICAP).
+ICAP_BANNER = ("This parcel carries an ICAP property tax abatement. The tax bill shown is "
+               "the statutory amount before that abatement; the owner's actual tax is lower "
+               "for the abatement term. ICAP is a credit against the tax, not a reduction of "
+               "assessed value.")
+
+
+def _tax_methodology(subject: dict, rate: float) -> dict | None:
+    """Item 1 — the published derivation chain that reconciles to the displayed Tax Bill.
+    Every figure is a PUBLISHED roll value (or the statutory rate); nothing is recomputed
+    differently from the chart. The 45% actual-assessed line is shown for transparency only
+    — it is NOT a signal and nothing is compared off it."""
+    mkt, act, txb = subject.get("curmkttot"), subject.get("curacttot"), subject.get("curtxbtot")
+    if txb is None:
+        return None
+    return {
+        "market_value": mkt, "market_value_display": _signal_num(mkt, "$"),
+        "actual_assessed": act, "actual_assessed_display": _signal_num(act, "$"),
+        "transitional": txb, "transitional_display": _signal_num(txb, "$"),
+        "rate_pct": f"{rate * 100:g}%",
+        "tax_bill": txb * rate, "tax_bill_display": _signal_num(txb * rate, "$"),
+        "note": TAX_METHOD_NOTE,
+    }
 
 
 def _f(x, nd=2):
@@ -210,6 +253,7 @@ def _subject_panel(subject: dict | None, resolve: ResolveResult | None,
     re_taxes = (txb * rate) if (rate is not None and txb is not None) else None
     return {
         "address": addr,
+        "has_icap": bool(subject.get("has_icap")),
         "reconciliation_note": _reconciliation_note(resolve, subject),
         "bbl": subject.get("parcel_id"),
         "bldg_class": subject.get("bldg_class"),
@@ -388,6 +432,9 @@ def _variance_row(d, subj: dict, rate: float) -> dict:
         # Item 3 — Phase-In Gap (comp curacttot − curtrntot + sign bucket). Displayed
         # attribute ONLY: never filters/sorts/drops comps. 'n/a' if either value missing.
         "phase_in_gap_display": _phase_in_bucket(d.curacttot, d.curtrntot) or "n/a",
+        # Item 5 — DISCLOSURE ONLY ICAP tag. Never filters/excludes the comp or alters its
+        # plotted statutory tax.
+        "has_icap": bool(getattr(d, "has_icap", False)),
         # raw values + provenance still travel per row (not rendered in the table cells)
         "stories": d.stories, "comp_sf": d.sf,
         "sf_abs_delta": sf_abs, "sf_pct_diff": d.sf_pct_diff,
@@ -511,10 +558,26 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
 
     phase = stats.signals["phase_in_gap"]
 
+    # Provenance — fold the ICAP abatement vintage in beside the roll + PLUTO versions so
+    # all three source vintages are visible together.
+    abate_extractdt, abate_dataset = icap_vintage(con)
+    provenance = dict(stats.provenance)
+    provenance["abatement_dataset"] = abate_dataset
+    provenance["abatement_extractdt"] = abate_extractdt
+
+    subject_has_icap = bool(cs.subject.get("has_icap"))
+
     return {
         "status": "ok",
         "disclaimer": DISCLAIMER,
         "subject": _subject_panel(cs.subject, resolve, criteria.class4_tax_rate),
+        # Item 1 — tax-methodology derivation; Items 2/3 — static caveats under the chart.
+        "tax_methodology": _tax_methodology(cs.subject, criteria.class4_tax_rate),
+        "comp_basis_caveat": COMP_BASIS_CAVEAT,
+        "pilot_caveat": PILOT_CAVEAT,
+        # Item 5 — ICAP subject banner (conditional). Cited to the abatement dataset + vintage.
+        "icap_banner": ({"message": ICAP_BANNER, "dataset": abate_dataset,
+                         "extractdt": abate_extractdt} if subject_has_icap else None),
         "comp_meta": {
             "comp_count": cs.count,
             "radius_used_miles": cs.radius_used_miles,
@@ -546,7 +609,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
             "all_diffs": [_variance_row(d, cs.subject, criteria.class4_tax_rate)
                           for d in var.all_diffs],
         },
-        "provenance": stats.provenance,
+        "provenance": provenance,
         "context": CONTEXT,
         "rung3": {"enabled": False, "section": "Calculate Implied Cap Rate With User-Provided NOI"},
         "expense_ratio": _expense_section(juris, criteria, cs.subject),
