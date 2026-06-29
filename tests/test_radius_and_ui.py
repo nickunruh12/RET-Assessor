@@ -124,6 +124,32 @@ def test_static_assets_are_cache_busted():
         assert 'src="/static/app.js"' not in html                # no un-versioned bare ref
 
 
+def test_chart_comp_points_carry_tooltip_metadata(client):
+    j = client.get("/api/screen", params={"bbl": "1013000001"}).json()
+    for sig in j["signals"]:
+        if sig["refused"]:
+            continue
+        pts = sig["comp_points"]
+        assert len(pts) == len(sig["distribution"])        # 1:1 with the plotted distribution
+        for p in pts:
+            assert set(p) >= {"x", "disp", "bbl", "address", "distance", "gap"}
+            assert p["bbl"] and p["disp"]                  # never blank
+        sp = sig["subject_point"]
+        assert set(sp) >= {"x", "disp", "bbl", "address", "gap"}
+        assert "distance" not in sp                        # subject has no distance-from-self
+
+
+def test_chart_phase_in_gap_matches_comp_table(client):
+    # tooltip phase-in gap == the 'Phase-In Gap Remaining' comp-table value (same single figure)
+    j = client.get("/api/screen", params={"bbl": "1013000001"}).json()
+    sig = next(s for s in j["signals"] if s["key"] == "assessed_value_market")
+    by_bbl = {p["bbl"]: p["gap"] for p in sig["comp_points"]}
+    rows = [r for v in j["variance"]["views"] for r in v["rows"]]
+    for r in rows:
+        if r["parcel_id"] in by_bbl:
+            assert by_bbl[r["parcel_id"]] == r["phase_in_gap_display"]
+
+
 def test_asset_version_tracks_content():
     # the version is a content hash, so a content change yields a different version
     import hashlib

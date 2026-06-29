@@ -19,9 +19,18 @@ function dataEl() {
 // Deterministic small y-jitter so overlapping comps are visible (no randomness).
 function jitter(i) { return (((i * 2654435761) % 1000) / 1000 - 0.5) * 0.8; }
 
+// Compact, type-agnostic axis tick formatter (e.g. 3000000 -> "3M", 197.9 -> "198"). No
+// units baked in; works for any metric/property type.
+const COMPACT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+
 function stripPlot(canvas, sig) {
   const comps = sig.distribution || [];
   if (!comps.length) return;
+  // marker data carries already-attached metadata (address/BBL/distance/phase-in gap/metric);
+  // fall back to bare x-values if an older payload lacks comp_points.
+  const cps = (sig.comp_points && sig.comp_points.length)
+    ? sig.comp_points : comps.map(v => ({ x: v }));
+  const sp = sig.subject_point || { x: sig.subject_value };
   const all = comps.concat([sig.subject_value, sig.median, sig.mean]).filter(v => v != null);
   let lo = Math.min(...all), hi = Math.max(...all);
   const pad = (hi - lo) * 0.02 || Math.abs(hi) * 0.02 || 1;  // symmetric, honest
@@ -30,27 +39,55 @@ function stripPlot(canvas, sig) {
     type: "scatter",
     data: {
       datasets: [
-        { label: "comps", data: comps.map((v, i) => ({ x: v, y: jitter(i) })),
-          backgroundColor: COMP, pointRadius: 4, pointHoverRadius: 5 },
-        { label: "median", data: [{ x: sig.median, y: 0 }],
-          backgroundColor: MEDIAN, pointStyle: "rectRot", pointRadius: 7, pointBorderColor: MEDIAN },
-        // mean — distinct triangle at the TRUE mean (never nudged); may sit near the
-        // median diamond on symmetric pools, which is expected and correct.
-        { label: "mean", data: [{ x: sig.mean, y: 0 }],
-          backgroundColor: MEAN, pointStyle: "triangle", pointRadius: 7, pointBorderColor: MEAN },
-        { label: "subject", data: [{ x: sig.subject_value, y: 0 }],
-          backgroundColor: "#ffffff", borderColor: SUBJECT_RING, pointBorderWidth: 2, pointRadius: 8 },
+        { label: "comps", data: cps.map((p, i) => ({ ...p, y: jitter(i) })),
+          backgroundColor: COMP, pointRadius: 5, pointHoverRadius: 7 },
+        { label: "median", data: [{ x: sig.median, y: 0, disp: sig.median_display }],
+          backgroundColor: MEDIAN, pointStyle: "rectRot", pointRadius: 9,
+          pointHoverRadius: 11, pointBorderColor: "#ffffff", pointBorderWidth: 1.5 },
+        // mean — distinct triangle at the TRUE mean (never nudged); may sit near the median
+        // diamond on symmetric pools — the white outline keeps the two readable when close.
+        { label: "mean", data: [{ x: sig.mean, y: 0, disp: sig.mean_display }],
+          backgroundColor: MEAN, pointStyle: "triangle", pointRadius: 9,
+          pointHoverRadius: 11, pointBorderColor: "#ffffff", pointBorderWidth: 1.5 },
+        { label: "subject", data: [{ ...sp, y: 0 }],
+          backgroundColor: "#ffffff", borderColor: SUBJECT_RING, pointBorderWidth: 2.5,
+          pointRadius: 10, pointHoverRadius: 12 },
       ],
     },
     options: {
       animation: false, responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 4, right: 14, bottom: 2, left: 6 } },
+      font: { family: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif", size: 12 },
       scales: {
-        x: { min: lo - pad, max: hi + pad, ticks: { color: MEDIAN } },
+        x: { min: lo - pad, max: hi + pad,
+             ticks: { color: INK, font: { size: 11 }, maxRotation: 0, autoSkipPadding: 16,
+                      callback: (v) => COMPACT.format(v) },
+             grid: { color: "rgba(0,0,0,0.06)" }, border: { color: "rgba(0,0,0,0.18)" } },
         y: { display: false, min: -1, max: 1 },
       },
       plugins: {
-        legend: { position: "top", labels: { color: INK, usePointStyle: true, boxWidth: 8 } },
-        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.x.toLocaleString()}` } },
+        legend: { position: "top",
+                  labels: { color: INK, usePointStyle: true, boxWidth: 10, padding: 14,
+                            font: { size: 12 } } },
+        tooltip: {
+          usePointStyle: true, padding: 9, titleFont: { size: 12 }, bodyFont: { size: 12 },
+          callbacks: {
+            title: () => "",
+            label: (c) => {
+              const lab = c.dataset.label, d = c.raw || {};
+              const val = (d.disp != null) ? d.disp : c.parsed.x.toLocaleString();
+              // mean / median are statistics, not buildings — value only.
+              if (lab === "mean" || lab === "median") return `${lab}: ${val}`;
+              const lines = [];
+              if (d.address && d.address !== "n/a") lines.push(d.address);
+              lines.push("BBL " + (d.bbl || "n/a"));
+              if (lab !== "subject") lines.push("distance: " + (d.distance || "n/a"));
+              lines.push("phase-in gap: " + (d.gap || "n/a"));
+              lines.push(sig.label + ": " + val);
+              return lines;
+            },
+          },
+        },
       },
     },
   });

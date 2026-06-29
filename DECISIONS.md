@@ -82,3 +82,28 @@ Every irreversible choice, dated, with reason. Append-only.
 - **[LOCKED 2026-06-19] Comp SF band = ±50%.** See dated lock above; tunable in Phase 4.
 
 _(No remaining open decisions.)_
+
+## Build-order sequence (LOCKED 2026-06-29)
+
+Fixed so the sequence isn't re-litigated. Do steps in order; do not pull later steps forward.
+
+1. **(done) Office-only UI builds** — hover property info on chart markers, and type-agnostic
+   chart polish. Both shipped this commit, office-only and product-type-agnostic.
+2. **(next) Second property type** — expand to whichever non-office class-4 type is easiest
+   from the data (retail, industrial, …), one type at a time, each with its own validation
+   pass. This comes **before** the larger UI rebuild so the layout meets a second product
+   type while restructuring is still cheap.
+3. **(later, after property-type expansion) Larger UI builds** — held deliberately until the
+   layout has met multiple property types:
+   - Map view toggle (subject + comps as locations; **no mean/median markers** — they aren't
+     locations).
+   - Hover property info in map view (address, distance, phase-in gap, **and all three
+     metrics** per parcel, since the map isn't tied to one chart's metric).
+   - Welcome/title page: overview of what the tool does + the **autogenerate-screener vs.
+     user-provided custom-comp-list** fork. The custom path bypasses the 8-comp minimum and
+     radius rules and MUST carry a prominent, visually distinct "comps user-provided, not
+     screened; minimum-comp and radius safeguards do not apply" stamp — designed in from the
+     first commit so a hand-picked result is never mistaken for a screened one.
+   The **custom-comp path is deferred specifically because its comp-selection interface is
+   property-type-dependent** (a comp picker must reason about each comp's type once more than
+   one type exists); building it pre-expansion would mean building it twice.

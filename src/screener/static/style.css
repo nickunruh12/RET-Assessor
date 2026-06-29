@@ -57,7 +57,7 @@ dl dt { color: var(--muted); }
    height, Chart.js (responsive + a canvas in an unconstrained block) loops:
    each resize grows the canvas, which grows the page, which triggers another
    resize — the chart scrolls/grows then vanishes. The bounded box stops that. */
-.chart-box { position: relative; height: 140px; width: 100%; }
+.chart-box { position: relative; height: 200px; width: 100%; margin: .2rem 0 .4rem; }
 .chart-box > canvas.strip { position: absolute; inset: 0; display: block; }
 
 .variance table { border-collapse: collapse; width: 100%; font-size: .82rem; margin: .3rem 0 1rem; }

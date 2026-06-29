@@ -323,6 +323,50 @@ def _signal_distributions(cs: CompSet, rate: float) -> dict[str, list[float]]:
     }
 
 
+def _signal_comp_points(cs: CompSet, rate: float) -> dict[str, dict]:
+    """Per-chart marker metadata for hover tooltips — built ONLY from fields already on the
+    comp/subject objects (address, BBL, distance, phase-in gap, and this chart's metric). No
+    new computation, no fetch. Aligns 1:1 with _signal_distributions (same per-chart filter).
+    The phase-in gap is the SAME single current actual-minus-transitional bucket as the
+    'Phase-In Gap Remaining' comp-table column — never the 5-year series."""
+    subj = cs.subject
+    subj_addr = (" ".join(x for x in [subj.get("house_number"), subj.get("street_name")] if x).strip()
+                 or subj.get("pluto_address") or "n/a")
+    subj_gap = _phase_in_bucket(subj.get("curacttot"), subj.get("curtrntot")) or "n/a"
+
+    # (metric for a comp, include-filter, subject metric, unit) per chart key.
+    specs = {
+        "assessed_value_market": (lambda c: c.curmkttot, lambda c: c.curmkttot is not None,
+                                  subj.get("curmkttot"), "$"),
+        "tax_bill": (lambda c: (c.curtxbtot * rate) if c.curtxbtot is not None else None,
+                     lambda c: c.curtxbtot is not None,
+                     (subj.get("curtxbtot") * rate) if subj.get("curtxbtot") is not None else None, "$"),
+        "mv_per_gross_sf": (lambda c: (c.curmkttot / c.sf) if (c.sf and c.curmkttot is not None) else None,
+                            lambda c: bool(c.sf) and c.curmkttot is not None,
+                            (subj.get("curmkttot") / subj.get("sf"))
+                            if (subj.get("sf") and subj.get("curmkttot") is not None) else None, "gross_sf"),
+    }
+    out = {}
+    for key, (metric, keep, subj_metric, unit) in specs.items():
+        pts = []
+        for c in cs.comps:
+            if not keep(c):
+                continue
+            x = metric(c)
+            addr, _src = _display_address(c)
+            pts.append({"x": round(float(x), 4), "disp": _signal_num(x, unit),
+                        "bbl": c.citation.parcel_id, "address": addr or "n/a",
+                        "distance": f"{c.distance_miles:.2f} mi",
+                        "gap": _phase_in_bucket(c.curacttot, c.curtrntot) or "n/a"})
+        out[key] = {
+            "comps": pts,
+            "subject": {"x": round(float(subj_metric), 4) if subj_metric is not None else None,
+                        "disp": _signal_num(subj_metric, unit), "bbl": subj.get("parcel_id"),
+                        "address": subj_addr, "gap": subj_gap},
+        }
+    return out
+
+
 def _signal_num(v, unit):
     """Display a signal value: PSF (division) -> 2 dp; whole-dollar figures -> 0 dp."""
     if v is None:
@@ -582,6 +626,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
     stats = compute_stats(cs, criteria)
     var = compute_variance(cs)
     dists = _signal_distributions(cs, criteria.class4_tax_rate)
+    cpoints = _signal_comp_points(cs, criteria.class4_tax_rate)   # hover-tooltip metadata
 
     shared = {"radius_used_miles": cs.radius_used_miles, "comp_count": cs.count}
     signals = []
@@ -592,6 +637,8 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
                                                             "based on gross building area")
         if key == "tax_bill":
             extra["caveat"] = TAX_BILL_CAVEAT          # item 4
+        extra["comp_points"] = cpoints[key]["comps"]
+        extra["subject_point"] = cpoints[key]["subject"]
         signals.append(_signal_view(stats.signals[key], dists[key], extra))
 
     phase = stats.signals["phase_in_gap"]
