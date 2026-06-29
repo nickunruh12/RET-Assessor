@@ -63,6 +63,7 @@ dl dt { color: var(--muted); }
   color: #fff; font-size: .78rem; line-height: 1.4; padding: .4rem .55rem; border-radius: 5px;
   white-space: nowrap; transform: translate(-50%, -112%); opacity: 0; transition: opacity .08s; }
 .chart-tip strong { font-weight: 700; }
+.chart-tip .tip-head { text-decoration: underline; text-underline-offset: 2px; }
 .chart-box > canvas.strip { position: absolute; inset: 0; display: block; }
 
 .variance table { border-collapse: collapse; width: 100%; font-size: .82rem; margin: .3rem 0 1rem; }

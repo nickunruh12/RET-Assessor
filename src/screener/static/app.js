@@ -46,9 +46,10 @@ function htmlTip(ctx, sig) {
   if (lab === "mean" || lab === "median") {           // statistics, not buildings — value only
     html = `${esc(lab)}: ${esc(val)}`;
   } else {
-    const head = (d.address && d.address !== "n/a")
+    const inner = (d.address && d.address !== "n/a")
       ? `<strong>${esc(d.address)}</strong> · BBL ${esc(d.bbl || "n/a")}`
       : `BBL ${esc(d.bbl || "n/a")}`;
+    const head = `<span class="tip-head">${inner}</span>`;
     const lines = [head];
     if (lab !== "subject") lines.push("distance: " + esc(d.distance || "n/a"));
     lines.push("phase-in gap: " + esc(d.gap || "n/a"));
