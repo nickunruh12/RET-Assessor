@@ -75,12 +75,21 @@ function stripPlot(canvas, sig) {
   let lo = Math.min(...all), hi = Math.max(...all);
   const pad = (hi - lo) * 0.02 || Math.abs(hi) * 0.02 || 1;  // symmetric, honest
 
+  // Size-outlier flagging (per-SF, band relaxed): split out comps whose BldgArea is outside
+  // the +/-50% band into a distinct dataset/marker. Only per-SF points carry size_dissimilar.
+  const inBand = cps.filter(p => !p.size_dissimilar);
+  const outBand = cps.filter(p => p.size_dissimilar);
+
   new Chart(canvas.getContext("2d"), {
     type: "scatter",
     data: {
       datasets: [
-        { label: "comps", data: cps.map((p, i) => ({ ...p, y: jitter(i) })),
+        { label: "comps", data: inBand.map((p, i) => ({ ...p, y: jitter(i) })),
           backgroundColor: COMP, pointRadius: 5, pointHoverRadius: 7 },
+        ...(outBand.length ? [{ label: "size-dissimilar",
+          data: outBand.map((p, i) => ({ ...p, y: jitter(i + 313) })),
+          backgroundColor: "#ffffff", pointStyle: "crossRot", borderColor: INK,
+          pointBorderWidth: 2, pointRadius: 7, pointHoverRadius: 9 }] : []),
         { label: "median", data: [{ x: sig.median, y: 0, disp: sig.median_display }],
           backgroundColor: MEDIAN, pointStyle: "rectRot", pointRadius: 9,
           pointHoverRadius: 11, pointBorderColor: "#ffffff", pointBorderWidth: 1.5 },

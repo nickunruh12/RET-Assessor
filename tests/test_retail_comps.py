@@ -130,6 +130,61 @@ def test_band_held_shows_no_message(client):
     assert "subject SF not reported" not in html and "band relaxed to reach" not in html
 
 
+PURE_BAND_RELAX = "1000200012"   # pure_retail, per-SF SHOWN, band relaxed -> size-outlier flags
+PURE_BAND_HELD = "1000070027"    # pure_retail, per-SF shown, band held -> clean, no flags
+
+
+def test_per_sf_size_flag_on_pure_band_relax(client):
+    j = client.get("/api/retail_screen", params={"bbl": PURE_BAND_RELAX}).json()
+    assert j["comp_meta"]["sf_band_relaxed"] is True
+    assert j.get("per_sf_size_flag") is True
+    sig = next(s for s in j["signals"] if s["key"] == "mv_per_gross_sf")
+    assert sig["refused"] is False                                   # per-SF KEPT, not suppressed
+    assert "size_flag_note" in sig                                   # chart header note
+    flagged = [p for p in sig["comp_points"] if p.get("size_dissimilar")]
+    assert flagged, "expected size-dissimilar comps flagged on the per-SF chart"
+    html = client.get("/retail_screen", params={"bbl": PURE_BAND_RELAX}).text
+    assert 'class="size-flag"' in html                               # per-row table tag
+    assert "Size-dissimilar comps flagged" in html                   # header note
+    assert "outlier" not in html.lower()                             # banned word stays out
+
+
+def test_value_tax_charts_not_size_flagged(client):
+    j = client.get("/api/retail_screen", params={"bbl": PURE_BAND_RELAX}).json()
+    for key in ("assessed_value_market", "tax_bill"):
+        sig = next(s for s in j["signals"] if s["key"] == key)
+        assert not any(p.get("size_dissimilar") for p in sig["comp_points"])
+        assert "size_flag_note" not in sig
+
+
+def test_band_held_set_has_no_size_flags(client):
+    j = client.get("/api/retail_screen", params={"bbl": PURE_BAND_HELD}).json()
+    assert j["comp_meta"]["sf_band_relaxed"] is False and j.get("per_sf_size_flag") in (None, False)
+    sig = next(s for s in j["signals"] if s["key"] == "mv_per_gross_sf")
+    assert sig["refused"] is False and "size_flag_note" not in sig
+    html = client.get("/retail_screen", params={"bbl": PURE_BAND_HELD}).text
+    assert 'class="size-flag"' not in html and "Size-dissimilar comps flagged" not in html
+
+
+def test_mixed_suppressed_per_sf_has_no_size_flags(client):
+    # mixed retail still suppresses per-SF (use-blend); size flagging does NOT apply there
+    j = client.get("/api/retail_screen", params={"bbl": FALLBACK}).json()
+    sig = next(s for s in j["signals"] if s["key"] == "mv_per_gross_sf")
+    assert sig["refused"] is True                                    # suppression unchanged
+    assert j.get("per_sf_size_flag") in (None, False)
+    assert not any(p.get("size_dissimilar") for p in sig.get("comp_points", []))
+    html = client.get("/retail_screen", params={"bbl": FALLBACK}).text
+    assert "Size-dissimilar comps flagged" not in html
+
+
+def test_office_has_no_size_flag(client):
+    j = client.get("/api/screen", params={"bbl": "1013000001"}).json()
+    assert "per_sf_size_flag" not in j
+    for s in j["signals"]:
+        assert "size_flag_note" not in s
+        assert not any(p.get("size_dissimilar") for p in (s.get("comp_points") or []))
+
+
 def test_public_screen_still_refuses_retail(client):
     j = client.get("/api/screen", params={"bbl": PURE}).json()
     assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1"

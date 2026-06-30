@@ -89,6 +89,41 @@ local and is the better trade than expanding distance). The behavior is surfaced
 
 ---
 
+## 4. Per-SF size-outlier flagging (added on top of §3)
+
+§3 disclosed-and-kept the band-relaxed set at the summary line. This layer makes the
+size-dissimilar comps **impossible to miss INSIDE the per-SF view itself** — not just in the
+summary line. It fires ONLY when the band was relaxed (`sf_band_relaxed`) AND the per-SF chart
+is actually shown (`per_sf_shown`, i.e. pure retail — per-SF is NOT suppressed). Size-dissimilar
+= comp BldgArea outside 0.5×–1.5× the subject's (reuses the comp-filter band; no new number).
+
+Three surfaces, per-SF ONLY (value/tax charts untouched):
+1. **Comp table** — each size-dissimilar row tagged `size-dissimilar` in the Comp SF cell.
+2. **Per-SF chart** — size-dissimilar comps drawn as a distinct `×` marker in their own
+   "size-dissimilar" series (separate from the gray in-band "comps" dots), so the outliers
+   driving the per-SF spread are obvious on the chart.
+3. **Per-SF header note** — "Comp set includes size-dissimilar buildings (band relaxed).
+   Size-dissimilar comps flagged." (worded to avoid the banned word "outlier".)
+
+**Verified — BBL 1000200012** (47 Broadway, **pure_retail**, per-SF SHOWN, band relaxed;
+subject 27,640 SF, band 13,820–41,460): per-SF chart renders (not suppressed); 8 of 11 comps
+are out-of-band and are flagged BOTH in the table (`class="size-flag"`, 18 row instances
+across the views) AND on the chart (per-SF datasets = `comps:3, size-dissimilar:8, median,
+mean, subject`); header note shows; value and tax charts carry zero size flags; no "outlier"
+string anywhere in the HTML.
+
+**Verified — clean set (band held)**: a pure-retail subject whose band held shows per-SF with
+**zero** flags and no header note.
+
+**NOTE on 2054230001** (this doc's reference subject): it is **`retail_other` (retail_share
+0.78 < 0.80), so per-SF is SUPPRESSED** for the use-blend reason (unchanged). There is no
+per-SF view for it, so the per-SF size-outlier flagging does **not** apply — confirmed: per-SF
+refused, `per_sf_size_flag` absent, no size flags. The per-SF flagging is demonstrated on
+1000200012 (pure retail, per-SF shown, band relaxed) instead. Mixed-class per-SF suppression
+was left untouched.
+
+---
+
 _Reproduce: `python -m screener.retail_loader --skip-fetch` then screen the BBLs above via
 `/api/retail_screen?bbl=...`. Tests: `tests/test_retail_comps.py` (261 passing; render_check
 banned-word grep clean)._

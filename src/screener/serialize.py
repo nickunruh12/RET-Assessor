@@ -63,6 +63,11 @@ PHASE_IN_ZERO_EPS = 0.005
 TAX_BILL_CAVEAT = ("Tax bills reflect current transitional (phased-in) values; buildings "
                    "mid-phase-in may show temporarily lower bills than their fully-phased level.")
 
+# Per-SF header note when the comp-filter SF band was relaxed to reach the minimum (retail).
+# Worded to avoid the banned "outlier" — uses "size-dissimilar" (matches the row tag).
+SIZE_DISSIMILAR_NOTE = ("Comp set includes size-dissimilar buildings (band relaxed). "
+                        "Size-dissimilar comps flagged.")
+
 # Item 1 — clarifying line under the tax-methodology derivation (static, no verdict).
 TAX_METHOD_NOTE = ("The tax is levied on the transitional (taxable) value, not on the 45% "
                    "actual assessed value. During a phase-in the two differ (see Phase-In "
@@ -323,13 +328,18 @@ def _signal_distributions(cs: CompSet, rate: float) -> dict[str, list[float]]:
     }
 
 
-def _signal_comp_points(cs: CompSet, rate: float) -> dict[str, dict]:
+def _signal_comp_points(cs: CompSet, rate: float, *, flag_size_outliers: bool = False) -> dict[str, dict]:
     """Per-chart marker metadata for hover tooltips — built ONLY from fields already on the
     comp/subject objects (address, BBL, distance, phase-in gap, and this chart's metric). No
     new computation, no fetch. Aligns 1:1 with _signal_distributions (same per-chart filter).
     The phase-in gap is the SAME single current actual-minus-transitional bucket as the
-    'Phase-In Gap Remaining' comp-table column — never the 5-year series."""
+    'Phase-In Gap Remaining' comp-table column — never the 5-year series.
+
+    `flag_size_outliers` (retail per-SF, band relaxed): mark mv_per_gross_sf comp points whose
+    BldgArea is outside the ±50% band, so the per-SF chart can style the size-outliers
+    distinctly. Set on the per-SF key ONLY — value/tax markers are never size-flagged."""
     subj = cs.subject
+    subj_sf = subj.get("sf")
     subj_addr = (" ".join(x for x in [subj.get("house_number"), subj.get("street_name")] if x).strip()
                  or subj.get("pluto_address") or "n/a")
     subj_gap = _phase_in_bucket(subj.get("curacttot"), subj.get("curtrntot")) or "n/a"
@@ -354,10 +364,13 @@ def _signal_comp_points(cs: CompSet, rate: float) -> dict[str, dict]:
                 continue
             x = metric(c)
             addr, _src = _display_address(c)
-            pts.append({"x": round(float(x), 4), "disp": _signal_num(x, unit),
-                        "bbl": c.citation.parcel_id, "address": addr or "n/a",
-                        "distance": f"{c.distance_miles:.2f} mi",
-                        "gap": _phase_in_bucket(c.curacttot, c.curtrntot) or "n/a"})
+            pt = {"x": round(float(x), 4), "disp": _signal_num(x, unit),
+                  "bbl": c.citation.parcel_id, "address": addr or "n/a",
+                  "distance": f"{c.distance_miles:.2f} mi",
+                  "gap": _phase_in_bucket(c.curacttot, c.curtrntot) or "n/a"}
+            if key == "mv_per_gross_sf" and flag_size_outliers and subj_sf and c.sf is not None:
+                pt["size_dissimilar"] = c.sf < 0.5 * subj_sf or c.sf > 1.5 * subj_sf
+            pts.append(pt)
         out[key] = {
             "comps": pts,
             "subject": {"x": round(float(subj_metric), 4) if subj_metric is not None else None,
@@ -517,6 +530,11 @@ def _variance_row(d, subj: dict, rate: float) -> dict:
         # Item 5 — DISCLOSURE ONLY ICAP tag. Never filters/excludes the comp or alters its
         # plotted statutory tax.
         "has_icap": bool(getattr(d, "has_icap", False)),
+        # size-dissimilar = comp BldgArea outside the ±50% band (reuses the comp-filter band,
+        # no new threshold). Always computed; rendered only when the band was relaxed (the
+        # only way an out-of-band comp is in the set) and per-SF is shown — gated downstream.
+        "size_dissimilar": bool(d.sf is not None and subj_sf
+                                and (d.sf < 0.5 * subj_sf or d.sf > 1.5 * subj_sf)),
         # raw values + provenance still travel per row (not rendered in the table cells)
         "stories": d.stories, "comp_sf": d.sf,
         "sf_abs_delta": sf_abs, "sf_pct_diff": d.sf_pct_diff,
@@ -632,8 +650,11 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
 
     stats = compute_stats(cs, criteria, suppress_per_sf=suppress_per_sf, per_sf_note=per_sf_note)
     var = compute_variance(cs)
+    # Per-SF size-outlier flagging fires ONLY when the band was relaxed AND per-SF is actually
+    # shown (not suppressed for mixed-use). Clean (band-held) sets and value/tax stay unflagged.
+    per_sf_size_flag = bool(cs.sf_band_relaxed and not stats.signals["mv_per_gross_sf"].refused)
     dists = _signal_distributions(cs, criteria.class4_tax_rate)
-    cpoints = _signal_comp_points(cs, criteria.class4_tax_rate)   # hover-tooltip metadata
+    cpoints = _signal_comp_points(cs, criteria.class4_tax_rate, flag_size_outliers=per_sf_size_flag)
 
     shared = {"radius_used_miles": cs.radius_used_miles, "comp_count": cs.count}
     signals = []
@@ -642,6 +663,8 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         if key == "mv_per_gross_sf":
             extra["sf_source_label"] = _SF_SOURCE_LABEL.get(cs.subject.get("sf_source"),
                                                             "based on gross building area")
+            if per_sf_size_flag:
+                extra["size_flag_note"] = SIZE_DISSIMILAR_NOTE
         if key == "tax_bill":
             extra["caveat"] = TAX_BILL_CAVEAT          # item 4
         extra["comp_points"] = cpoints[key]["comps"]
@@ -714,6 +737,8 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         result["classification_note"] = classification_note
     if fallback_note:
         result["retail_fallback_note"] = fallback_note
+    if per_sf_size_flag:
+        result["per_sf_size_flag"] = True
     return result
 
 
