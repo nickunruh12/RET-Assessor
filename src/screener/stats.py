@@ -113,8 +113,14 @@ def _signal_from_pairs(
 
 
 # --------------------------------------------------------------------------- #
-def compute_stats(cs: CompSet, criteria: CompCriteria) -> StatsResult:
-    """Compute every signal's distribution + the subject's percentile for a comp set."""
+def compute_stats(cs: CompSet, criteria: CompCriteria, *, suppress_per_sf: bool = False,
+                  per_sf_note: str | None = None) -> StatsResult:
+    """Compute every signal's distribution + the subject's percentile for a comp set.
+
+    `suppress_per_sf` (retail mixed-use): the subject HAS gross SF, but per-SF is suppressed
+    because the floor area blends uses, so the $/SF distribution would not be comparable. It
+    reuses the SAME per-signal refusal path as the office no-SF case — the only office-visible
+    default is False (office behaviour is unchanged)."""
     subj = cs.subject
 
     if cs.refused or not cs.comps:
@@ -169,7 +175,16 @@ def compute_stats(cs: CompSet, criteria: CompCriteria) -> StatsResult:
 
     # 3. Market value per gross building area — comps with usable gross SF only.
     #    Per-signal REFUSAL when the SUBJECT has no gross SF (locked $/SF contract).
-    if not subj.get("sf"):
+    if not subj.get("sf") or suppress_per_sf:
+        if suppress_per_sf and subj.get("sf"):
+            reason = "per_sf_suppressed_mixed_use"
+            note = per_sf_note or ("Per-SF not shown: building's floor area blends retail with "
+                                   "other uses. Assessed-value and tax-bill distributions are "
+                                   "unaffected.")
+        else:
+            reason = "subject_no_gross_building_area"
+            note = ("Market-value-per-SF unavailable, gross building area missing for this "
+                    "parcel. Assessed-value and tax-bill distributions are unaffected.")
         signals["mv_per_gross_sf"] = SignalStats(
             key="mv_per_gross_sf",
             label="Market value per gross building area (curmkttot / gross SF)",
@@ -177,9 +192,7 @@ def compute_stats(cs: CompSet, criteria: CompCriteria) -> StatsResult:
             n=0, excluded_blank=sum(1 for c in comps if not c.sf or c.curmkttot is None),
             mean=None, median=None, minimum=None, maximum=None, stddev=None,
             subject_value=None, subject_percentile=None,
-            refused=True, refusal_reason="subject_no_gross_building_area",
-            notes=["Market-value-per-SF unavailable, gross building area missing for this "
-                   "parcel. Assessed-value and tax-bill distributions are unaffected."],
+            refused=True, refusal_reason=reason, notes=[note],
         )
     else:
         comp_psf = [

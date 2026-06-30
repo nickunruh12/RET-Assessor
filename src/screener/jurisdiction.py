@@ -62,6 +62,11 @@ class CompCriteria(BaseModel):
     # Tunable per-metro via comp_criteria.json.
     retail_share_pure_threshold: float = Field(default=0.80, gt=0, le=1)
     mixed_use_second_use_threshold: float = Field(default=0.10, ge=0, le=1)
+    # retail (Stage 2) per-class radius caps (mi) — no expansion past the cap; the relax
+    # cascade (band-off -> broader-retail fallback) handles thin classes, NOT distance.
+    retail_radius_caps: dict[str, float] = {
+        "pure_retail": 1.0, "retail_office": 1.5, "retail_residential": 1.5, "retail_other": 1.5,
+    }
 
     # expense-ratio benchmark note (dynamic, config-driven)
     metro_name: str = ""

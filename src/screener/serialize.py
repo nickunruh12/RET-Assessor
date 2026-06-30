@@ -596,7 +596,14 @@ def _refused(stage, reason, message, *, subject=None, resolve=None, extra=None,
 def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
                       juris: Jurisdiction, *, bbl: str | None = None,
                       resolve: ResolveResult | None = None,
-                      radius_selection: str = "default") -> dict:
+                      radius_selection: str = "default",
+                      comp_set: CompSet | None = None,
+                      suppress_per_sf: bool = False, per_sf_note: str | None = None,
+                      classification_note: str | None = None,
+                      fallback_note: str | None = None) -> dict:
+    """Office path uses all retail kwargs at their defaults (behaviour unchanged). The retail
+    test route injects a pre-selected `comp_set` and the Stage-1/Stage-2 disclosures; per-SF
+    suppression for mixed-use retail reuses the existing per-signal refusal path."""
     """Assemble the full page view model from a BBL (or a prior address resolution).
 
     `criteria` already carries any radius override; `radius_selection` is the label of
@@ -611,7 +618,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         return _refused("resolve", "missing_inputs", RESOLVER_MESSAGES["missing_inputs"],
                         radius_selection=radius_selection)
 
-    cs = select_comps(con, subject_bbl, juris, criteria)
+    cs = comp_set if comp_set is not None else select_comps(con, subject_bbl, juris, criteria)
     if cs.refused:
         if cs.note == "insufficient_comps_within_cap" and radius_selection != "default":
             msg = (f"insufficient comparable properties at the selected radius "
@@ -623,7 +630,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
                         extra={"radius_used_miles": cs.radius_used_miles,
                                "candidates_within_cap": cs.candidates_within_cap})
 
-    stats = compute_stats(cs, criteria)
+    stats = compute_stats(cs, criteria, suppress_per_sf=suppress_per_sf, per_sf_note=per_sf_note)
     var = compute_variance(cs)
     dists = _signal_distributions(cs, criteria.class4_tax_rate)
     cpoints = _signal_comp_points(cs, criteria.class4_tax_rate)   # hover-tooltip metadata
@@ -652,7 +659,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
 
     subject_has_icap = bool(cs.subject.get("has_icap"))
 
-    return {
+    result = {
         "status": "ok",
         "disclaimer": DISCLAIMER,
         "subject": _subject_panel(cs.subject, resolve, criteria.class4_tax_rate),
@@ -700,6 +707,13 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         "expense_ratio": _expense_section(juris, criteria, cs.subject),
         "radius_control": _radius_control(radius_selection, show=True),
     }
+    # Retail-only disclosures (Stage 1 code-vs-route / "could not be measured"; Stage 2
+    # broader-retail fallback). Office leaves both None, so its result dict is unchanged.
+    if classification_note:
+        result["classification_note"] = classification_note
+    if fallback_note:
+        result["retail_fallback_note"] = fallback_note
+    return result
 
 
 def build_rung3_view(result) -> dict:

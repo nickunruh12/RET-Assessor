@@ -22,6 +22,7 @@ from .expense_ratio import run_expense_ratio
 from .geocode import GeoclientConfigError, ResolveResult, _validate_bbl, resolve_address
 from .jurisdiction import CompCriteria, get_jurisdiction
 from .rung3 import run_rung3
+from .retail_comps import build_retail_screen_view
 from .serialize import (
     DISCLAIMER,
     RADIUS_MAX,
@@ -163,6 +164,30 @@ def screen(request: Request, bbl: str = "", house_number: str = "", street: str 
         form = _build_form(con, resolved_bbl or bbl, typed)
     return templates.TemplateResponse(request, "page.html", {
         "result": result, "disclaimer": DISCLAIMER, "form": form,
+        "result_json": json.dumps(result, default=str) if result else "null",
+        "asset_version": ASSET_VERSION,
+    })
+
+
+@app.get("/api/retail_screen")
+def api_retail_screen(bbl: str = ""):
+    """STAGE-2 TEST ROUTE ONLY — screens a retail (K) parcel through the retail comp engine.
+    The public /screen and /api/screen still refuse K-codes (out_of_scope_v1) until Stage 3."""
+    b = bbl.strip()
+    if not b:
+        return JSONResponse({"status": "no_input"})
+    with _con() as con:
+        return JSONResponse(build_retail_screen_view(con, CRITERIA, JURIS, bbl=b))
+
+
+@app.get("/retail_screen", response_class=HTMLResponse)
+def retail_screen(request: Request, bbl: str = ""):
+    """STAGE-2 TEST ROUTE ONLY — renders the retail screen for verification."""
+    b = bbl.strip()
+    with _con() as con:
+        result = build_retail_screen_view(con, CRITERIA, JURIS, bbl=b) if b else None
+    return templates.TemplateResponse(request, "page.html", {
+        "result": result, "disclaimer": DISCLAIMER, "form": {"bbl": b},
         "result_json": json.dumps(result, default=str) if result else "null",
         "asset_version": ASSET_VERSION,
     })

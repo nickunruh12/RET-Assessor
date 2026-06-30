@@ -128,6 +128,13 @@
       {% if s.reconciliation_note %}
       <p class="reconcile-note">{{ s.reconciliation_note }}</p>
       {% endif %}
+      {# retail (Stage 1/2) disclosures — only present on the retail test route #}
+      {% if result.classification_note %}
+      <p class="reconcile-note classification-note">{{ result.classification_note }}</p>
+      {% endif %}
+      {% if result.retail_fallback_note %}
+      <p class="reconcile-note classification-note">{{ result.retail_fallback_note }}</p>
+      {% endif %}
       <p class="comp-meta">
         <strong class="radius-used">Radius used: {{ "%g"|format(result.comp_meta.radius_used_miles) }} mi</strong>
         · comp set: {{ result.comp_meta.comp_count }} comps ·
