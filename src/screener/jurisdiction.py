@@ -58,6 +58,11 @@ class CompCriteria(BaseModel):
     low_exact_caution_threshold: int = 3
     class4_tax_rate: float = 0.10848
 
+    # retail classification (Stage 1) — PLUTO measured floor-area share, not K-code.
+    # Tunable per-metro via comp_criteria.json.
+    retail_share_pure_threshold: float = Field(default=0.80, gt=0, le=1)
+    mixed_use_second_use_threshold: float = Field(default=0.10, ge=0, le=1)
+
     # expense-ratio benchmark note (dynamic, config-driven)
     metro_name: str = ""
     product_type_labels: dict[str, str] = {}
