@@ -66,7 +66,7 @@ TAX_BILL_CAVEAT = ("Tax bills reflect current transitional (phased-in) values; b
 # Per-SF header note when the comp-filter SF band was relaxed to reach the minimum (retail).
 # Worded to avoid the banned "outlier" — uses "size-dissimilar" (matches the row tag).
 SIZE_DISSIMILAR_NOTE = ("Comp set includes size-dissimilar buildings (band relaxed). "
-                        "Size-dissimilar comps flagged.")
+                        "Size-dissimilar comps marked below.")
 
 # Item 1 — clarifying line under the tax-methodology derivation (static, no verdict).
 TAX_METHOD_NOTE = ("The tax is levied on the transitional (taxable) value, not on the 45% "

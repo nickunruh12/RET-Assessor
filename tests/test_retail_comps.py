@@ -142,10 +142,10 @@ def test_per_sf_size_flag_on_pure_band_relax(client):
     assert sig["refused"] is False                                   # per-SF KEPT, not suppressed
     assert "size_flag_note" in sig                                   # chart header note
     flagged = [p for p in sig["comp_points"] if p.get("size_dissimilar")]
-    assert flagged, "expected size-dissimilar comps flagged on the per-SF chart"
+    assert flagged, "expected size-dissimilar comps marked on the per-SF chart"
     html = client.get("/retail_screen", params={"bbl": PURE_BAND_RELAX}).text
     assert 'class="size-flag"' in html                               # per-row table tag
-    assert "Size-dissimilar comps flagged" in html                   # header note
+    assert "Size-dissimilar comps marked below" in html                   # header note
     assert "outlier" not in html.lower()                             # banned word stays out
 
 
@@ -163,7 +163,7 @@ def test_band_held_set_has_no_size_flags(client):
     sig = next(s for s in j["signals"] if s["key"] == "mv_per_gross_sf")
     assert sig["refused"] is False and "size_flag_note" not in sig
     html = client.get("/retail_screen", params={"bbl": PURE_BAND_HELD}).text
-    assert 'class="size-flag"' not in html and "Size-dissimilar comps flagged" not in html
+    assert 'class="size-flag"' not in html and "Size-dissimilar comps marked below" not in html
 
 
 def test_mixed_suppressed_per_sf_has_no_size_flags(client):
@@ -174,7 +174,7 @@ def test_mixed_suppressed_per_sf_has_no_size_flags(client):
     assert j.get("per_sf_size_flag") in (None, False)
     assert not any(p.get("size_dissimilar") for p in sig.get("comp_points", []))
     html = client.get("/retail_screen", params={"bbl": FALLBACK}).text
-    assert "Size-dissimilar comps flagged" not in html
+    assert "Size-dissimilar comps marked below" not in html
 
 
 def test_office_has_no_size_flag(client):
@@ -183,6 +183,78 @@ def test_office_has_no_size_flag(client):
     for s in j["signals"]:
         assert "size_flag_note" not in s
         assert not any(p.get("size_dissimilar") for p in (s.get("comp_points") or []))
+
+
+# --- Stage 3: specialized formats (real parcels via the test route) ------------------
+K5_GE5 = "1010190010"      # K5 food, >=5 same-format nearby
+K7_GE5_PURE = "1012990041"  # K7 bank, >=5 same-format, pure-share (per-SF shown)
+K7_LOWSHARE = "1001940038"  # K7 bank, low retail-share -> per-SF suppressed
+K6_LT5 = "1000730010"       # K6 center, <5 same-format
+K9_LT5 = "1000740001"       # K9 misc, <5 same-format
+K8_BBL = "2045040412"       # K8 big-box (citywide)
+K3_HELD = "1006460018"      # K3 dept, same-size comps found (band held)
+K3_ZERO = "1004830007"      # K3 dept, zero same-size (all flagged)
+
+
+def test_seek5_satisfied_discloses_5_of_8(client):
+    for bbl, label in [(K5_GE5, "Food establishment"), (K7_GE5_PURE, "Bank branch")]:
+        j = client.get("/api/retail_screen", params={"bbl": bbl}).json()
+        assert j["status"] == "ok" and j["comp_meta"]["comp_count"] == 8
+        assert j["comp_meta"]["composition"]["exact_count"] == 5            # 5 same-format kept
+        assert f"5 of 8 comps are same-format ({label})" in j["retail_fallback_note"]
+        assert max(r["distance_display"] and float(r["distance_display"]) for r in j["variance"]["all_diffs"]) <= 1.0                               # never past the cap
+
+
+def test_seek5_under_5_fills_to_8_no_refuse(client):
+    for bbl in (K6_LT5, K9_LT5):
+        j = client.get("/api/retail_screen", params={"bbl": bbl}).json()
+        assert j["status"] == "ok" and j["comp_meta"]["comp_count"] == 8     # filled to 8
+        n = j["comp_meta"]["composition"]["exact_count"]
+        assert n < 5 and f"{n} of 8 comps are same-format" in j["retail_fallback_note"]
+
+
+def test_k8_citywide_no_cap_discloses_max_distance(client):
+    j = client.get("/api/retail_screen", params={"bbl": K8_BBL}).json()
+    assert j["status"] == "ok" and j["comp_meta"]["comp_count"] == 8
+    assert j["comp_meta"]["composition"]["exact_count"] == 8                 # all same-format K8
+    assert "drawn citywide" in j["retail_fallback_note"] and "furthest comp" in j["retail_fallback_note"]
+    # crosses boroughs and reaches well past any local cap (no refusal for distance)
+    boros = {r["parcel_id"][0] for r in j["variance"]["all_diffs"]}
+    assert len(boros) >= 2
+    assert max(float(r["distance_display"]) for r in j["variance"]["all_diffs"]) > 1.5
+
+
+def test_k3_with_same_size_band_held_per_sf_shown(client):
+    j = client.get("/api/retail_screen", params={"bbl": K3_HELD}).json()
+    persf = next(s for s in j["signals"] if s["key"] == "mv_per_gross_sf")
+    assert persf["refused"] is False                                        # per-SF shown
+    assert j["comp_meta"]["sf_band_applied"] is True and not j.get("per_sf_size_flag")
+    assert "broader retail" in j["retail_fallback_note"]                    # cross-format disclosed
+    assert max(float(r["distance_display"]) for r in j["variance"]["all_diffs"]) <= 1.0
+
+
+def test_k3_zero_same_size_all_flagged_not_suppressed(client):
+    j = client.get("/api/retail_screen", params={"bbl": K3_ZERO}).json()
+    persf = next(s for s in j["signals"] if s["key"] == "mv_per_gross_sf")
+    assert persf["refused"] is False                                        # per-SF rendered, NOT suppressed
+    assert j.get("per_sf_size_flag") is True
+    assert "larger than surrounding retail" in j["retail_fallback_note"]
+    assert "all marked size-dissimilar" in j["retail_fallback_note"]
+    html = client.get("/retail_screen", params={"bbl": K3_ZERO}).text
+    assert 'class="size-flag"' in html and "outlier" not in html.lower()
+
+
+def test_lowshare_specialized_per_sf_suppressed(client):
+    j = client.get("/api/retail_screen", params={"bbl": K7_LOWSHARE}).json()
+    persf = next(s for s in j["signals"] if s["key"] == "mv_per_gross_sf")
+    assert persf["refused"] is True                                         # Stage-1 gate, unchanged
+    assert "blends retail with other uses" in persf["message"]
+
+
+def test_specialized_still_refused_on_public_screen(client):
+    for bbl in (K8_BBL, K3_ZERO, K5_GE5):
+        j = client.get("/api/screen", params={"bbl": bbl}).json()
+        assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1"
 
 
 def test_public_screen_still_refuses_retail(client):

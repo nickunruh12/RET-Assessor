@@ -86,6 +86,53 @@ def _fallback_select(pool, min_count, *, same, in_band):
     return round(max(c["distance_miles"] for c in chosen), 4), chosen
 
 
+# Stage 3 — specialized formats. Category is set by Stage 1 (classify_retail) from the K-code.
+SPECIALIZED_LABELS = {
+    "K3_department": "Department store", "K5_food": "Food establishment",
+    "K6_center": "Shopping center", "K7_bank": "Bank branch",
+    "K8_bigbox": "Big-box retail", "K9_misc": "Miscellaneous store"}
+SPECIALIZED = set(SPECIALIZED_LABELS)
+SEEK5_FORMATS = {"K5_food", "K6_center", "K7_bank", "K9_misc"}   # seek-up-to-5 same-format
+_CAT_TO_KCODE = {c: c.split("_")[0] for c in SPECIALIZED}
+LABELS_ALL = {**_LABELS, **SPECIALIZED_LABELS}
+SEEK_SAME_FORMAT = 5
+
+
+def _candidate_cols(hav):
+    return (f"SELECT p.parcel_id, p.source_dataset, p.dataset_version, p.roll_year, "
+            f"p.retrieval_date, p.bldg_class, p.zip_code, p.sf, p.sf_source, "
+            f"p.pluto_dataset_version, p.year_built, p.house_number, p.street_name, "
+            f"p.pluto_address, p.pluto_numfloors, p.pluto_latitude, p.pluto_longitude, "
+            f"p.curmkttot, p.curtxbtot, p.curtrntot, p.curacttot, rc.category, rc.k_code, "
+            f"{hav} AS distance_miles")
+
+
+def _pull_candidates(con, comp_table, subj, juris, criteria, *, cat_in=(), kcode_in=(), cap=None):
+    """Flexible retail candidate pull (reuses the haversine + condo/exempt filters). Selects
+    parcels matching ANY of `cat_in` (retail categories) or `kcode_in` (same-format K-codes),
+    with distance; `cap` None means citywide (K8 only). Returns dict rows within the cap."""
+    slat, slon = subj["pluto_latitude"], subj["pluto_longitude"]
+    hav = (f"{EARTH_RADIUS_MI}*2*asin(sqrt(power(sin(radians(p.pluto_latitude-?)/2),2)+"
+           f"cos(radians(?))*cos(radians(p.pluto_latitude))*power(sin(radians(p.pluto_longitude-?)/2),2)))")
+    ors, cparams = [], []
+    if cat_in:
+        ors.append(f"rc.category IN ({','.join(['?'] * len(cat_in))})"); cparams += list(cat_in)
+    if kcode_in:
+        ors.append(f"rc.k_code IN ({','.join(['?'] * len(kcode_in))})"); cparams += list(kcode_in)
+    where = ["p.parcel_id != ?", "p.pluto_latitude IS NOT NULL AND p.pluto_longitude IS NOT NULL",
+             "p.sf IS NOT NULL", "(" + " OR ".join(ors) + ")"]
+    params = [slat, slat, slon, subj["parcel_id"], *cparams]
+    condo_sql, condo_params = juris.condo_clause(criteria)
+    where.append(condo_sql.replace("parcel_id", "p.parcel_id").replace("bldg_class", "p.bldg_class"))
+    params += condo_params
+    if criteria.exclude_non_positive_market_value:
+        where.append("p.curmkttot > 0")
+    sql = (f"{_candidate_cols(hav)} FROM {comp_table} p "
+           f"JOIN retail_class rc ON rc.parcel_id = p.parcel_id WHERE {' AND '.join(where)}")
+    rows = _rows_to_dicts(con.execute(sql, params))
+    return rows if cap is None else [c for c in rows if c["distance_miles"] <= cap + 1e-9]
+
+
 def select_retail_comps(con, subject_bbl: str, juris: Jurisdiction, criteria: CompCriteria,
                         comp_table: str = "parcels") -> tuple[CompSet, RetailMeta]:
     subj_rows = _rows_to_dicts(con.execute(
@@ -97,18 +144,17 @@ def select_retail_comps(con, subject_bbl: str, juris: Jurisdiction, criteria: Co
         return _refuse(subject_bbl, None, _crit_summary(criteria, None), "subject_not_found"), meta
     subj = subj_rows[0]
     category = subj.get("category")
-    if category not in CORE_CATEGORIES:
-        # specialized formats (Stage 3) and non-retail land here — not screenable in Stage 2.
+    if category not in CORE_CATEGORIES and category not in SPECIALIZED:
         return _refuse(subject_bbl, None, _crit_summary(criteria, None), "out_of_scope_v1"), meta
 
-    cap = criteria.retail_radius_caps.get(category, 1.0)
+    cap = None if category == "K8_bigbox" else criteria.retail_radius_caps.get(category, 1.0)
     per_sf_shown = bool(subj.get("per_sf_shown"))
     meta = RetailMeta(category, per_sf_shown, subj.get("retail_note"), None,
                       None if per_sf_shown else _PER_SF_SUPPRESS_NOTE)
 
     subject_summary = {
         "parcel_id": subj["parcel_id"], "bldg_class": subj.get("bldg_class"),
-        "bucket": category, "bucket_label": _LABELS.get(category, category),
+        "bucket": category, "bucket_label": LABELS_ALL.get(category, category),
         "borough": juris.borough_of(subj["parcel_id"]), "zip_code": subj.get("zip_code"),
         "sf": subj.get("sf"), "sf_source": subj.get("sf_source"),
         "year_built": subj.get("year_built"), "house_number": subj.get("house_number"),
@@ -128,57 +174,23 @@ def select_retail_comps(con, subject_bbl: str, juris: Jurisdiction, criteria: Co
     if subj.get("pluto_latitude") is None or subj.get("pluto_longitude") is None:
         return _refuse(subject_bbl, subject_summary, crit, "subject_no_coordinates"), meta
 
-    # --- candidate pull: all CORE retail within the cap, with distance + category ---
-    slat, slon = subj["pluto_latitude"], subj["pluto_longitude"]
-    hav = (f"{EARTH_RADIUS_MI}*2*asin(sqrt(power(sin(radians(p.pluto_latitude-?)/2),2)+"
-           f"cos(radians(?))*cos(radians(p.pluto_latitude))*power(sin(radians(p.pluto_longitude-?)/2),2)))")
-    where = ["p.parcel_id != ?", "p.pluto_latitude IS NOT NULL AND p.pluto_longitude IS NOT NULL",
-             "p.sf IS NOT NULL", f"rc.category IN ({','.join(['?'] * len(CORE_CATEGORIES))})"]
-    params: list = [slat, slat, slon, subject_bbl, *CORE_CATEGORIES]
-    condo_sql, condo_params = juris.condo_clause(criteria)
-    where.append(condo_sql.replace("parcel_id", "p.parcel_id").replace("bldg_class", "p.bldg_class"))
-    params += condo_params
-    if criteria.exclude_non_positive_market_value:
-        where.append("p.curmkttot > 0")
-    sql = f"""
-        SELECT p.parcel_id, p.source_dataset, p.dataset_version, p.roll_year, p.retrieval_date,
-               p.bldg_class, p.zip_code, p.sf, p.sf_source, p.pluto_dataset_version, p.year_built,
-               p.house_number, p.street_name, p.pluto_address, p.pluto_numfloors,
-               p.pluto_latitude, p.pluto_longitude, p.curmkttot, p.curtxbtot, p.curtrntot,
-               p.curacttot, rc.category, {hav} AS distance_miles
-        FROM {comp_table} p JOIN retail_class rc ON rc.parcel_id = p.parcel_id
-        WHERE {' AND '.join(where)}
-    """
-    cand = [c for c in _rows_to_dicts(con.execute(sql, params)) if c["distance_miles"] <= cap + 1e-9]
+    minc = criteria.min_comp_count
+    in_band = lambda c: subj["sf"] * (1 - criteria.sf_band) <= c["sf"] <= subj["sf"] * (1 + criteria.sf_band)
 
-    crit_cap = criteria.model_copy(update={
-        "radius_cap_miles": cap, "radius_start_miles": min(criteria.radius_start_miles, cap)})
-    radii = _radii(crit_cap)
-    lo, hi = subj["sf"] * (1 - criteria.sf_band), subj["sf"] * (1 + criteria.sf_band)
-    in_band = lambda c: lo <= c["sf"] <= hi
-    same = lambda c: c["category"] == category
+    # --- per-format selection -> (chosen, radius_used, band_applied, sf_band_relaxed, fallback,
+    #     candidates_n). meta.fallback_note set per branch. ---
+    if category in CORE_CATEGORIES:
+        sel = _select_core(con, comp_table, subj, juris, criteria, category, cap, in_band, meta)
+    elif category == "K8_bigbox":
+        sel = _select_k8(con, comp_table, subj, juris, criteria, meta)
+    elif category in SEEK5_FORMATS:
+        sel = _select_seek5(con, comp_table, subj, juris, criteria, category, cap, in_band, per_sf_shown, meta)
+    else:                                                       # K3_department
+        sel = _select_k3(con, comp_table, subj, juris, criteria, cap, in_band, per_sf_shown, meta)
+    if sel is None:
+        return _refuse(subject_bbl, subject_summary, crit, "insufficient_comps_within_cap", cap=cap), meta
+    chosen, radius_used, band_applied, sf_band_relaxed, fallback, candidates_n = sel
 
-    band_applied, fallback = True, False
-    # Stage 1: same-category, banded
-    hit = _sweep(cand, radii, criteria.min_comp_count, predicate=lambda c: same(c) and in_band(c))
-    # Stage 2: relax band, same-category
-    if hit is None:
-        hit = _sweep(cand, radii, criteria.min_comp_count, predicate=same)
-        if hit is not None:
-            band_applied = False
-    # Stage 3: broader-retail fallback — same-mix preferred, band-eligible cross-use next,
-    # off-band cross-use only to reach the minimum; local-first, never past cap.
-    if hit is None:
-        hit = _fallback_select(cand, criteria.min_comp_count, same=same, in_band=in_band)
-        if hit is not None:
-            fallback = True
-            band_applied = all(in_band(c) for c in hit[1])
-    if hit is None:
-        cs = _refuse(subject_bbl, subject_summary, crit, "insufficient_comps_within_cap",
-                     cap=cap, candidates=len(cand))
-        return cs, meta
-
-    radius_used, chosen = hit
     icap = icap_bbls(con, [c["parcel_id"] for c in chosen])
     comps = [_to_retail_comprow(c, category, icap) for c in chosen]
     exact_n = sum(1 for c in comps if c.match_type == "exact")
@@ -186,15 +198,104 @@ def select_retail_comps(con, subject_bbl: str, juris: Jurisdiction, criteria: Co
     breakdown: dict = {}
     for c in adj:
         breakdown[c.bucket] = breakdown.get(c.bucket, 0) + 1
-    if fallback and adj:
-        meta.fallback_note = _FALLBACK_NOTE
-    # The band can only be "off" here because the cascade relaxed it (retail subjects have SF).
-    sf_band_relaxed = bool(subj.get("sf")) and not band_applied
     cs = CompSet(subject_bbl, subject_summary, comps, len(comps), round(radius_used, 4), False,
-                 crit, candidates_within_cap=len(cand), fallback_triggered=fallback,
+                 crit, candidates_within_cap=candidates_n, fallback_triggered=fallback,
                  exact_count=exact_n, adjacent_count=len(adj), adjacent_breakdown=breakdown,
                  sf_band_applied=band_applied, sf_band_relaxed=sf_band_relaxed)
     return cs, meta
+
+
+def _select_core(con, comp_table, subj, juris, criteria, category, cap, in_band, meta):
+    """Stage 2 core cascade (unchanged): same-category banded -> band-relax -> broader fallback."""
+    cand = _pull_candidates(con, comp_table, subj, juris, criteria, cat_in=CORE_CATEGORIES, cap=cap)
+    crit_cap = criteria.model_copy(update={
+        "radius_cap_miles": cap, "radius_start_miles": min(criteria.radius_start_miles, cap)})
+    radii = _radii(crit_cap)
+    same = lambda c: c["category"] == category
+    band_applied, fallback = True, False
+    hit = _sweep(cand, radii, criteria.min_comp_count, predicate=lambda c: same(c) and in_band(c))
+    if hit is None:
+        hit = _sweep(cand, radii, criteria.min_comp_count, predicate=same)
+        if hit is not None:
+            band_applied = False
+    if hit is None:
+        hit = _fallback_select(cand, criteria.min_comp_count, same=same, in_band=in_band)
+        if hit is not None:
+            fallback = True
+            band_applied = all(in_band(c) for c in hit[1])
+    if hit is None:
+        return None
+    radius_used, chosen = hit
+    if fallback and any(c["category"] != category for c in chosen):
+        meta.fallback_note = _FALLBACK_NOTE
+    return chosen, radius_used, band_applied, bool(subj.get("sf")) and not band_applied, fallback, len(cand)
+
+
+def _select_k8(con, comp_table, subj, juris, criteria, meta):
+    """K8 big-box: 8 NEAREST K8 parcels CITYWIDE (no distance cap); cross-borough expected."""
+    cand = _pull_candidates(con, comp_table, subj, juris, criteria, kcode_in=["K8"], cap=None)
+    chosen = sorted(cand, key=lambda c: c["distance_miles"])[:criteria.min_comp_count]
+    if len(chosen) < criteria.min_comp_count:
+        return None
+    maxd = max(c["distance_miles"] for c in chosen)
+    meta.fallback_note = (f"Big-box comps drawn citywide (location-uniform format); "
+                          f"furthest comp {maxd:.1f} mi.")
+    # No SF band for the citywide format — band 'applied' True to suppress the SF-band message;
+    # the citywide note is the disclosure. Not a band-relax, so no size flags.
+    return chosen, maxd, True, False, False, len(cand)
+
+
+def _select_seek5(con, comp_table, subj, juris, criteria, category, cap, in_band, per_sf_shown, meta):
+    """K5/K7/K6/K9: up to 5 same-format within cap, fill to 8 by nearest broader-retail."""
+    kcode = _CAT_TO_KCODE[category]
+    cand = _pull_candidates(con, comp_table, subj, juris, criteria,
+                            cat_in=CORE_CATEGORIES, kcode_in=[kcode], cap=cap)
+    same_format = sorted((c for c in cand if c["category"] == category),
+                         key=lambda c: c["distance_miles"])[:SEEK_SAME_FORMAT]
+    chosen_ids = {c["parcel_id"] for c in same_format}
+    fill = sorted((c for c in cand if c["category"] in CORE_CATEGORIES and c["parcel_id"] not in chosen_ids),
+                  key=lambda c: c["distance_miles"])
+    chosen = list(same_format)
+    for c in fill:
+        if len(chosen) >= criteria.min_comp_count:
+            break
+        chosen.append(c)
+    if len(chosen) < criteria.min_comp_count:
+        return None
+    n_same = len(same_format)
+    meta.fallback_note = (f"{n_same} of {criteria.min_comp_count} comps are same-format "
+                          f"({SPECIALIZED_LABELS[category]}); remainder are nearest retail.")
+    radius_used = max(c["distance_miles"] for c in chosen)
+    band_applied = all(in_band(c) for c in chosen)
+    sf_band_relaxed = per_sf_shown and not band_applied      # flag size-dissimilar fill (Stage 2)
+    return chosen, radius_used, band_applied, sf_band_relaxed, True, len(cand)
+
+
+def _select_k3(con, comp_table, subj, juris, criteria, cap, in_band, per_sf_shown, meta):
+    """K3 department store: broader-retail LOCAL (within cap, no citywide), ±50% band; when
+    same-size can't fill 8, relax band + flag size-dissimilar (reuse Stage 2); per-SF shown."""
+    cand = _pull_candidates(con, comp_table, subj, juris, criteria, cat_in=CORE_CATEGORIES, cap=cap)
+    crit_cap = criteria.model_copy(update={
+        "radius_cap_miles": cap, "radius_start_miles": min(criteria.radius_start_miles, cap)})
+    radii = _radii(crit_cap)
+    hit = _sweep(cand, radii, criteria.min_comp_count, predicate=in_band)   # same-size local first
+    if hit is not None:
+        radius_used, chosen, band_applied = hit[0], hit[1], True
+    else:                                                       # relax band: nearest broader retail
+        chosen = sorted(cand, key=lambda c: c["distance_miles"])[:criteria.min_comp_count]
+        if len(chosen) < criteria.min_comp_count:
+            return None
+        radius_used, band_applied = max(c["distance_miles"] for c in chosen), False
+    same_size = sum(1 for c in chosen if in_band(c))
+    if same_size == 0:
+        meta.fallback_note = ("No same-size retail found nearby (this building is larger than "
+                              "surrounding retail); per-SF shown against smaller nearby retail, "
+                              "all marked size-dissimilar.")
+    else:
+        meta.fallback_note = ("Department store: no same-format peers; comp set is broader "
+                              "retail" + ("" if band_applied else ", some size-dissimilar (band relaxed)") + ".")
+    sf_band_relaxed = per_sf_shown and not band_applied
+    return chosen, radius_used, band_applied, sf_band_relaxed, True, len(cand)
 
 
 def _to_retail_comprow(c: dict, subject_category: str, icap: set) -> CompRow:

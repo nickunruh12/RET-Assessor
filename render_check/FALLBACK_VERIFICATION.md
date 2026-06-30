@@ -103,7 +103,7 @@ Three surfaces, per-SF ONLY (value/tax charts untouched):
    "size-dissimilar" series (separate from the gray in-band "comps" dots), so the outliers
    driving the per-SF spread are obvious on the chart.
 3. **Per-SF header note** — "Comp set includes size-dissimilar buildings (band relaxed).
-   Size-dissimilar comps flagged." (worded to avoid the banned word "outlier".)
+   Size-dissimilar comps marked below." (worded to avoid banned words "outlier"/"flagged".)
 
 **Verified — BBL 1000200012** (47 Broadway, **pure_retail**, per-SF SHOWN, band relaxed;
 subject 27,640 SF, band 13,820–41,460): per-SF chart renders (not suppressed); 8 of 11 comps
@@ -124,6 +124,30 @@ was left untouched.
 
 ---
 
+## 5. Stage 3 — specialized-format strategies (K3/K5/K6/K7/K8/K9)
+
+Built on the same engine/stats path. Per-format verification (real parcels, test route):
+
+| Format | Subject | Strategy | Result |
+|---|---|---|---|
+| K5 food | 1010190010 | seek-up-to-5 same-format + fill to 8 | "5 of 8 same-format (Food establishment)", maxDist 0.73mi (≤1.0 cap), per-SF shown |
+| K7 bank | 1012990041 | seek-up-to-5 + fill | "5 of 8 same-format (Bank branch)", per-SF shown, ≤1.0 cap |
+| K6 center | 1000730010 | seek-up-to-5 + fill | "1 of 8 same-format", filled to 8, no refuse |
+| K9 misc | 1000740001 | seek-up-to-5 + fill | "0 of 8 same-format", filled to 8, no refuse |
+| K8 big-box | 2045040412 | 8 nearest CITYWIDE, no cap | 8 same-format, furthest 7.6mi, crosses 2 boroughs, no refuse |
+| K3 dept (same-size) | 1006460018 | broader-retail local + ±50% band | band held, per-SF shown, "comp set is broader retail" |
+| K3 dept (zero same-size) | 1004830007 | band relaxed + size-marked | per-SF rendered ALL-marked (NOT suppressed); "larger than surrounding retail" reason |
+| low-share K7 | 1001940038 | per-SF gated by Stage-1 share | per-SF SUPPRESSED (retail_share 0.47), unchanged |
+
+Invariants confirmed: every local format obeys the cap (all maxDist ≤ 1.0mi; K8's citywide is
+a no-cap format rule, not per-screen expansion); seek-N is uniform (one `SEEK_SAME_FORMAT=5`
+constant, no per-format hardcoded number); K3 never expands distance to chase size; per-SF
+gating reuses Stage 1; size-marking reuses Stage 2; public `/screen` still refuses every K as
+`out_of_scope_v1`; office + core-retail screens byte-for-byte unchanged. The "flagged" wording
+was reworded to "marked" (banned word `\bflagged\b`); no banned words on any specialized page.
+
+---
+
 _Reproduce: `python -m screener.retail_loader --skip-fetch` then screen the BBLs above via
-`/api/retail_screen?bbl=...`. Tests: `tests/test_retail_comps.py` (261 passing; render_check
+`/api/retail_screen?bbl=...`. Tests: `tests/test_retail_comps.py` (273 passing; render_check
 banned-word grep clean)._
