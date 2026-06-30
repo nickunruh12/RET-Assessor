@@ -274,12 +274,29 @@ def test_mean_shown_before_median_and_consistent_with_band(client):
     j = client.get("/api/screen", params={"bbl": "2023070046"}).json()
     for sig in j["signals"]:
         assert sig["mean"] is not None
-        # mean == midpoint of the +/-1 SD band, and CV == SD / mean (the visible mean)
+        band = sig["dispersion"]["sd_band"]
         lo, hi = (float(p.replace("$", "").replace(",", ""))
-                  for p in sig["dispersion"]["sd_band"].split(": ")[1].split(" (")[0].split(" – "))
-        assert abs(sig["mean"] - (lo + hi) / 2) < (0.01 if "gross_sf" in sig["unit"] else 1.0)
+                  for p in band.split(": ")[1].split(" (")[0].split(" – "))
+        sd = float(band.split("(SD ")[1].rstrip(")").replace("$", "").replace(",", ""))
+        # The UPPER bound and SD stay consistent with the visible mean (mean + SD == upper).
+        # The LOWER bound is clamped non-negative (FIX 5), so it may sit above mean-SD but
+        # never below zero — a value/tax/per-SF figure cannot be negative.
+        tol = 0.01 if "gross_sf" in sig["unit"] else 1.0
+        assert abs(sig["mean"] + sd - hi) < tol
+        assert 0 <= lo <= hi
     html = client.get("/screen", params={"bbl": "2023070046"}).text
     assert html.index("mean:") < html.index("median:")     # mean sits before median on line 1
+
+
+def test_sd_band_lower_bound_clamped_at_observed_minimum():
+    # FIX 5 (pure unit) — on a right-skewed pool mean−1 SD is negative; the displayed lower
+    # bound is clamped at the observed minimum (a real, positive comp value), never below it.
+    from screener.serialize import _dispersion_stats
+    vals = [100.0, 100.0, 120.0, 150.0, 5000.0]               # mean 1094, mean−SD < 0
+    band = _dispersion_stats(vals, "$")["sd_band"]
+    lo = float(band.split(": ")[1].split(" – ")[0].replace("$", "").replace(",", ""))
+    assert lo == 100.0                                         # clamped to observed minimum
+    assert "(SD $" in band                                    # the SD value is still shown
 
 
 def test_dispersion_none_when_signal_refused(client):

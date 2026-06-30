@@ -283,3 +283,96 @@ def test_office_screen_unchanged(client):
     j = client.get("/api/screen", params={"bbl": "1013000001"}).json()
     assert j["status"] == "ok"
     assert "classification_note" not in j and "retail_fallback_note" not in j   # no retail keys leak
+
+
+# --- Pre-launch consolidated fixes -----------------------------------------------------
+CONTROL_BAND_HELD = "1000650004"   # 25 Maiden Ln, pure retail, band HELD -> real size-peers
+CORTLANDT = "1000630001"           # 10 Cortlandt, high-CV retail pool (negative SD floors)
+
+
+def _per_sf(j):
+    return next(s for s in j["signals"] if s["key"] == "mv_per_gross_sf")
+
+
+def test_per_sf_percentile_suppressed_on_relaxed_contaminated_pool(client):
+    # FIX 1 — band relaxed + <5 size-comparable comps: the per-SF percentile NUMBER is
+    # suppressed with a stated reason; the chart/distribution stay (signal NOT refused).
+    j = client.get("/api/retail_screen", params={"bbl": PURE}).json()
+    assert j["comp_meta"]["sf_band_relaxed"] is True
+    ps = _per_sf(j)
+    assert ps["refused"] is False                      # chart + distribution still shown
+    assert ps["subject_percentile"] is None            # the rank NUMBER is suppressed
+    assert "size-comparable" in ps["percentile_note"]
+    assert ps["distribution"]                           # distribution still present
+
+
+def test_per_sf_percentile_kept_on_band_held_control(client):
+    # FIX 1 control — band held (all comps in-band): the per-SF percentile is a real signal
+    # on genuine size-peers and must NOT be suppressed.
+    j = client.get("/api/retail_screen", params={"bbl": CONTROL_BAND_HELD}).json()
+    assert j["comp_meta"]["sf_band_relaxed"] is False
+    ps = _per_sf(j)
+    assert ps["refused"] is False and ps["subject_percentile"] is not None
+    assert ps["percentile_note"] is None               # no disclosure needed (full-pool rank)
+
+
+def test_k8_keeps_per_sf_percentile(client):
+    # FIX 1 control — K8 is a deliberate citywide FORMAT-peer pool (no SF band by design);
+    # size variation among big-box stores is expected, so its per-SF percentile is kept.
+    j = client.get("/api/retail_screen", params={"bbl": K8_BBL}).json()
+    ps = _per_sf(j)
+    assert ps["refused"] is False and ps["subject_percentile"] is not None
+
+
+def test_k3_per_sf_percentile_always_suppressed(client):
+    # FIX 2 — K3 suppresses the per-SF percentile regardless of in-band count (K3_HELD has
+    # ample same-size comps yet must still suppress). Distribution stays shown.
+    j = client.get("/api/retail_screen", params={"bbl": K3_HELD}).json()
+    ps = _per_sf(j)
+    assert ps["refused"] is False and ps["subject_percentile"] is None
+    assert "department store" in ps["percentile_note"]
+
+
+def test_mixed_use_precedence_over_size_reason(client):
+    # FIX 3 — a mixed-use subject trips both suppressors; the mixed-use reason wins and the
+    # size/in-band reason never also prints.
+    j = client.get("/api/retail_screen", params={"bbl": K7_LOWSHARE}).json()
+    ps = _per_sf(j)
+    assert ps["refused"] is True
+    assert "blends retail with other uses" in ps["message"]
+    assert ps["percentile_note"] is None               # size reason not double-printed
+
+
+def test_radius_mode_label_class_aware(client):
+    # FIX 6 — the auto-mode label states what actually happened and agrees with radius-used.
+    k8 = client.get("/api/retail_screen", params={"bbl": K8_BBL}).json()
+    assert k8["radius_control"]["auto_label"] == "Citywide — nearest big-box comps, no distance cap"
+    core = client.get("/api/retail_screen", params={"bbl": PURE}).json()
+    assert core["radius_control"]["auto_label"].startswith("Auto — expands up to")
+    assert core["comp_meta"]["radius_used_miles"] <= 1.0       # radius-used agrees with the cap
+    office = client.get("/api/screen", params={"bbl": "1013000001"}).json()
+    assert office["radius_control"]["auto_label"] is None       # office keeps the generic label
+
+
+def test_retail_expense_ratio_note_mirrors_office(client):
+    # FIX 7 — retail Expense Ratio Check renders the 35–45% line with the verbatim label.
+    j = client.get("/api/retail_screen", params={"bbl": PURE}).json()
+    note = j["expense_ratio"]["benchmark_note"]
+    assert "35–45%" in note and "retail building" in note
+    assert "general rule of thumb, not a sourced benchmark" in note
+
+
+def test_k4_pure_note_reconciled(client):
+    # FIX 9 — the K4->pure note no longer reads as a contradiction with "K4 (Pure retail)".
+    note = client.get("/api/retail_screen", params={"bbl": PURE}).json()["classification_note"]
+    assert "K4 is DOF's mixed-use commercial code" in note and "screened as pure retail" in note
+
+
+def test_sd_band_floor_non_negative_on_high_cv_pool(client):
+    # FIX 5 — no SD-band lower bound renders negative even on a high-CV pool.
+    j = client.get("/api/retail_screen", params={"bbl": CORTLANDT}).json()
+    for s in j["signals"]:
+        if not s.get("dispersion"):
+            continue
+        lo = s["dispersion"]["sd_band"].split(": ")[1].split(" – ")[0]
+        assert not lo.startswith("-$"), f"{s['key']} SD floor negative: {lo}"

@@ -107,3 +107,46 @@ Fixed so the sequence isn't re-litigated. Do steps in order; do not pull later s
    The **custom-comp path is deferred specifically because its comp-selection interface is
    property-type-dependent** (a comp picker must reason about each comp's type once more than
    one type exists); building it pre-expansion would mean building it twice.
+
+## Retail pre-launch consolidated fixes (LOCKED 2026-06-30)
+
+From the adversarial "make-it-lie" session. These gate lifting the public `out_of_scope_v1`
+refusal for K-codes (the refusal itself is NOT lifted yet).
+
+- **Per-SF percentile is in-band-only (size-comparable).** The market-value-per-SF PERCENTILE
+  number is computed on comps whose gross building area is within ±50% of the subject
+  (size-comparable). With ≥5 in-band comps it is computed on those and the basis is disclosed
+  (`percentile computed on N size-comparable comps`); with <5 it is SUPPRESSED with a stated
+  reason. The chart, distribution, and size-dissimilar marking are unchanged — only the rank
+  number. Value and tax percentiles are untouched (size dissimilarity does not corrupt them).
+- **K3 (department store) per-SF percentile is always suppressed.** Confirmed the in-band rule
+  does NOT subsume K3 (≈half of screenable K3 have ≥5 in-band comps), so an explicit rule
+  suppresses the K3 per-SF percentile regardless of in-band count. Chart/distribution kept.
+- **Suppression precedence: MIXED-USE wins over SIZE.** A parcel can trip both per-SF
+  suppressors. The mixed floor-area use-blend is the deeper disqualifier (per-SF is
+  meaningless regardless of comp size), so when the subject is mixed-use the per-SF signal is
+  refused with the mixed-use reason and the size/in-band reason never also prints. The
+  size/in-band reason prints ONLY for a clean-use subject whose per-SF percentile can't be
+  computed on ≥5 in-band comps. Every suppression renders a stated reason — never a blank.
+- **±1 SD band lower bound is clamped at the observed minimum.** On right-skewed pools
+  mean−1 SD can go negative; a value/tax/per-SF figure cannot be negative, so the DISPLAYED
+  floor is clamped at the comp set's observed minimum. The SD value and upper bound are
+  unchanged.
+- **Radius mode label is class-aware.** The label states what actually happened so it agrees
+  with the radius-used line: K8 big-box = "Citywide — nearest big-box comps, no distance cap";
+  core/specialized = "Auto — expands up to [per-class cap] mi". Office keeps the generic
+  0.5–1.0 mi label.
+- **Retail Expense Ratio Check mirrors office** with a 35–45% range and the verbatim "general
+  rule of thumb, not a sourced benchmark" label; user-input-only, no verdict framing.
+- **Tax rate is the latest-adopted rate, single config value.** `class4_tax_rate` (FY2026 =
+  10.848%) is applied to the FY2027 transitional taxable value because DOF has not published
+  the FY2027 class-4 rate. When DOF publishes it, update that one config value (see
+  DATA_SOURCES.md maintenance note). No user-facing change.
+- **K4 field-vs-note wording reconciled.** The building-class line shows the MEASURED bucket
+  ("K4 (Pure retail)"); the classification note now says "K4 is DOF's mixed-use commercial
+  code, but this parcel measures ≥80% retail…" so code-meaning vs measured-bucket no longer
+  read as contradictory.
+- **Verified (no fix): subject tax dot/percentile use the uniform statutory basis.** On
+  ICAP-bearing subjects (e.g. a K8), the subject's plotted tax and percentile are
+  transitional-taxable × rate (gross, statutory) — the SAME basis as every comp — so the
+  comparison is apples-to-apples. The ICAP banner separately discloses the owner pays less.

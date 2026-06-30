@@ -15,11 +15,11 @@
   {% if rc and rc.show and bbl %}
   <div class="radius-control" data-bbl="{{ bbl }}">
     <p class="radius-mode">
-      Mode: <strong>{% if rc.mode == 'override' %}OVERRIDE — fixed radius, no auto-widen{% else %}AUTO — the tool expands 0.5–1.0 mi{% endif %}</strong>
+      Mode: <strong>{% if rc.mode == 'override' %}OVERRIDE — fixed radius, no auto-widen{% elif rc.auto_label %}{{ rc.auto_label }}{% else %}AUTO — the tool expands 0.5–1.0 mi{% endif %}</strong>
       · <strong class="radius-used">Radius used: {{ "%g"|format(radius_used) }} mi</strong>
     </p>
     <div class="radius-affordances">
-      <a class="radius-auto{% if rc.mode == 'auto' %} active{% endif %}" href="/screen?bbl={{ bbl }}&amp;radius=default">Default (auto 0.5–1.0 mi)</a>
+      <a class="radius-auto{% if rc.mode == 'auto' %} active{% endif %}" href="/screen?bbl={{ bbl }}&amp;radius=default">{% if rc.auto_label %}Default radius{% else %}Default (auto 0.5–1.0 mi){% endif %}</a>
       <span class="radius-slider-wrap">Override radius:
         <input type="range" id="radius-slider" min="{{ rc.min }}" max="{{ rc.max }}" step="0.01" value="{{ rc.handle }}">
         <span id="radius-live" class="src"></span>
@@ -169,10 +169,11 @@
           <p class="signal-refusal">{{ sig.message }}</p>
         {% else %}
           <p class="signal-stats">
-            your percentile: {{ sig.subject_percentile_display }}th ·
+            {% if sig.subject_percentile is not none %}your percentile: {{ sig.subject_percentile_display }}th{% else %}your percentile: not shown{% endif %} ·
             n = {{ sig.n }} comps{% if sig.excluded_blank %} ({{ sig.excluded_blank }} excluded, blank){% endif %} ·
             radius used: {{ sig.radius_used_miles }} mi
           </p>
+          {% if sig.percentile_note %}<p class="src percentile-basis">{{ sig.percentile_note }}</p>{% endif %}
           {% if sig.size_flag_note %}<p class="size-flag-note">{{ sig.size_flag_note }}</p>{% endif %}
           <div class="chart-box"><canvas class="strip" id="chart-{{ sig.key }}"></canvas></div>
           <p class="signal-readout">

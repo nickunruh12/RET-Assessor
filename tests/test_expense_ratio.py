@@ -65,11 +65,22 @@ def test_note_renders_for_nyc_office(setup):
         "office building in New York City (general rule of thumb, not a sourced benchmark).")
 
 
-def test_note_absent_for_unconfigured_product_type(setup):
+def test_retail_note_mirrors_office_with_retail_range(setup):
     juris, crit = setup
-    # Retail (K*) maps to a product type, but no (New York City, retail) range is configured.
+    # Retail (K*) now has a configured 35–45% range that mirrors office exactly (only the
+    # range and the word "retail" differ; same "not a sourced benchmark" label, no verdict).
     sec = _expense_section(juris, crit, {"bldg_class": "K1"})
     assert sec["product_type"] == "retail"
+    assert sec["benchmark_note"] == (
+        "35–45% = typical range for the real estate tax share of operating expenses for a "
+        "retail building in New York City (general rule of thumb, not a sourced benchmark).")
+
+
+def test_note_absent_for_unconfigured_product_type(setup):
+    juris, crit = setup
+    # Industrial (F*) maps to a product type, but no (New York City, industrial) range exists.
+    sec = _expense_section(juris, crit, {"bldg_class": "F1"})
+    assert sec["product_type"] == "industrial"
     assert sec["benchmark_note"] is None        # no range -> no note (never invented)
 
 

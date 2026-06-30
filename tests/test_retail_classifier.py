@@ -37,7 +37,8 @@ def test_k4_pure_high_retail_share():
     c = _classify(K4_PURE)
     assert c.category == PURE_RETAIL and c.per_sf_shown is True
     assert c.retail_share == 1.0
-    assert c.note == "Coded K4 (mixed-use) but >=80% retail by floor area; screened as pure retail."
+    assert c.note == ("K4 is DOF's mixed-use commercial code, but this parcel measures >=80% "
+                      "retail by floor area, so it is screened as pure retail.")
 
 
 def test_k2_office_mixed_fires_k2_note():

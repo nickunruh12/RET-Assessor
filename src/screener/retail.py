@@ -98,8 +98,11 @@ class RetailClassification:
 def _classification_note(k_code: str, category: str) -> str | None:
     """Fire ONLY when the K-code's plain meaning disagrees with the measured route."""
     if k_code == "K4" and category == PURE_RETAIL:
-        return ("Coded K4 (mixed-use) but >=80% retail by floor area; screened as pure "
-                "retail.")
+        # K4 is DOF's mixed-use *code*; the building-class line shows the MEASURED bucket
+        # ("Pure retail"). Word the note so code-meaning vs measured-bucket don't read as a
+        # contradiction (the class line and this note describe two different things).
+        return ("K4 is DOF's mixed-use commercial code, but this parcel measures >=80% retail "
+                "by floor area, so it is screened as pure retail.")
     if k_code == "K2" and category != PURE_RETAIL:
         return (f"Coded K2 (multi-store retail) but carries significant non-retail floor "
                 f"area; screened as {_LABELS[category]} by measured use-mix.")

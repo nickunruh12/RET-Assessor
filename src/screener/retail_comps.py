@@ -337,8 +337,16 @@ def build_retail_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *
     the retail comp set + per-SF suppression + Stage-1/Stage-2 disclosures."""
     from .serialize import build_screen_view   # local import: serialize imports comps, not us
     cs, meta = select_retail_comps(con, bbl, juris, criteria)
+    # FIX 6 — class-aware radius mode label so it AGREES with the radius actually used: K8 is
+    # citywide (no cap); core/specialized expand only up to their per-class cap.
+    if meta.category == "K8_bigbox":
+        auto_label = "Citywide — nearest big-box comps, no distance cap"
+    else:
+        cap = cs.criteria.get("radius_cap_miles") if cs.criteria else None
+        auto_label = f"Auto — expands up to {cap:g} mi" if cap else None
     return build_screen_view(
         con, criteria, juris, bbl=bbl, comp_set=cs,
         suppress_per_sf=not meta.per_sf_shown, per_sf_note=meta.per_sf_note,
         classification_note=meta.classification_note, fallback_note=meta.fallback_note,
-        quality_note=(K3_QUALITY_NOTE if meta.category == "K3_department" else None))
+        quality_note=(K3_QUALITY_NOTE if meta.category == "K3_department" else None),
+        radius_auto_label=auto_label)

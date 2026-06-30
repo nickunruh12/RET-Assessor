@@ -43,3 +43,12 @@ Trepp, Morningstar, Moody's CRE, CoStar, LoopNet, CompStak, CRED iQ, Yardi, Real
 ## Citation tuple (enforced in code from Phase 4)
 
 Every derived row carries: `source_dataset`, `dataset_version`, `roll_year`, `retrieval_date`, `parcel_id` (for both sources). If a number cannot carry that tuple, it does not enter the database.
+
+## Tax-rate maintenance (class-4)
+
+`config/comp_criteria.json` → `class4_tax_rate` is the **latest-adopted** class-4 rate
+(FY2026 = 10.848%), applied to the FY2027 transitional taxable value because DOF has not yet
+published the FY2027 class-4 rate. It is the single source of truth for the Tax Bill signal,
+the Real Estate Taxes line, and the Expense Ratio Check. **When DOF publishes the FY2027
+class-4 rate, update that one value** (one-line change); nothing else needs to move. Source:
+NYC DOF — Property Tax Rates (https://www.nyc.gov/site/finance/taxes/property-tax-rates.page).

@@ -66,10 +66,10 @@
   "_product_type_labels_doc": "Building-class first letter -> product-type word for display (e.g. the expense-ratio note). v1 activates office only; others are mapped ahead of activation.",
 
   "expense_ratio_benchmarks": {
-    "New York City": {"office": [40, 50]}
+    "New York City": {"office": [40, 50], "retail": [35, 45]}
   },
-  "_expense_ratio_benchmarks_doc": "Per-(metro, product_type) rule-of-thumb range for the real-estate-tax share of operating expenses, as [LOW, HIGH] percents. The note renders ONLY when a range exists for the subject's (metro, product_type). Populated for NYC+office = 40-50 only; add more (metro, product_type) entries later. NOT a sourced benchmark.",
+  "_expense_ratio_benchmarks_doc": "Per-(metro, product_type) rule-of-thumb range for the real-estate-tax share of operating expenses, as [LOW, HIGH] percents. The note renders ONLY when a range exists for the subject's (metro, product_type). Populated for NYC: office = 40-50, retail = 35-45. The retail range mirrors office exactly (user-input-only, same 'general rule of thumb, not a sourced benchmark' label, no verdict framing); only the range and the word 'retail' differ. Add more (metro, product_type) entries later. NOT a sourced benchmark.",
 
   "class4_tax_rate": 0.10848,
-  "_class4_tax_rate_doc": "FY2026 class-4 tax rate (DECISIONS). Multiplies curtxbtot (transitional taxable) into the tax-bill SIGNAL. CONTEXT layer."
+  "_class4_tax_rate_doc": "LATEST-ADOPTED class-4 tax rate (FY2026 = 10.848%), applied to the FY2027 transitional taxable value because DOF has not yet published the FY2027 class-4 rate. Single source of truth: multiplies curtxbtot (transitional taxable) into the tax-bill SIGNAL (CONTEXT layer). MAINTENANCE: when DOF publishes the FY2027 class-4 rate, update THIS value only (one-line change); see DATA_SOURCES.md / DECISIONS.md."
 }

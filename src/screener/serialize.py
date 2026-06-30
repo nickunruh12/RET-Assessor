@@ -415,8 +415,12 @@ def _dispersion_stats(values: list[float], unit: str) -> dict | None:
     sd = statistics.pstdev(vals)                                  # POPULATION standard deviation
     q1, _q2, q3 = statistics.quantiles(vals, n=4, method="inclusive")  # 25th / 75th percentile
     cv = "n/a" if mean <= 0 else f"{sd / mean * 100:.2f}%"        # guard: never divide by mean<=0
+    # FIX 5 — on a right-skewed pool mean−1 SD can fall below zero; a market-value / tax / per-SF
+    # figure cannot be negative, so clamp the DISPLAYED lower bound at the observed minimum (a
+    # real comp value, always positive). The SD value and the upper bound are unchanged.
+    sd_low = max(mean - sd, min(vals))
     return {
-        "sd_band": f"±1 SD: {_money(mean - sd, unit)} – {_money(mean + sd, unit)} (SD {_money(sd, unit)})",
+        "sd_band": f"±1 SD: {_money(sd_low, unit)} – {_money(mean + sd, unit)} (SD {_money(sd, unit)})",
         "iqr": f"middle 50% of comps: {_money(q1, unit)} – {_money(q3, unit)}",
         "cv": f"relative spread (CV): {cv}",
     }
@@ -431,6 +435,8 @@ def _signal_view(sig, dist_values: list[float], extra: dict) -> dict:
         "mean": _f(sig.mean), "median": _f(sig.median),
         "minimum": _f(sig.minimum), "maximum": _f(sig.maximum), "stddev": _f(sig.stddev),
         "subject_value": _f(sig.subject_value), "subject_percentile": sig.subject_percentile,
+        # Per-SF percentile basis/suppression (FIX 1/2/4): n it was computed on + stated reason.
+        "percentile_n": sig.percentile_n, "percentile_note": sig.percentile_note,
         "distribution": [round(float(v), 4) for v in dist_values] if not sig.refused else [],
         "notes": sig.notes,
         # display strings (precision per item 2): whole $ -> 0 dp, PSF -> 2 dp, percentile -> 2 dp
@@ -585,12 +591,15 @@ def _cross_borough_note(cs, juris) -> str | None:
             "interpret accordingly.")
 
 
-def _radius_control(selection: str, show: bool) -> dict:
+def _radius_control(selection: str, show: bool, auto_label: str | None = None) -> dict:
     mode = "auto" if selection == "default" else "override"
     handle = RADIUS_REST if mode == "auto" else float(selection)
     return {
         "mode": mode, "selection": selection, "handle": handle,
         "min": RADIUS_MIN, "max": RADIUS_MAX, "show": show,
+        # FIX 6 — class-aware auto-mode descriptor (retail: K8 citywide / per-class cap). None
+        # for office, where the generic "expands 0.5–1.0 mi" label is correct.
+        "auto_label": auto_label,
     }
 
 
@@ -619,7 +628,8 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
                       suppress_per_sf: bool = False, per_sf_note: str | None = None,
                       classification_note: str | None = None,
                       fallback_note: str | None = None,
-                      quality_note: str | None = None) -> dict:
+                      quality_note: str | None = None,
+                      radius_auto_label: str | None = None) -> dict:
     """Office path uses all retail kwargs at their defaults (behaviour unchanged). The retail
     test route injects a pre-selected `comp_set` and the Stage-1/Stage-2 disclosures; per-SF
     suppression for mixed-use retail reuses the existing per-signal refusal path."""
@@ -730,7 +740,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         "context": CONTEXT,
         "rung3": {"enabled": False, "section": "Calculate Implied Cap Rate With User-Provided NOI"},
         "expense_ratio": _expense_section(juris, criteria, cs.subject),
-        "radius_control": _radius_control(radius_selection, show=True),
+        "radius_control": _radius_control(radius_selection, show=True, auto_label=radius_auto_label),
     }
     # Retail-only disclosures (Stage 1 code-vs-route / "could not be measured"; Stage 2
     # broader-retail fallback). Office leaves both None, so its result dict is unchanged.

@@ -32,6 +32,11 @@ from .jurisdiction import CompCriteria
 # Subject percentile definition, stated so it is hand-verifiable:
 PERCENTILE_BASIS = "share of comps strictly below the subject's value, x100 (0 = subject is the lowest)"
 
+# Per-SF percentile is computed on SIZE-COMPARABLE (in-band) comps only — a relaxed band can
+# pack the pool with tiny, high-per-SF retail that mechanically drags the rank. Below this many
+# in-band comps the percentile NUMBER is suppressed (chart + distribution stay shown).
+MIN_INBAND_FOR_PER_SF_PERCENTILE = 5
+
 
 @dataclass
 class SignalStats:
@@ -52,6 +57,11 @@ class SignalStats:
     refused: bool = False
     refusal_reason: str | None = None
     notes: list[str] = field(default_factory=list)
+    # Per-SF only: the subset size the percentile was actually computed on (in-band comps), and
+    # a stated reason whenever it differs from the chart n or the number is suppressed (None =
+    # percentile computed on the full chart population, no disclosure needed).
+    percentile_n: int | None = None
+    percentile_note: str | None = None
 
 
 @dataclass
@@ -206,6 +216,53 @@ def compute_stats(cs: CompSet, criteria: CompCriteria, *, suppress_per_sf: bool 
         )
         sig.notes.append(f"denominator = gross building area; comp SF sources: "
                          f"{sorted({c.sf_source for c in comps})}")
+        # FIX 1/2 — the per-SF PERCENTILE is computed on SIZE-COMPARABLE comps only (BldgArea
+        # within ±band of the subject) WHEN the band was relaxed — a relaxed pool can pack in
+        # tiny, high-per-SF retail that mechanically drags an honest-looking rank. The
+        # distribution/chart/marking above are unchanged; only this rank number changes. Value
+        # and tax percentiles are untouched (size doesn't corrupt them). Precedence (FIX 3):
+        # this runs only when per-SF is SHOWN — a mixed-use subject is already fully refused
+        # above with its own reason, so the size reason never double-prints.
+        #
+        # The restriction fires ONLY for K3 (always) or a band-RELAXED set. A band-held set is
+        # already all-in-band, and K8 big-box is a deliberate citywide FORMAT-peer pool (no SF
+        # band by design — size variation among big-box stores is expected, not contamination),
+        # so both keep their full-pool percentile. Office never relaxes the band, so this whole
+        # block is skipped for office (behaviour byte-identical).
+        is_k3 = subj.get("retail_category") == "K3_department"
+        if is_k3 or cs.sf_band_relaxed:
+            band = criteria.sf_band
+            subj_sf = subj.get("sf")
+            inband_psf = [
+                c.curmkttot / c.sf for c in comps
+                if c.sf and c.curmkttot is not None
+                and subj_sf * (1 - band) <= c.sf <= subj_sf * (1 + band)
+            ]
+            pct_basis = f"within ±{band * 100:g}% of subject gross building area"
+            if is_k3:
+                # FIX 2 — a department store's per-SF reads at an extreme against cross-format
+                # retail; suppressed regardless of in-band count (confirmed NOT subsumed by the
+                # ≥5 rule — many K3 have ample in-band comps). Chart + distribution stay shown.
+                sig.subject_percentile = None
+                sig.percentile_n = len(inband_psf)
+                sig.percentile_note = ("Percentile not shown: a department store's per-SF sits at "
+                                       "an extreme against cross-format retail, with no true "
+                                       "size-and-format peers. The distribution is shown for "
+                                       "context only.")
+            elif len(inband_psf) >= MIN_INBAND_FOR_PER_SF_PERCENTILE:
+                sig.subject_percentile = _percentile_rank(inband_psf, subj_psf)
+                sig.percentile_n = len(inband_psf)
+                if len(inband_psf) != sig.n:       # disclose only when it differs from the chart n
+                    sig.percentile_note = (f"Percentile computed on {len(inband_psf)} "
+                                           f"size-comparable comps ({pct_basis}); the chart shows "
+                                           f"all {sig.n}.")
+            else:
+                sig.subject_percentile = None
+                sig.percentile_n = len(inband_psf)
+                sig.percentile_note = (f"Percentile not shown: fewer than "
+                                       f"{MIN_INBAND_FOR_PER_SF_PERCENTILE} size-comparable comps "
+                                       f"(only {len(inband_psf)} {pct_basis}). The distribution is "
+                                       f"shown for context only.")
         signals["mv_per_gross_sf"] = sig
 
     # 4. Phase-in gap — descriptive: share of actual assessed not yet phased in.
