@@ -114,6 +114,14 @@ def _screen_view(con, *, bbl, house_number, street, borough, zip_code, radius=""
                 "rung3": {"enabled": False}}, None
     if rr is None:
         return None, None
+    # RETAIL LIVE SWITCH — a resolved class-4 K-code (retail) routes to the SAME retail engine
+    # as the /retail_screen test route (byte-identical: same call, no resolve/radius plumbing).
+    # This lifts the out_of_scope_v1 refusal for K-codes ONLY; the wall still holds for every
+    # other non-office class (R condos, V vacant, G garage, U utility), which keep refusing
+    # because they do not start with "K". The K-code resolves to out_of_scope_v1 in the office
+    # resolver (non-"O"), but carries its bldg_class + bbl, which is all the retail engine needs.
+    if (rr.bldg_class or "").startswith("K"):
+        return build_retail_screen_view(con, CRITERIA, JURIS, bbl=rr.bbl), rr.bbl
     crit, radius_selection = _effective_criteria(radius)
     result = build_screen_view(con, crit, JURIS, resolve=rr, radius_selection=radius_selection)
     return result, rr.bbl
@@ -171,8 +179,9 @@ def screen(request: Request, bbl: str = "", house_number: str = "", street: str 
 
 @app.get("/api/retail_screen")
 def api_retail_screen(bbl: str = ""):
-    """STAGE-2 TEST ROUTE ONLY — screens a retail (K) parcel through the retail comp engine.
-    The public /screen and /api/screen still refuse K-codes (out_of_scope_v1) until Stage 3."""
+    """Direct retail-engine route, kept for debugging. Retail is now LIVE on the public
+    /screen + /api/screen routes (K-codes route here automatically); this route screens a
+    K-code by BBL with no address resolution, producing byte-identical output."""
     b = bbl.strip()
     if not b:
         return JSONResponse({"status": "no_input"})
@@ -182,7 +191,8 @@ def api_retail_screen(bbl: str = ""):
 
 @app.get("/retail_screen", response_class=HTMLResponse)
 def retail_screen(request: Request, bbl: str = ""):
-    """STAGE-2 TEST ROUTE ONLY — renders the retail screen for verification."""
+    """Direct retail-screen render, kept for debugging. Retail is now LIVE on public /screen;
+    this route renders a K-code by BBL with no address resolution (byte-identical engine)."""
     b = bbl.strip()
     with _con() as con:
         result = build_retail_screen_view(con, CRITERIA, JURIS, bbl=b) if b else None

@@ -102,7 +102,7 @@ def test_refusal_never_widens_past_cap(env):
     assert (cs.radius_used_miles or 0) <= 0.02 + 1e-9          # did not silently widen
 
 
-# --- public screen still refuses K; office unchanged ---------------------------------
+# --- band-relax messaging; office unchanged ------------------------------------------
 def test_band_relaxed_message_not_sf_missing(client):
     # retail fallback relaxed the band; subject HAS SF -> band-relaxed message, NOT "SF not reported"
     j = client.get("/api/retail_screen", params={"bbl": FALLBACK}).json()
@@ -251,10 +251,10 @@ def test_lowshare_specialized_per_sf_suppressed(client):
     assert "blends retail with other uses" in persf["message"]
 
 
-def test_specialized_still_refused_on_public_screen(client):
+def test_specialized_now_screens_on_public_screen(client):
+    # RETAIL LIVE — specialized K-codes screen on the public route (was out_of_scope_v1).
     for bbl in (K8_BBL, K3_ZERO, K5_GE5):
-        j = client.get("/api/screen", params={"bbl": bbl}).json()
-        assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1"
+        assert client.get("/api/screen", params={"bbl": bbl}).json()["status"] == "ok"
 
 
 def test_k3_quality_note_on_every_k3_top_of_result(client):
@@ -274,9 +274,31 @@ def test_quality_note_only_on_k3(client):
     assert "k3_quality_note" not in client.get("/api/screen", params={"bbl": "1013000001"}).json()
 
 
-def test_public_screen_still_refuses_retail(client):
-    j = client.get("/api/screen", params={"bbl": PURE}).json()
-    assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1"
+def test_public_screen_now_screens_retail_byte_identical_to_test_route(client):
+    # RETAIL LIVE — a K-code on the PUBLIC route renders the full retail screen, byte-identical
+    # to the /retail_screen test route (same engine, no fork).
+    import json
+    pub = client.get("/api/screen", params={"bbl": PURE}).json()
+    test = client.get("/api/retail_screen", params={"bbl": PURE}).json()
+    assert pub["status"] == "ok"
+    assert json.dumps(pub, sort_keys=True, default=str) == json.dumps(test, sort_keys=True, default=str)
+
+
+def test_live_switch_is_k_only_other_classes_still_refuse(client):
+    # CRITICAL — the flip opens K-codes ONLY. Condos (R*) and other non-office class-4 codes
+    # (V vacant, G garage, U utility) must STILL refuse out_of_scope_v1 on the public route.
+    import duckdb
+    con = duckdb.connect(str(config.DB_PATH), read_only=True)
+    try:
+        for like in ("R%", "V%", "G%", "U%"):
+            row = con.execute(
+                "SELECT parcel_id FROM parcels WHERE bldg_class LIKE ? LIMIT 1", [like]).fetchone()
+            if not row:
+                continue
+            j = client.get("/api/screen", params={"bbl": row[0]}).json()
+            assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1", (like, j)
+    finally:
+        con.close()
 
 
 def test_office_screen_unchanged(client):
