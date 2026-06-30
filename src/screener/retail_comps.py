@@ -188,10 +188,12 @@ def select_retail_comps(con, subject_bbl: str, juris: Jurisdiction, criteria: Co
         breakdown[c.bucket] = breakdown.get(c.bucket, 0) + 1
     if fallback and adj:
         meta.fallback_note = _FALLBACK_NOTE
+    # The band can only be "off" here because the cascade relaxed it (retail subjects have SF).
+    sf_band_relaxed = bool(subj.get("sf")) and not band_applied
     cs = CompSet(subject_bbl, subject_summary, comps, len(comps), round(radius_used, 4), False,
                  crit, candidates_within_cap=len(cand), fallback_triggered=fallback,
                  exact_count=exact_n, adjacent_count=len(adj), adjacent_breakdown=breakdown,
-                 sf_band_applied=band_applied)
+                 sf_band_applied=band_applied, sf_band_relaxed=sf_band_relaxed)
     return cs, meta
 
 

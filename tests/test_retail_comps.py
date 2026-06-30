@@ -103,6 +103,33 @@ def test_refusal_never_widens_past_cap(env):
 
 
 # --- public screen still refuses K; office unchanged ---------------------------------
+def test_band_relaxed_message_not_sf_missing(client):
+    # retail fallback relaxed the band; subject HAS SF -> band-relaxed message, NOT "SF not reported"
+    j = client.get("/api/retail_screen", params={"bbl": FALLBACK}).json()
+    assert j["subject"]["gross_sf"] and j["comp_meta"]["sf_band_relaxed"] is True
+    assert j["comp_meta"]["sf_band_applied"] is False
+    html = client.get("/retail_screen", params={"bbl": FALLBACK}).text
+    assert "gross-SF band relaxed to reach the 8-comp minimum" in html
+    assert "subject SF not reported" not in html
+
+
+def test_office_sf_missing_message_unchanged(client):
+    # genuine subject-SF-null case keeps the original message, sf_band_relaxed stays False
+    j = client.get("/api/screen", params={"bbl": "3053480042"}).json()
+    assert j["comp_meta"]["sf_band_relaxed"] is False and j["comp_meta"]["sf_band_applied"] is False
+    html = client.get("/screen", params={"bbl": "3053480042"}).text
+    assert "no gross-SF band: subject SF not reported" in html
+    assert "band relaxed to reach" not in html
+
+
+def test_band_held_shows_no_message(client):
+    # retail_office (179 Broadway) clears WITH the band applied -> neither message renders
+    j = client.get("/api/retail_screen", params={"bbl": OFFICE}).json()
+    assert j["comp_meta"]["sf_band_applied"] is True and j["comp_meta"]["sf_band_relaxed"] is False
+    html = client.get("/retail_screen", params={"bbl": OFFICE}).text
+    assert "subject SF not reported" not in html and "band relaxed to reach" not in html
+
+
 def test_public_screen_still_refuses_retail(client):
     j = client.get("/api/screen", params={"bbl": PURE}).json()
     assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1"

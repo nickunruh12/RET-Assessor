@@ -95,7 +95,9 @@ class CompSet:
     criteria: dict
     note: str | None = None     # out_of_scope_v1 / subject_not_found / insufficient_comps_within_cap
     candidates_within_cap: int = 0  # diagnostic: qualifying comps inside the 1-mile cap
-    sf_band_applied: bool = True    # False when subject lacks gross SF (no size match)
+    sf_band_applied: bool = True    # False when subject lacks gross SF OR the band was relaxed
+    sf_band_relaxed: bool = False   # True ONLY when the band was relaxed by the cascade to reach
+                                    # the minimum (subject SF IS present) — distinct from SF-null
     # fallback accounting (the non-negotiable exact-vs-adjacent labeling)
     fallback_triggered: bool = False
     exact_count: int = 0
