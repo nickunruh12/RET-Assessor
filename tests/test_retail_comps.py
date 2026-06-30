@@ -257,6 +257,23 @@ def test_specialized_still_refused_on_public_screen(client):
         assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1"
 
 
+def test_k3_quality_note_on_every_k3_top_of_result(client):
+    for bbl in (K3_HELD, K3_ZERO):                              # same-size AND all-marked K3
+        j = client.get("/api/retail_screen", params={"bbl": bbl}).json()
+        assert "very few true comparables" in j["k3_quality_note"]
+        assert "directional, not precise" in j["k3_quality_note"]
+        assert j.get("retail_fallback_note")                   # mechanical notes still present
+        html = client.get("/retail_screen", params={"bbl": bbl}).text
+        assert html.index("k3-quality-note") < html.index('class="subject"')   # above the numbers
+        assert "outlier" not in html.lower() and "flagged" not in html.lower()
+
+
+def test_quality_note_only_on_k3(client):
+    for bbl in (K5_GE5, K7_GE5_PURE, K6_LT5, K9_LT5, K8_BBL, PURE):
+        assert "k3_quality_note" not in client.get("/api/retail_screen", params={"bbl": bbl}).json()
+    assert "k3_quality_note" not in client.get("/api/screen", params={"bbl": "1013000001"}).json()
+
+
 def test_public_screen_still_refuses_retail(client):
     j = client.get("/api/screen", params={"bbl": PURE}).json()
     assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1"

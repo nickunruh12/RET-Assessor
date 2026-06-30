@@ -323,6 +323,15 @@ def _refuse(bbl, subject, crit, note, *, cap=None, candidates=0) -> CompSet:
                    candidates_within_cap=candidates, sf_band_applied=False)
 
 
+# K3 ONLY — prominent top-of-result comp-set QUALITY caveat (not a mechanical disclosure).
+# Department stores have almost no true comparables in NYC, so the quality of the comp set is
+# itself the caveat. Fires on every K3 screen (both the same-size and all-marked cases).
+K3_QUALITY_NOTE = ("Department stores have very few true comparables in NYC. This is a rough "
+                   "cross-format screen — the subject is compared against nearby large retail "
+                   "of other types, not against other department stores. Treat the position "
+                   "read as directional, not precise.")
+
+
 def build_retail_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *, bbl: str) -> dict:
     """Assemble the retail screen via the shared office machinery (build_screen_view), injecting
     the retail comp set + per-SF suppression + Stage-1/Stage-2 disclosures."""
@@ -331,4 +340,5 @@ def build_retail_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *
     return build_screen_view(
         con, criteria, juris, bbl=bbl, comp_set=cs,
         suppress_per_sf=not meta.per_sf_shown, per_sf_note=meta.per_sf_note,
-        classification_note=meta.classification_note, fallback_note=meta.fallback_note)
+        classification_note=meta.classification_note, fallback_note=meta.fallback_note,
+        quality_note=(K3_QUALITY_NOTE if meta.category == "K3_department" else None))

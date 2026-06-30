@@ -110,6 +110,9 @@
     </div>
     {% endmacro %}
 
+    {% if result.k3_quality_note %}
+    <p class="k3-quality-note">{{ result.k3_quality_note }}</p>
+    {% endif %}
     <section class="subject">
       <h2>Subject Parcel</h2>
       <dl>

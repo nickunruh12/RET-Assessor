@@ -618,7 +618,8 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
                       comp_set: CompSet | None = None,
                       suppress_per_sf: bool = False, per_sf_note: str | None = None,
                       classification_note: str | None = None,
-                      fallback_note: str | None = None) -> dict:
+                      fallback_note: str | None = None,
+                      quality_note: str | None = None) -> dict:
     """Office path uses all retail kwargs at their defaults (behaviour unchanged). The retail
     test route injects a pre-selected `comp_set` and the Stage-1/Stage-2 disclosures; per-SF
     suppression for mixed-use retail reuses the existing per-signal refusal path."""
@@ -739,6 +740,8 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         result["retail_fallback_note"] = fallback_note
     if per_sf_size_flag:
         result["per_sf_size_flag"] = True
+    if quality_note:                       # K3 only — top-of-result comp-set quality caveat
+        result["k3_quality_note"] = quality_note
     return result
 
 

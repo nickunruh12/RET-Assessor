@@ -42,6 +42,10 @@ dl dt { color: var(--muted); }
 /* per-SF size-outlier flagging (retail band-relax): row tag + chart header note */
 .size-flag { display: inline-block; font-size: .58rem; font-weight: 700; letter-spacing: .02em; padding: .05rem .25rem; border: 1px solid var(--ink); border-radius: 3px; color: var(--ink); vertical-align: middle; }
 .size-flag-note { font-size: .8rem; color: var(--ink); margin: .2rem 0 .1rem; font-style: italic; }
+/* K3 department-store quality caveat — most prominent disclosure, top of the result */
+.k3-quality-note { color: var(--ink); background: var(--panel); border: 1px solid var(--muted);
+  border-left: 5px solid var(--ink); border-radius: 6px; padding: .7rem .9rem; margin: 0 0 1.1rem;
+  font-size: .95rem; font-weight: 600; }
 /* Tax-methodology derivation chain under the Tax Bill chart (Item 1) */
 .tax-method { margin: .4rem 0 .2rem; }
 .tax-method-head { font-size: .82rem; margin: .2rem 0; }
