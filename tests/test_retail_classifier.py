@@ -93,6 +93,35 @@ def test_missing_retailarea_defaults_to_other_never_pure():
     assert c.category != PURE_RETAIL     # never guess pure when unmeasurable
 
 
+def test_retailarea_exceeds_bldgarea_routes_conservative_not_pure():
+    # adversarial 1b: corrupt PLUTO areas (retail 1500 > gross 1000) must NOT route pure or
+    # show per-SF; conservative mixed bucket with the validation note, share not >100%.
+    c = classify_retail("K4", 1000, 1500, 0, 0, pluto_version="PLUTO 26v1")
+    assert c.category == RETAIL_OTHER and c.per_sf_shown is False
+    assert c.category != PURE_RETAIL
+    assert c.retail_share is None                       # no >100% share produced
+    assert "failed validation" in c.note and "component area exceeds gross" in c.note
+
+
+def test_component_areas_summing_past_gross_flagged():
+    # retail+office+res = 1.3x gross -> data error -> conservative
+    c = classify_retail("K2", 1000, 600, 500, 200)
+    assert c.category == RETAIL_OTHER and c.per_sf_shown is False and c.retail_share is None
+    assert "failed validation" in c.note
+
+
+def test_specialized_bad_area_not_shown_per_sf():
+    # a specialized parcel with corrupt areas must also not show per-SF on bad data
+    c = classify_retail("K7", 1000, 2000, 0, 0)
+    assert c.per_sf_shown is False and c.category == RETAIL_OTHER and "failed validation" in c.note
+
+
+def test_valid_areas_within_tolerance_unaffected():
+    # legitimate full-retail parcel (retail == gross) still classifies pure, no false positive
+    c = classify_retail("K1", 1000, 1000, 0, 0)
+    assert c.category == PURE_RETAIL and c.per_sf_shown is True and c.note is None
+
+
 def test_bldgarea_zero_is_unmeasurable():
     c = classify_retail("K4", 0, 1000, 0, 0, pluto_version="PLUTO 26v1")
     assert c.category == RETAIL_OTHER and c.per_sf_shown is False and c.retail_share is None

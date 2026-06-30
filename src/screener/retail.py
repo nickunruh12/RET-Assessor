@@ -55,6 +55,19 @@ _LABELS = {
 
 _MEASURE_NOTE = ("Floor-area use-mix could not be measured for this parcel; screened "
                  "conservatively as mixed-use.")
+_VALIDATION_NOTE = ("Floor-area fields failed validation (component area exceeds gross); "
+                    "screened conservatively as mixed-use.")
+# A component area exceeding gross — or the components summing past it beyond a small float
+# tolerance — is a data error (e.g. retailarea > bldgarea). Never trust such a parcel's share.
+_AREA_TOL = 0.01
+
+
+def _areas_invalid(bldgarea, retailarea, officearea, resarea) -> bool:
+    if not bldgarea or bldgarea <= 0:
+        return False                                  # unmeasurable: handled as missing, not invalid
+    cap = bldgarea * (1 + _AREA_TOL)
+    parts = [a for a in (retailarea, officearea, resarea) if a is not None]
+    return any(a > cap for a in parts) or sum(parts) > cap
 
 # Thresholds are NAMED CONFIG (CompCriteria / comp_criteria.json), tunable per-metro.
 _DEFAULTS: tuple[float, float] | None = None
@@ -113,6 +126,12 @@ def classify_retail(k_code: str | None, bldgarea, retailarea, officearea, resare
         "dataset_version": pluto_version,
         "derived": "retail_share = retailarea / bldgarea (PLUTO floor areas)",
     }
+
+    # Data-error guard: a component area exceeding gross (or summing past it) is corrupt, so
+    # the share is untrustworthy. NEVER route pure / NEVER show per-SF on bad data — route to
+    # the conservative mixed bucket, exactly like the missing-area case.
+    if _areas_invalid(bldgarea, retailarea, officearea, resarea):
+        return RetailClassification(code, RETAIL_OTHER, None, False, _VALIDATION_NOTE, prov)
 
     # retail_share — PLUTO-measured; None when unmeasurable (NEVER inferred as pure).
     share = (retailarea / bldgarea) if (retailarea is not None and bldgarea and bldgarea > 0) else None
