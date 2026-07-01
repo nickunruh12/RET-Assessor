@@ -150,3 +150,60 @@ refusal for K-codes (the refusal itself is NOT lifted yet).
   ICAP-bearing subjects (e.g. a K8), the subject's plotted tax and percentile are
   transitional-taxable × rate (gross, statutory) — the SAME basis as every comp — so the
   comparison is apples-to-apples. The ICAP banner separately discloses the owner pays less.
+
+## Public scope gate — "refuse unless office, OR unless K intercepted upstream" (LOCKED 2026-06-30)
+
+The public `/screen` scope gate is now two-layered, and the next asset-type build must know both
+layers:
+
+1. **Resolver gate (`geocode._validate_bbl`)** still refuses every non-office building class with
+   `out_of_scope_v1` (`if not bldg_class.startswith("O")`). This is unchanged and is what keeps
+   condos (R), vacant land (V), garages (G), utilities (U), and everything else out.
+2. **Upstream retail interception (`api._screen_view`)** runs AFTER resolution: a resolved
+   K-code parcel (`rr.bldg_class.startswith("K")`) is routed to `build_retail_screen_view`
+   instead of the office `build_screen_view`, producing the retail screen. K-codes still *resolve*
+   to `out_of_scope_v1` in the resolver; the interception overrides that before any refusal
+   renders.
+
+So the effective rule is **"refuse unless office, OR unless K intercepted upstream."** A third
+asset type (industrial, warehouse, …) follows the SAME pattern: it will resolve to
+`out_of_scope_v1` at the resolver, and go live by adding its own upstream interception branch in
+`_screen_view` keyed on its class prefix — NOT by loosening the resolver gate. Loosening the
+resolver gate is the specific thing that would leak condos/vacant/garage back in (see the retail
+live-switch commit), so it stays a per-class interception, never a broadened refusal.
+
+## Below-graph label capitalization; legend/marker labels deliberately lowercase (LOCKED 2026-06-30)
+
+- **Below-graph stat labels are capitalized tool-wide** via the single shared render path
+  (`page.html` + `serialize.py`, used by both office and retail): `Subject:` / `Mean:` /
+  `Median:` / `Range` (readout), `±1 SD` / `Middle 50% of comps:` / `Relative spread (CV):`
+  (dispersion), `Based on gross building area (…)` (per-SF source), `Comp median:` (Phase-In
+  Note), plus `Subject's Percentile:` above the chart. Presentation only; no data value or
+  source identifier (`curmkttot`, `8y4t-faws`, dataset versions) was touched.
+- **The chart legend + marker tooltip labels are deliberately LEFT lowercase**:
+  `mean`, `median`, `comps`, `subject`, `size-dissimilar`. These strings double as **logic
+  identifiers** in `app.js` (the tooltip/dataset code branches on `lab === "mean"`,
+  `=== "subject"`, `=== "median"`, and builds the in-band/out-band datasets by these names).
+  Capitalizing them would be a **logic change**, not a display edit, so they were left as-is
+  intentionally. If they are ever capitalized, the `lab === …` comparisons and dataset-label
+  construction must change in lockstep.
+
+## Welcome/title page — design note (LOCKED 2026-06-30)
+
+The welcome screen is **two elements only**:
+1. **Intent choice — custom-comp vs. auto-generate.** Does the user want the tool to
+   auto-generate the screened comp set, or supply their own custom comp list? (The custom path
+   carries the prominent "comps user-provided, not screened; safeguards do not apply" stamp — see
+   the build-order sequence entry.)
+2. **Tool-overview message** — a short overview of what the tool does.
+
+Explicitly **NOT** on the welcome screen:
+- **No building-vs-land fork.** The tool does not ask the user whether the parcel is a building
+  or a development site.
+- **No property-type dropdown.** The user never selects office / retail / industrial / etc.
+
+**Rationale — measure-don't-declare.** All property characteristics, INCLUDING building-vs-land
+and asset type, are determined from parcel data AFTER address entry, never declared by the user
+up front. The route (office / retail / land module / refusal) follows from the resolved parcel's
+own data. This keeps the welcome page independent of the (future) vacant-land module: adding land
+later changes what happens after address entry, not the welcome screen.

@@ -110,3 +110,56 @@ filters, sorts, or drops a comp.
   market value and screens normally. A standing, **always-on** PILOT caveat under the Tax
   Bill chart discloses this; the tool makes no attempt to detect PILOT parcels. Revisit only
   if a PILOT/exempt-property source is identified.
+
+## Commercial condos — not screenable on public data (three paths measured, all closed)
+
+**Dated 2026-06-30.** Three distinct paths to screening commercial condos were measured
+against source data; all three are closed. Recorded as measured, not assumed, so the boundary
+is not re-litigated. **Source caveat:** every figure below was measured directly against NYC
+Open Data (SODA API — assessment roll `8y4t-faws` FY2027 `period='3'` final; PLUTO `64uk-42ks`;
+storefront datasets `92iy-9c3n` and `dxru-eun8`), independent of the tool's local DuckDB.
+
+**PATH 1 — Building level: dead on value.** DOF books condo value on the individual unit
+lots; the condo billing/base lot (lot ≥ 7501) is a square-footage shell with no value. Citywide
+there are ~**11,495** billing lots: ~**99.8%** carry SF but only ~**3.2%** carry a positive
+market value, and **0 of 10,957** R0 condo billing lots carry value at all. Building-level
+parcels carrying value **and** SF **and** a retail-share split = **330** — but ~**325 are
+residential** (R4 condo + D-code elevator apartments); genuinely commercial, predominantly-retail
+(retail ≥ 0.80) = **2 citywide**: `4018609102` (Staten Island shopping center, K6) and
+`1000168002` (RK retail condo). A building-level module would screen two buildings. Dead.
+
+**PATH 2 — Unit level, value-aggregation: rejected to preserve comparison integrity.**
+Building value *could* be reconstructed by summing the class-4 unit lots (~**99.9%** value fill
+at the unit level). Rejected: a summed set of separately-assessed unit values is not the same
+kind of number as DOF's single whole-building market value carried on a K-class comp, so it
+cannot be placed on the same distribution honestly. Worse, pairing a partial-commercial *summed*
+value against whole-building PLUTO SF produces a meaningless per-SF. Aggregation crosses the
+comparison-integrity line and was not pursued.
+
+**PATH 3 — Unit level, direct: comparability dead on data.** ~**7,395** predominantly-retail
+(retail ≥ 0.80) commercial-condo unit lots carry their own value **and** SF, so the per-SF
+arithmetic itself is clean. But retail-unit value is driven by **floor** (ground vs upper),
+**corner-vs-inline**, **linear frontage feet**, and **grade level** — none of which the roll or
+PLUTO expose at the unit level, so the tool would call two very different units "peers."
+The NYC Storefront Registry was investigated as a rescue and does not supply them:
+- Row-level asset `92iy-9c3n` ("Storefronts Reported Vacant or Not"): **414,884** rows, current
+  through **2025** (reporting resumed — the "stalls at 2019" secondary reporting is wrong), BBL
+  **100%** filled. It is a **vacancy + business-activity registry, not a physical-attributes
+  registry**: it carries **no square footage, no floor, no rent** as published columns
+  (confirmed against the dataset's own schema, not inferred from sample rows).
+- Aggregate asset `dxru-eun8` ("Storefront Registration Class 2 and 4 Statistics") is
+  census-tract / council-district level — useless for unit comping.
+- No public NYC dataset exposes intra-building retail-unit comparability attributes. PLUTO
+  `LotFrontage` and Digital Tax Map geometry approximate corner/frontage at the **building level
+  only** and cannot distinguish two units inside the same building — exactly the discrimination
+  this path required.
+
+**CONCLUSION.** Commercial condos are not screenable on public data at either the building level
+(no value on the billing lot) or the unit level (value present but comparability attributes
+absent). Not a module; this entry is the record.
+
+**One legitimate future use of the storefront data that is NOT comping.** `92iy-9c3n` does
+cleanly carry per-BBL **vacancy status** and **business activity**. That could power a
+**vacancy-status disclosure flag** on retail screens — a disclosure feature, not a comp signal,
+and explicitly **not built in v1**. Recorded so the distinction (disclosure ≠ comparability) is
+not lost.
