@@ -144,8 +144,15 @@ def _validate_bbl(con: duckdb.DuckDBPyConnection, bbl: str, *,
     _, bldg_class, curmkttot = rows[0]
 
     if not (bldg_class or "").startswith("O"):
+        # Message-only branch (routing/detection unchanged): commercial condos (all NYC condo
+        # building classes start with "R") get a specific plain-English explanation of why the
+        # tool declines them; every OTHER out-of-scope class (V, G, U, …) keeps the generic
+        # message. K-codes never reach the user here — they are intercepted upstream and routed
+        # to the retail engine — so this condo text only ever shows for R-code parcels.
+        msg = (REFUSAL_MESSAGES["commercial_condo"] if (bldg_class or "").startswith("R")
+               else REFUSAL_MESSAGES["out_of_scope_v1"])
         return ResolveResult(ok=False, bldg_class=bldg_class, refused=True,
-                             reason="out_of_scope_v1", message=REFUSAL_MESSAGES["out_of_scope_v1"], **base)
+                             reason="out_of_scope_v1", message=msg, **base)
     if curmkttot is None or curmkttot <= 0:
         return ResolveResult(ok=False, bldg_class=bldg_class, refused=True,
                              reason="subject_tax_exempt", message=REFUSAL_MESSAGES["subject_tax_exempt"], **base)

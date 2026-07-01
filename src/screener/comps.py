@@ -40,6 +40,14 @@ EARTH_RADIUS_MI = 3958.7613
 REFUSAL_MESSAGES = {
     "subject_not_found": "no parcel found for this BBL",
     "out_of_scope_v1": "out of scope for v1 (only office is activated)",
+    # Condo-specific text for the SAME out_of_scope_v1 refusal (message only; routing unchanged).
+    "commercial_condo": (
+        "This tool can't screen commercial condominiums. NYC assesses condo value at the "
+        "individual unit level rather than the building, and the physical attributes that make "
+        "retail units comparable — floor, frontage, and street position — aren't available in "
+        "public data at the unit level. Screening condos on the data that does exist would "
+        "produce comparisons that look precise but aren't, so the tool declines rather than "
+        "mislead."),
     "subject_tax_exempt": "this parcel has no positive market value (tax-exempt); "
                           "assessment comparison does not apply",
     "subject_no_coordinates": "this parcel has no PLUTO coordinates; cannot rank comps by distance",

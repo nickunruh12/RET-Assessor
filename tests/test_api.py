@@ -79,6 +79,29 @@ def test_tax_exempt_subject_refused(client):
     assert j["status"] == "refused" and j["reason"] == "subject_tax_exempt"
 
 
+def test_commercial_condo_gets_specific_message_others_stay_generic(client):
+    # Condo (R-code) refuses with the specific plain-English explanation; behavior unchanged
+    # (status refused, reason still out_of_scope_v1). Other out-of-scope classes stay generic.
+    condo = client.get("/api/screen", params={"bbl": "3024131120"}).json()   # RG condo
+    assert condo["status"] == "refused" and condo["reason"] == "out_of_scope_v1"
+    assert "commercial condominiums" in condo["message"] and "unit level" in condo["message"]
+
+    import duckdb
+    con = duckdb.connect(str(config.DB_PATH), read_only=True)
+    try:
+        for like in ("V%", "G%", "U%"):                 # non-condo out-of-scope classes
+            bbl = con.execute(
+                "SELECT parcel_id FROM parcels WHERE bldg_class LIKE ? LIMIT 1", [like]).fetchone()
+            if not bbl:
+                continue
+            j = client.get("/api/screen", params={"bbl": bbl[0]}).json()
+            assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1"
+            assert "only office is activated" in j["message"]        # generic, unchanged
+            assert "condominium" not in j["message"]                 # condo text does not leak
+    finally:
+        con.close()
+
+
 def test_signal_carries_distribution_and_provenance(client):
     j = client.get("/api/screen", params={"bbl": "1000090001"}).json()
     sig = j["signals"][0]
