@@ -59,3 +59,24 @@ kill-gate FIRST — build only if it clears.**
 
 Discipline is uniform: **Phase-2 fill-rate kill-gate FIRST, build only if it clears** (the
 retail / commercial-condo precedent — measure against source data before any engine code).
+
+## 5. Self-storage (`E7`) — standalone asset type (deferred, own density gate first)
+
+`E7` is DOF's **self-storage / storage-warehouse** building class — an **E-code, NOT an
+F-code**, so the v1 industrial build (which filters on `bldg_class.startswith('F')`) already
+excludes it **by construction**; no extra exclusion logic is needed. Cleanly identifiable by
+building class `E7`.
+
+**Measured against NYC Open Data (roll `8y4t-faws` FY2027 final, source direct):**
+- **318 parcels citywide**, **100% value fill**, **100% SF fill** — the arithmetic support is
+  there.
+- Owner-name check confirmed the major operators (**Public Storage, CubeSmart, Extra Space**)
+  cluster in `E7`, i.e. the class genuinely captures institutional self-storage.
+
+**Buildable later as its own standalone asset type** (like a retail subtype — its own
+bucketing / SF-band / radius caps, live via its own `_screen_view` interception branch), but
+**NOT built in v1**. Requires its **own density / radius kill-gate FIRST**: 318 parcels is a
+much smaller population than F-codes (**3,248**), and self-storage **clusters differently** than
+general industrial, so comp density and radius behavior must be measured for `E7` specifically
+before any build. Deferred until after v1 ships; measure-before-build discipline applies (the
+retail / commercial-condo precedent).
