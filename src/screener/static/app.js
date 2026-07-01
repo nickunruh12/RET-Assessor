@@ -51,8 +51,8 @@ function htmlTip(ctx, sig) {
       : `BBL ${esc(d.bbl || "n/a")}`;
     const head = `<span class="tip-head">${inner}</span>`;
     const lines = [head];
-    if (lab !== "subject") lines.push("distance: " + esc(d.distance || "n/a"));
-    lines.push("phase-in gap: " + esc(d.gap || "n/a"));
+    if (lab !== "subject") lines.push("Distance: " + esc(d.distance || "n/a"));
+    lines.push("Phase-In Gap: " + esc(d.gap || "n/a"));
     lines.push(esc(sig.label) + ": " + esc(val));
     html = lines.join("<br>");
   }

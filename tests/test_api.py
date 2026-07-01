@@ -194,7 +194,7 @@ def test_variance_rows_have_two_psf_columns_no_raw_emv(client):
 def test_most_different_sorted_by_emv_psf(client):
     j = client.get("/api/screen", params={"bbl": "1013000001"}).json()
     md = next(v for v in j["variance"]["views"] if "Most Different" in v["name"])
-    assert "EMV-per-gross-SF" in md["dimension"]
+    assert "market value per square foot" in md["dimension"]   # plain-English ordered-by label
     mags = [abs(r["emv_psf_pct_diff"]) for r in md["rows"] if r["emv_psf_pct_diff"] is not None]
     assert mags == sorted(mags, reverse=True)
 
@@ -266,7 +266,7 @@ def test_dispersion_present_on_each_nonrefused_signal(client):
         d = sig["dispersion"]
         assert d is not None
         assert d["sd_band"].startswith("±1 SD: ")
-        assert d["iqr"].startswith("middle 50% of comps: ")
+        assert d["iqr"].startswith("Middle 50% of comps: ")
         assert d["cv"].startswith("relative spread (CV): ")
 
 

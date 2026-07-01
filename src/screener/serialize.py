@@ -317,6 +317,16 @@ _SF_SOURCE_LABEL = {
     "roll_gross_sqft_fallback": "based on gross building area (DOF assessment roll)",
 }
 
+# Plain-English description of each variance view's sort key, shown in the "[ordered by: …]"
+# bracket in place of the raw field name. Display only — variance.py keeps the raw dimension
+# as the canonical sort-key identifier; this just describes it for the reader. Each entry
+# matches the actual sort the view uses (distance asc / smallest |SF %| / largest |EMV-PSF %|).
+_ORDERED_BY_LABEL = {
+    "distance_miles": "closest distance from subject",
+    "abs(sf_pct_diff)": "smallest difference in building size",
+    "abs(EMV-per-gross-SF % diff)": "largest difference in market value per square foot",
+}
+
 
 def _signal_distributions(cs: CompSet, rate: float) -> dict[str, list[float]]:
     """The raw comp values each chart plots (subject is added on the page, never here)."""
@@ -421,7 +431,7 @@ def _dispersion_stats(values: list[float], unit: str) -> dict | None:
     sd_low = max(mean - sd, min(vals))
     return {
         "sd_band": f"±1 SD: {_money(sd_low, unit)} – {_money(mean + sd, unit)} (SD {_money(sd, unit)})",
-        "iqr": f"middle 50% of comps: {_money(q1, unit)} – {_money(q3, unit)}",
+        "iqr": f"Middle 50% of comps: {_money(q1, unit)} – {_money(q3, unit)}",
         "cv": f"relative spread (CV): {cv}",
     }
 
@@ -727,7 +737,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
             "subject_bldg_class": cs.subject.get("bldg_class"),
             "stories_column": True,                  # STEP A gate passed (NumFloors 99.83% fill)
             "views": [
-                {"name": v.name, "dimension": v.dimension,
+                {"name": v.name, "dimension": _ORDERED_BY_LABEL.get(v.dimension, v.dimension),
                  "rows": [_variance_row(d, cs.subject, criteria.class4_tax_rate) for d in v.rows]}
                 for v in (var.views["nearest_by_distance"],
                           var.views["nearest_by_sf"],

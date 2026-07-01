@@ -22,13 +22,13 @@ def test_iqr_is_p25_p75_inclusive():
     vals = [100, 200, 300, 400, 500]
     q1, _q2, q3 = statistics.quantiles(vals, n=4, method="inclusive")
     d = _dispersion_stats(vals, WHOLE)
-    assert d["iqr"] == f"middle 50% of comps: {_money(q1, WHOLE)} – {_money(q3, WHOLE)}"
+    assert d["iqr"] == f"Middle 50% of comps: {_money(q1, WHOLE)} – {_money(q3, WHOLE)}"
 
 
 def test_psf_unit_two_decimals_with_dollar_sign():
     d = _dispersion_stats([100.0, 200.0], PSF)
     assert "$100.00" in d["sd_band"] and "$200.00" in d["sd_band"]   # 2 dp + $ sign
-    assert d["iqr"].startswith("middle 50% of comps: $")
+    assert d["iqr"].startswith("Middle 50% of comps: $")
 
 
 def test_whole_dollar_unit_no_decimals():

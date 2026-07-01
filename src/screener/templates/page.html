@@ -64,7 +64,7 @@
     {# Refusal states render as clear messages, never blanks #}
     <section class="refusal">
       <p class="refusal-msg">{{ result.message }}</p>
-      <p class="refusal-meta">reason: {{ result.reason }} (stage: {{ result.stage }})</p>
+      <p class="refusal-meta">Reason: {{ result.reason }} (stage: {{ result.stage }})</p>
       {% if result.subject %}
         {% with s = result.subject %}
         <div class="subject-mini">
@@ -169,7 +169,7 @@
           <p class="signal-refusal">{{ sig.message }}</p>
         {% else %}
           <p class="signal-stats">
-            {% if sig.subject_percentile is not none %}your percentile: {{ sig.subject_percentile_display }}th{% else %}your percentile: not shown{% endif %} ·
+            {% if sig.subject_percentile is not none %}Subject's Percentile: {{ sig.subject_percentile_display }}th{% else %}Subject's Percentile: not shown{% endif %} ·
             n = {{ sig.n }} comps{% if sig.excluded_blank %} ({{ sig.excluded_blank }} excluded, blank){% endif %} ·
             radius used: {{ sig.radius_used_miles }} mi
           </p>
@@ -177,7 +177,7 @@
           {% if sig.size_flag_note %}<p class="size-flag-note">{{ sig.size_flag_note }}</p>{% endif %}
           <div class="chart-box"><canvas class="strip" id="chart-{{ sig.key }}"></canvas></div>
           <p class="signal-readout">
-            subject: {{ sig.subject_value_display }} ·
+            Subject: {{ sig.subject_value_display }} ·
             mean: {{ sig.mean_display }} ·
             median: {{ sig.median_display }} ·
             range {{ sig.minimum_display }}–{{ sig.maximum_display }}
@@ -281,7 +281,7 @@
       <div class="vview">
         <h3>{{ v.name }} <span class="src">[ordered by: {{ v.dimension }}]</span></h3>
         {% if v.rows %}{{ comp_table(v.rows, result.variance.stories_column, result.per_sf_size_flag) }}
-        {% else %}<p class="src">unavailable for this subject</p>{% endif %}
+        {% else %}<p class="src">Unavailable for this subject</p>{% endif %}
       </div>
       {% endfor %}
       <details class="full-set">
