@@ -207,3 +207,42 @@ and asset type, are determined from parcel data AFTER address entry, never decla
 up front. The route (office / retail / land module / refusal) follows from the resolved parcel's
 own data. This keeps the welcome page independent of the (future) vacant-land module: adding land
 later changes what happens after address entry, not the welcome screen.
+
+## v1 completion scope, build sequence, and multifamily exclusion (LOCKED 2026-07-01)
+
+Supersedes the "v1 ACTIVATED product = Office only" scope line above (2026-06-19): retail is now
+LIVE. This entry is the current v1 scope of record.
+
+**v1 SCOPE — class-4 commercial core (three of the four institutional "food groups"):**
+- **Office (`O*`) — LIVE.**
+- **Retail (`K*`) — LIVE** (public `/screen`, via the upstream K-interception; see the scope-gate
+  entry).
+- **Industrial (`F*`) — PLANNED, NOT yet approved to build.** Blocked on a Phase-2 fill-rate
+  kill-gate (below). Not written until that gate passes.
+
+**MULTIFAMILY IS DELIBERATELY EXCLUDED — by design, not a gap.** Multifamily rental is NYC **tax
+class 2**, not class 4. The entire architecture is class-4-specific: the 45% class-4 assessment
+ratio, the class-4 value fields, and the comp logic all assume class 4. Screening multifamily
+would require separate class-2 logic (different ratio, different fields, different peer universe),
+which is a different tool, not an extension of this one. This is a deliberate judgment call: an
+investment **"food group" is not the same as a tax class**, and this tool screens **by tax class**.
+Tax classes 1, 2, and 3 remain out of scope entirely.
+
+**BUILD SEQUENCE (locked — do in order, do not pull forward):**
+1. **Run the F-code (industrial) fill-rate kill-gate** — measure source fill rates before any
+   build (see the REQUIRED-precondition note below).
+2. **If the gate passes, build industrial as an engine extension** — same CompRow/CompSet/stats/
+   serialize path, its own bucketing/SF-band/radius caps, live via its own `_screen_view`
+   interception branch (never by loosening the resolver gate).
+3. **Build the presentation / portfolio layer** — README narrative, differentiation paragraph,
+   the commercial-condo judgment writeup, the validation story, and screenshots / a short
+   recording — so the tool reads as institutional.
+4. **Ship** — to professors first, then LinkedIn / resume.
+5. **Remaining asset types stay backlogged** (see BACKLOG.md).
+
+**F-CODE FILL-RATE KILL-GATE IS A REQUIRED PRECONDITION.** Industrial (`F*`) **cannot be built**
+until the Phase-2 fill-rate kill-gate passes — the same measure-before-build discipline applied
+to commercial condos (three paths measured against source data before any code). The gate
+measures the `F*` universe's source fill rates (value, gross SF, coordinates, and any use-mix
+fields the class needs) against NYC Open Data; if the data can't support an honest screen, the
+type is not built. No industrial engine code before the gate clears.

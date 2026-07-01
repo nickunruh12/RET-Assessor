@@ -41,3 +41,21 @@ value-aggregation rejected on comparison integrity; unit-level direct dead on co
 data, including the storefront-registry check) are recorded in detail in KNOWN_LIMITS.md. Revisit
 if a new public data source exposes intra-building retail-unit comparability attributes (floor,
 corner-vs-inline, frontage, grade), or if the aggregation-integrity trade-off is reconsidered.
+
+## 4. Specific remaining class-4 asset types (each gated, deferred until after v1 ships)
+
+Section 1 states the general discipline; these are the specific classes and their per-class
+caveats. **Industrial (`F*`) is NOT here** — it is the immediate post-v1 candidate in the locked
+build sequence (see DECISIONS.md "v1 completion scope"), pending its fill-rate kill-gate.
+Everything below is deferred until after v1 ships, and each needs its **Phase-2 fill-rate
+kill-gate FIRST — build only if it clears.**
+
+- **Garages / parking (`G*`)** — class-4, buildable, niche. Own fill-rate gate before building.
+- **Hotels (`H*`)** — class-4, but value is **income / RevPAR-driven**, so assessed-value-per-SF
+  comp logic may fit poorly. Needs its own fill-rate gate **plus a comp-basis check** (does
+  per-SF even describe hotel value?) before building.
+- **Loft buildings (`L*`) and the misc commercial class-4 long tail** — buildable, niche,
+  deferred. Own gates.
+
+Discipline is uniform: **Phase-2 fill-rate kill-gate FIRST, build only if it clears** (the
+retail / commercial-condo precedent — measure against source data before any engine code).
