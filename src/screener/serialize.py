@@ -662,6 +662,11 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         if cs.note == "insufficient_comps_within_cap" and radius_selection != "default":
             msg = (f"insufficient comparable properties at the selected radius "
                    f"({radius_selection} mi)")
+        elif cs.note == "insufficient_comps_within_cap":
+            # State the TRUE per-product cap (office 1.0, retail per-class, industrial 1.75),
+            # read from the comp set's own criteria — not a hardcoded distance.
+            cap = (cs.criteria or {}).get("radius_cap_miles") or criteria.radius_cap_miles
+            msg = f"insufficient comparable properties within {cap:g} mile" + ("" if cap == 1 else "s")
         else:
             msg = refusal_message(cs.note) or REFUSAL_MESSAGES.get(cs.note) or cs.note
         return _refused("comps", cs.note, msg, subject=cs.subject, resolve=resolve,

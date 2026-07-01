@@ -16,6 +16,7 @@ CORE = "3022210014"       # Brooklyn F5, dense cluster -> same-subcode in-band, 
 MANHATTAN = "1019980016"  # Manhattan F2 -> reaches out-of-borough citywide
 BIGBOX = "4002940106"     # F1 654,615 SF -> big-box citywide-by-size
 ISOLATED = "5041910038"   # F5 with 0 F-neighbors within the cap -> refuses
+LOW_COVER = "2025990090"  # F8 tank/utility-yard, coverage ~0.00 -> land-dominant disclosure fires
 
 
 @pytest.fixture(scope="module")
@@ -96,7 +97,24 @@ def test_condo_and_other_out_of_scope_still_refuse(client):
         assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1"
 
 
-# --- coverage (item 5) pure functions — DORMANT in live screening, logic locked here ---
+# --- coverage (item 5) — now LIVE (PLUTO LotArea loaded) --------------------------------
+def test_coverage_disclosure_fires_on_low_coverage_f8_with_provenance(client):
+    j = client.get("/api/industrial_screen", params={"bbl": LOW_COVER}).json()
+    if j.get("status") != "ok":
+        pytest.skip(f"{LOW_COVER} not screenable ({j.get('reason')})")
+    note = j.get("retail_fallback_note") or ""
+    assert "Land-dominant" in note                                 # disclosure fired
+    assert "building-area" in note and "lot-area" in note          # shows BldgArea/LotArea + ratio
+    assert "64uk-42ks" in note                                     # carries PLUTO citation
+
+
+def test_coverage_disclosure_quiet_on_normal_coverage(client):
+    # A dense same-subcode F5 cluster (band held, ~1.0 coverage) must NOT fire land-dominant.
+    j = client.get("/api/industrial_screen", params={"bbl": CORE}).json()
+    assert j["status"] == "ok"
+    assert "Land-dominant" not in (j.get("retail_fallback_note") or "")
+
+
 def test_coverage_ratio_math():
     assert coverage_ratio(3000, 10000) == 0.3
     assert coverage_ratio(500, 10000) == 0.05

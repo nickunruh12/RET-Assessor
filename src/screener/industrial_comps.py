@@ -98,8 +98,9 @@ def _pull_f_candidates(con, comp_table, subj, juris, criteria, *, cap):
         where.append("p.curmkttot > 0")
     cols = ("SELECT p.parcel_id, p.source_dataset, p.dataset_version, p.roll_year, "
             "p.retrieval_date, p.bldg_class, p.zip_code, p.sf, p.sf_source, "
-            "p.pluto_dataset_version, p.year_built, p.house_number, p.street_name, "
-            "p.pluto_address, p.pluto_numfloors, p.pluto_latitude, p.pluto_longitude, "
+            "p.pluto_dataset_version, p.pluto_bldgarea, p.pluto_lotarea, p.year_built, "
+            "p.house_number, p.street_name, p.pluto_address, p.pluto_numfloors, "
+            "p.pluto_latitude, p.pluto_longitude, "
             "p.curmkttot, p.curtxbtot, p.curtrntot, p.curacttot, "
             f"{hav} AS distance_miles")
     sql = f"{cols} FROM {comp_table} p WHERE {' AND '.join(where)}"
@@ -121,9 +122,29 @@ def coverage_note(subj_cov, comp_covs, threshold) -> str | None:
     if not (low_subj or low_comps >= 2):
         return None
     return ("Land-dominant parcel: the building covers a small share of the lot "
-            f"(building-area ÷ lot-area below {threshold:g}), so value per building-SF is "
+            f"(building-area ÷ lot-area under {threshold:g}), so value per building-SF is "
             "skewed by land value. Shown for context only; comps and the distributions are "
             "unchanged.")
+
+
+def _coverage_display(subj: dict, subj_cov, comp_covs, threshold) -> str | None:
+    """The rendered coverage disclosure: the generic fire text + the subject's concrete
+    BldgArea/LotArea ratio and LotArea, cited to PLUTO (LotArea is a new sourced PLUTO field
+    and carries provenance like every other number). None when it does not fire."""
+    base = coverage_note(subj_cov, comp_covs, threshold)
+    if base is None:
+        return None
+    parts = [base]
+    ba, la = subj.get("pluto_bldgarea"), subj.get("pluto_lotarea")
+    if subj_cov is not None and ba and la:
+        parts.append(f"Subject: building-area {ba:,.0f} SF ÷ lot-area {la:,.0f} SF = {subj_cov:.2f}.")
+    low_n = sum(1 for c in comp_covs if c is not None and c < threshold)
+    if low_n >= 2:
+        parts.append(f"{low_n} comps are also land-dominant (coverage under {threshold:g}).")
+    ver = subj.get("pluto_dataset_version")
+    if ver:
+        parts.append(f"Source: {ver}.")
+    return " ".join(parts)
 
 
 def _to_industrial_comprow(c: dict, subject_subcode: str, icap: set) -> CompRow:
@@ -222,12 +243,14 @@ def select_industrial_comps(con, subject_bbl: str, juris: Jurisdiction, criteria
     for c in adj:
         breakdown[c.bucket] = breakdown.get(c.bucket, 0) + 1
 
-    # Coverage (item 5) — DORMANT: PLUTO LotArea is not loaded, so pluto_lotarea is absent on
-    # every row -> coverage_ratio() returns None -> coverage_note() returns None. The logic is
-    # built + unit-tested; it lights up once LotArea is added to the loader (see report).
-    subj_cov = coverage_ratio(subj.get("sf"), subj.get("pluto_lotarea"))
-    comp_covs = [coverage_ratio(c.get("sf"), c.get("pluto_lotarea")) for c in chosen]
-    meta.coverage_note = coverage_note(subj_cov, comp_covs, cfg["coverage_ratio_threshold"])
+    # Coverage (item 5) — LIVE. Uses PLUTO BldgArea ÷ PLUTO LotArea (both from the same PLUTO
+    # release, so the ratio and the 0.30 threshold share provenance; the roll's land_area is
+    # deliberately NOT used). Fires when the subject or 2+ comps are land-dominant. Non-
+    # computational: never filters/sorts/refuses; it rides in the disclosure slot only.
+    cov_thr = cfg["coverage_ratio_threshold"]
+    subj_cov = coverage_ratio(subj.get("pluto_bldgarea"), subj.get("pluto_lotarea"))
+    comp_covs = [coverage_ratio(c.get("pluto_bldgarea"), c.get("pluto_lotarea")) for c in chosen]
+    meta.coverage_note = _coverage_display(subj, subj_cov, comp_covs, cov_thr)
 
     cs = CompSet(subject_bbl, subject_summary, comps, len(comps), round(radius_used, 4), False,
                  crit, candidates_within_cap=candidates_n, fallback_triggered=fallback,

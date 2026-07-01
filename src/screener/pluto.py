@@ -42,7 +42,7 @@ PAGE_SIZE = 50_000
 # Only the columns the join needs. Keeps the raw pull lean (858k lots citywide).
 # latitude/longitude feed distance-based comp ranking (DECISIONS 2026-06-19).
 # numfloors (display-only stories, gated on fill) + address (display-address fallback).
-PLUTO_COLS = "bbl,bldgarea,bldgclass,landuse,yearbuilt,areasource,version,latitude,longitude,numfloors,address"
+PLUTO_COLS = "bbl,bldgarea,lotarea,bldgclass,landuse,yearbuilt,areasource,version,latitude,longitude,numfloors,address"
 
 
 def fetch_pluto() -> dict:
@@ -142,6 +142,7 @@ def join(manifest: dict, db_path: Path | None = None) -> dict:
             SELECT
                 TRY_CAST(bbl AS BIGINT)        AS bbl_int,
                 TRY_CAST(bldgarea AS DOUBLE)   AS bldgarea,
+                TRY_CAST(lotarea AS DOUBLE)    AS lotarea,
                 bldgclass                       AS pluto_bldgclass,
                 version                         AS pluto_version,
                 TRY_CAST(latitude AS DOUBLE)   AS latitude,
@@ -167,6 +168,7 @@ def join(manifest: dict, db_path: Path | None = None) -> dict:
             SELECT
                 r.*,
                 p.bldgarea                                  AS pluto_bldgarea,
+                p.lotarea                                   AS pluto_lotarea,
                 p.pluto_bldgclass,
                 p.pluto_version,
                 p.latitude                                  AS pluto_latitude,
