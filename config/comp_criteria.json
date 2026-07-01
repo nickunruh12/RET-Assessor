@@ -46,6 +46,27 @@
   "mixed_use_second_use_threshold": 0.10,
   "_retail_classification_doc": "Retail (K) parcels are classified by MEASURED PLUTO floor-area share, not by K-code (diagnosis: PLUTO retailarea is 98% filled, ~99% reconciled). retail_share = retailarea/bldgarea. >= retail_share_pure_threshold -> pure_retail (per-SF shown); below -> mixed, with second use by mixed_use_second_use_threshold (office precedence over residential). Per-SF gating is by retail_share ALONE, independent of category. Tunable per-metro. Stage 1 = classifier module only; live retail screening is later stages.",
 
+  "industrial_config": {
+    "scope_rule": "bldg_class starts with 'F' (ALL F-subcodes in scope, incl. F8)",
+    "subcodes_present": ["F1", "F2", "F4", "F5", "F8", "F9"],
+    "subcode_match_first": true,
+    "radius_start_miles": 0.5,
+    "radius_cap_miles": 1.75,
+    "radius_step_miles": 0.1,
+    "sf_band": 0.75,
+    "min_comp_count": 8,
+    "big_box_sf_threshold": 100000,
+    "big_box_citywide_no_cap": true,
+    "coverage_ratio_threshold": 0.30,
+    "relaxation_order": [
+      "same_subcode_in_borough",
+      "same_subcode_cross_borough",
+      "all_subcode_cross_borough",
+      "refuse"
+    ]
+  },
+  "_industrial_config_doc": "Industrial (F-code) comp parameters — SPEC ONLY, LOCKED 2026-07-01 (DECISIONS.md 'Industrial F-code comp configuration'); engine wiring is a later turn. NOT YET ACTIVATED (F is deliberately absent from activated_products; goes live via its own _screen_view interception, like retail). All numbers here are tunable config, not hardcoded. SCOPE: bldg_class.startswith('F') — every F-subcode (F1 factory/heavy, F2/F4 warehouse, F5 light-mfg, F8 special/tank/utility-yard, F9 misc) is in scope; F8 explicitly INCLUDED. Self-storage E7 is an E-code, already excluded by the F filter. VALUE = curmkttot (99.9% filled on F, 3,245/3,248); tax bill = curtxbtot × class4_tax_rate — same mechanics as office/retail. SF = PLUTO BldgArea (100% filled, 3,248/3,248). RADIUS: same auto-ladder as retail (start 0.5, step 0.1) but a HIGHER ceiling — cap 1.75 mi (tunable 1.5-2.0). ~97% of F-codes fill within 1.0 mi (dense clusters); the raised cap serves the sparse ~3% tail (isolated / Staten Island / Manhattan). REFUSE beyond the cap; never reach further. SUBCODE MATCHING: subcode_match_first — prefer same F-subcode; pool to all-F ONLY when same-subcode can't reach min_comp_count, and DISCLOSE ('extended to all industrial subcodes to reach comparable parcels'). SF BAND: ±0.75 of subject BldgArea, proportional; size-dissimilar comps flagged loudly (retail ✕ marker + per-SF handling ported). RELAXATION ORDER (each step disclosed): same-subcode in-borough → same-subcode cross-borough → all-F cross-borough → refuse; GEOGRAPHY relaxes BEFORE subcode (use-type fidelity > proximity). MANHATTAN CASCADE (~30 F-codes citywide): in-borough same-subcode ±75% → if <8, reach NEAREST outer-borough cluster first → expand citywide only if that can't fill 8 → refuse if still <8; every cross-borough reach disclosed. BIG-BOX TAIL (BldgArea >= big_box_sf_threshold = 100,000 SF, ~67 parcels): drop the SF-band ceiling, take nearest-by-size CITYWIDE with NO distance cap (big_box_citywide_no_cap, retail K8 pattern); MANDATORY 'few true peers — directional, not precise' disclosure on every big-box screen; disclose max comp distance; loud size-dissimilar flags. 100K threshold is measurement-backed (peers collapse to 0-5 even at ±100%/3mi above 100K). Big-box is INDEPENDENT of the coverage disclosure (NYC big-box is high-coverage, median 2.0, only 2 of 67 below 0.30 — the coverage flag naturally never co-fires; no special logic). COVERAGE / LAND-VALUE DISCLOSURE: coverage_ratio_threshold = 0.30; fires when the SUBJECT or 2+ comps have BldgArea/LotArea < 0.30 (land-dominant, per-building-SF skewed). Disclosure ONLY — non-computational, shows BldgArea/LotArea + LotArea for context; never filters/refuses. Threshold NYC-MEASURED from all 3,248 F-codes (median coverage 1.00, p25-p75 0.89-1.31, land-dominant tail unambiguous below 0.30, fires on 116 parcels = 3.6%); national industrial ratios (0.10-0.35) are meaningless for NYC and were NOT borrowed. F8 (median coverage 0.08) fires this on ~94% of F8 — CORRECT and intended (F8 is genuinely land-dominant, structure incidental); F8 stays in scope. MIN COMP COUNT: 8, refuse below (same as retail).",
+
   "exclude_condo_unit_lots": true,
   "condo_unit_lot_min": 1001,
   "_condo_doc": "Condo unit lots are excluded from the comp set: their gross_sqft provenance is unreliable for $/SF (whole-building-envelope error, see DECISIONS derived-tier rejection). A parcel is a condo unit lot if its building class starts with 'R' OR its lot number (BBL digits 7-10) >= condo_unit_lot_min. NOTE: not fully excluded upstream — many re-enter SF-eligibility via the roll gross_sqft fallback — so they are excluded here at the comp layer.",

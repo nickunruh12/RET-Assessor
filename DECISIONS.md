@@ -276,3 +276,87 @@ independent of the tool's local DuckDB.
 condos, the comparability data exists (value on the parcel, ~100% SF, coordinates). Approved to
 build as an engine extension per the locked build sequence (its own bucketing / SF-band / radius
 caps, live via its own `_screen_view` interception branch, never by loosening the resolver gate).
+
+## Industrial F-code comp configuration (LOCKED 2026-07-01)
+
+The full industrial comp spec, locked for review before any build. **This is spec + config
+only** — the engine, `_screen_view` interception, and any classifier logic are a LATER turn.
+Config lives in `config/comp_criteria.json` → `industrial_config` (every number a tunable config
+value, never hardcoded). Industrial is **NOT yet activated** (`F` is deliberately absent from
+`activated_products`; it will go live via its own `_screen_view` interception branch, like
+retail, never by loosening the resolver gate). Gate clearance recorded in the F-code Phase-2
+entry above; all measurements below are **NYC Open Data direct** (roll `8y4t-faws` FY2027
+`period='3'` final; PLUTO `64uk-42ks`), independent of the local DuckDB.
+
+1. **Asset scope — `bldg_class` starts with `F` (all subcodes).** Present class-4 F-subcodes:
+   F1 (factory/heavy), F2 + F4 (warehouse), F5 (light manufacturing), F8 (special / tank /
+   utility-yard), F9 (misc). **ALL F-subcodes are IN SCOPE, including F8.** Self-storage **E7 is
+   OUT** — it is an E-code, already excluded by the `startswith('F')` filter by construction (no
+   extra logic needed).
+
+2. **Value field — `curmkttot`** (DOF market value), same as office/retail. **Measured 99.9%
+   populated** on F-codes (3,245 of 3,248 carry `curmkttot > 0` and `curtxbtot > 0`). Tax bill =
+   `curtxbtot × class4_tax_rate` (FY2026 10.848%) — identical mechanics to the existing screens.
+
+3. **SF source — PLUTO `BldgArea`**, measured **100% populated** on F-codes (3,248/3,248). Per-SF
+   denominator fully supported.
+
+4. **Comp radius — same auto-ladder as retail, higher ceiling.** Auto-radius 0.5 → 1.0 mi covers
+   **~97% of F-codes** (clusters are dense-inside), so the ladder start/step are unchanged
+   (`radius_start_miles` 0.5, `radius_step_miles` 0.1). Cap RAISED to **`radius_cap_miles` = 1.75
+   mi** (tunable 1.5–2.0) to serve the sparse **~3% tail** (isolated parcels, Staten Island,
+   Manhattan). **REFUSE beyond the cap** — never reach further. Not a wholesale wider radius; the
+   same auto-radius as retail with a higher ceiling only.
+
+5. **Subcode matching — same-subcode-first.** Prefer comps of the subject's own F-subcode
+   (`subcode_match_first`). Fall back to **all-F pooling** (any F-subcode) ONLY when same-subcode
+   cannot reach the minimum, and **DISCLOSE** the fallback: "extended to all industrial subcodes
+   to reach comparable parcels."
+
+6. **SF band — ±75% of subject `BldgArea`, proportional** (`sf_band` 0.75; not fixed buckets).
+   Wider than office/retail's ±50% because industrial size is more dispersed; tunable, may adjust
+   after validation. **Size-dissimilar comps flagged loudly** — the existing ✕ marker + per-SF
+   handling ported from retail (in-band-only percentile, suppression-with-reason all carry over).
+
+7. **Relaxation order (each step disclosed) — geography relaxes BEFORE subcode.**
+   `same-subcode in-borough → same-subcode cross-borough → all-F cross-borough → refuse`. Reaching
+   a different borough for a same-use peer is preferred over mixing use-types nearby: **use-type
+   fidelity matters more than proximity** for industrial.
+
+8. **Manhattan cascade (only ~30 F-codes citywide, a size grab-bag).** In-borough same-subcode
+   ±75% first → if < 8, **reach the NEAREST outer-borough cluster first** → expand citywide only
+   if the nearest cluster can't fill 8 → refuse if still < 8. **Every cross-borough reach
+   disclosed.** (Manhattan industrial is too thin and too size-varied to self-fill.)
+
+9. **Big-box tail (BldgArea ≥ 100,000 SF, ~67 parcels citywide).** Drop the SF-band ceiling
+   entirely and take **nearest-by-size CITYWIDE with NO distance cap** (`big_box_sf_threshold`
+   100000, `big_box_citywide_no_cap` — the retail K8 pattern). Fire a **mandatory "few true peers
+   — directional, not precise" disclosure on every big-box screen**, disclose the max comp
+   distance, and keep loud size-dissimilar flags. The 100K threshold is **measurement-backed**:
+   peer counts collapse to 0–5 even at ±100% band / 3-mile reach above 100K SF. **Big-box is
+   independent of the coverage disclosure** — NYC big-box is high-coverage (median 2.0, only 2 of
+   67 below 0.30), so the coverage flag naturally never co-fires; they are independent conditions
+   and need no special co-fire logic.
+
+10. **Coverage / land-value disclosure — threshold 0.30, NYC-measured.** Fires when the SUBJECT
+    **or 2+ comps** have `BldgArea / LotArea < 0.30` (land-dominant, so per-building-SF is
+    skewed). **Disclosure only — non-computational**: it shows `BldgArea/LotArea` + `LotArea` for
+    context and never filters, sorts, or refuses. The 0.30 threshold is set from the **measured
+    full NYC F-code coverage distribution** (all 3,248 parcels): median coverage **1.00**, bulk
+    p25–p75 = **0.89–1.31**, land-dominant tail begins ~0.35 and is unambiguous below 0.30;
+    **0.30 fires on 116 parcels (3.6%)**. National industrial coverage ratios (0.10–0.35) are
+    **meaningless for NYC**, where the median is 1.0 — this threshold is NYC-measured, not
+    borrowed. Tunable (`coverage_ratio_threshold`). **F8** (special/tank-utility-yard, median
+    coverage **0.08**) fires this on **~94% of F8 parcels — CORRECT and intended**: F8 is
+    genuinely land-dominant (structure incidental to land). F8 stays in scope; near-universal
+    firing on F8 is the designed behavior.
+
+11. **Min comp count — 8, refuse below** (`min_comp_count` 8, same as office/retail).
+
+**Population shape (context for the above, measured on all 3,248 F-codes):** skews to F5
+light-manufacturing (1,365) + F4 warehouse (844) = 68%, then F9 (529), F1 (421), F2 (73), F8
+(16); 84% Brooklyn + Queens (Bklyn 1,476, Qns 1,247), only ~30 Manhattan; SF distribution
+unimodal, right-skewed, ~85% in 2,500–25,000 SF with a thin big-box tail. **Conclusion:
+industrial is buildable on this configuration** — unlike commercial condos, the comparability
+data exists (value on the parcel, ~100% SF, coordinates); the parameters above tune for
+industrial's dispersion and land-value tail rather than working around missing data.
