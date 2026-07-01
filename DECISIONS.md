@@ -217,8 +217,9 @@ LIVE. This entry is the current v1 scope of record.
 - **Office (`O*`) — LIVE.**
 - **Retail (`K*`) — LIVE** (public `/screen`, via the upstream K-interception; see the scope-gate
   entry).
-- **Industrial (`F*`) — PLANNED, NOT yet approved to build.** Blocked on a Phase-2 fill-rate
-  kill-gate (below). Not written until that gate passes.
+- **Industrial (`F*`) — GATE-CLEARED, APPROVED TO BUILD (2026-07-01).** Phase-2 fill-rate
+  kill-gate passed (both gates; see the dated clearance entry at the end of this file). Not yet
+  built; approved to build next per the sequence below.
 
 **MULTIFAMILY IS DELIBERATELY EXCLUDED — by design, not a gap.** Multifamily rental is NYC **tax
 class 2**, not class 4. The entire architecture is class-4-specific: the 45% class-4 assessment
@@ -246,3 +247,32 @@ to commercial condos (three paths measured against source data before any code).
 measures the `F*` universe's source fill rates (value, gross SF, coordinates, and any use-mix
 fields the class needs) against NYC Open Data; if the data can't support an honest screen, the
 type is not built. No industrial engine code before the gate clears.
+
+---
+
+**2026-07-01 — Industrial (F-codes) CLEARED the Phase-2 fill-rate kill-gate. APPROVED TO BUILD.**
+Mirrors the retail gate discipline: measured against source data before any engine code. **Source:
+NYC Open Data direct** (SODA — roll `8y4t-faws` FY2027 `period='3'` final; PLUTO `64uk-42ks`),
+independent of the tool's local DuckDB.
+
+- **Gate 1 — value fill: PASS, 99.9%.** 3,245 of 3,248 class-4 F-code parcels carry both
+  `curmkttot > 0` and `curtxbtot > 0` (only 3 blanks).
+- **Gate 2 — SF fill: PASS, 100%.** PLUTO `BldgArea > 0` on 3,248 / 3,248 — above the ~98%
+  K-codes cleared. Per-SF denominator fully populated.
+- **Population: 3,248 class-4 F-code parcels**, skewing to F5 light-manufacturing (1,365) + F4
+  warehouse (844) = 68%; then F9 misc (529), F1 factory (421), F2 (73), F8 (16).
+
+**Two NON-BLOCKING design flags to carry into the build (neither kills it):**
+1. **Geographic clustering.** 84% are Brooklyn + Queens (Bklyn 1,476, Qns 1,247); only 30 in
+   Manhattan. Industrial lives in dispersed outer-borough pockets, so the **Manhattan-tuned comp
+   radius needs widening / per-type tuning** — the office/retail radius will under-fill for F.
+2. **Land-value tail.** 96% are high-coverage (BldgArea/LotArea ≥ 0.3; 80% ≥ 0.8) where
+   per-building-SF is a sound comp basis; but ~116 parcels (3.6%) are low-coverage
+   (big-lot/small-building) where land drives value — warrants a **coverage-ratio disclosure**,
+   not a rescope. SF distribution is unimodal, right-skewed, ~85% in 2,500–25,000 SF with a thin
+   big-box tail handled by the existing size-dissimilar caution.
+
+**Conclusion: industrial is buildable.** It cleared the same gate retail did; unlike commercial
+condos, the comparability data exists (value on the parcel, ~100% SF, coordinates). Approved to
+build as an engine extension per the locked build sequence (its own bucketing / SF-band / radius
+caps, live via its own `_screen_view` interception branch, never by loosening the resolver gate).
