@@ -178,9 +178,9 @@
           <div class="chart-box"><canvas class="strip" id="chart-{{ sig.key }}"></canvas></div>
           <p class="signal-readout">
             Subject: {{ sig.subject_value_display }} ·
-            mean: {{ sig.mean_display }} ·
-            median: {{ sig.median_display }} ·
-            range {{ sig.minimum_display }}–{{ sig.maximum_display }}
+            Mean: {{ sig.mean_display }} ·
+            Median: {{ sig.median_display }} ·
+            Range {{ sig.minimum_display }}–{{ sig.maximum_display }}
           </p>
           {% if sig.dispersion %}
           <p class="src signal-dispersion">
@@ -242,7 +242,7 @@
         {% endif %}
 
         <!-- Abstract ratio demoted to supporting detail, lower and smaller. -->
-        <p class="src phase-in-ratio">Subject: {{ pin.subject_value }} · comp median: {{ pin.median }}
+        <p class="src phase-in-ratio">Subject: {{ pin.subject_value }} · Comp median: {{ pin.median }}
           (descriptive; n={{ pin.n }})<br>Phase-in gap = {{ pin.formula }}</p>
 
         <p class="src">{{ pin.footer }}</p>

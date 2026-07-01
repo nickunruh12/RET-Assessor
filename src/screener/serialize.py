@@ -313,8 +313,8 @@ def _subject_panel(subject: dict | None, resolve: ResolveResult | None,
 
 
 _SF_SOURCE_LABEL = {
-    "pluto_bldgarea": "based on gross building area (PLUTO)",
-    "roll_gross_sqft_fallback": "based on gross building area (DOF assessment roll)",
+    "pluto_bldgarea": "Based on gross building area (PLUTO)",
+    "roll_gross_sqft_fallback": "Based on gross building area (DOF assessment roll)",
 }
 
 # Plain-English description of each variance view's sort key, shown in the "[ordered by: …]"
@@ -432,7 +432,7 @@ def _dispersion_stats(values: list[float], unit: str) -> dict | None:
     return {
         "sd_band": f"±1 SD: {_money(sd_low, unit)} – {_money(mean + sd, unit)} (SD {_money(sd, unit)})",
         "iqr": f"Middle 50% of comps: {_money(q1, unit)} – {_money(q3, unit)}",
-        "cv": f"relative spread (CV): {cv}",
+        "cv": f"Relative spread (CV): {cv}",
     }
 
 
@@ -683,7 +683,7 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         extra = dict(shared)
         if key == "mv_per_gross_sf":
             extra["sf_source_label"] = _SF_SOURCE_LABEL.get(cs.subject.get("sf_source"),
-                                                            "based on gross building area")
+                                                            "Based on gross building area")
             if per_sf_size_flag:
                 extra["size_flag_note"] = SIZE_DISSIMILAR_NOTE
         if key == "tax_bill":

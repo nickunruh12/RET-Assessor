@@ -13,7 +13,7 @@ PSF = "$ / gross_sf"                # 'gross_sf' in unit -> 2 dp
 def test_population_sd_band_and_cv_exact():
     d = _dispersion_stats([10, 20, 30, 40], WHOLE)
     sd = statistics.pstdev([10, 20, 30, 40])           # population SD = 11.1803...
-    assert d["cv"] == f"relative spread (CV): {sd / 25 * 100:.2f}%" == "relative spread (CV): 44.72%"
+    assert d["cv"] == f"Relative spread (CV): {sd / 25 * 100:.2f}%" == "Relative spread (CV): 44.72%"
     assert d["sd_band"] == (f"±1 SD: {_money(25 - sd, WHOLE)} – {_money(25 + sd, WHOLE)} "
                             f"(SD {_money(sd, WHOLE)})")
 
@@ -39,7 +39,7 @@ def test_whole_dollar_unit_no_decimals():
 
 def test_cv_guard_returns_na_when_mean_not_positive():
     d = _dispersion_stats([-2, -1, 1, 2], WHOLE)   # mean = 0
-    assert d["cv"] == "relative spread (CV): n/a"
+    assert d["cv"] == "Relative spread (CV): n/a"
 
 
 def test_none_when_fewer_than_two_values():

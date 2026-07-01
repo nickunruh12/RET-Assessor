@@ -267,7 +267,7 @@ def test_dispersion_present_on_each_nonrefused_signal(client):
         assert d is not None
         assert d["sd_band"].startswith("±1 SD: ")
         assert d["iqr"].startswith("Middle 50% of comps: ")
-        assert d["cv"].startswith("relative spread (CV): ")
+        assert d["cv"].startswith("Relative spread (CV): ")
 
 
 def test_mean_shown_before_median_and_consistent_with_band(client):
@@ -285,7 +285,7 @@ def test_mean_shown_before_median_and_consistent_with_band(client):
         assert abs(sig["mean"] + sd - hi) < tol
         assert 0 <= lo <= hi
     html = client.get("/screen", params={"bbl": "2023070046"}).text
-    assert html.index("mean:") < html.index("median:")     # mean sits before median on line 1
+    assert html.index("Mean:") < html.index("Median:")     # mean sits before median on line 1
 
 
 def test_sd_band_lower_bound_clamped_at_observed_minimum():
