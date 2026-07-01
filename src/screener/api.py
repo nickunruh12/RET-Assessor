@@ -23,6 +23,7 @@ from .geocode import GeoclientConfigError, ResolveResult, _validate_bbl, resolve
 from .jurisdiction import CompCriteria, get_jurisdiction
 from .rung3 import run_rung3
 from .retail_comps import build_retail_screen_view
+from .industrial_comps import build_industrial_screen_view
 from .serialize import (
     DISCLAIMER,
     RADIUS_MAX,
@@ -196,6 +197,31 @@ def retail_screen(request: Request, bbl: str = ""):
     b = bbl.strip()
     with _con() as con:
         result = build_retail_screen_view(con, CRITERIA, JURIS, bbl=b) if b else None
+    return templates.TemplateResponse(request, "page.html", {
+        "result": result, "disclaimer": DISCLAIMER, "form": {"bbl": b},
+        "result_json": json.dumps(result, default=str) if result else "null",
+        "asset_version": ASSET_VERSION,
+    })
+
+
+@app.get("/api/industrial_screen")
+def api_industrial_screen(bbl: str = ""):
+    """TEST ROUTE — screens an industrial (F) parcel through the industrial comp engine. NOT
+    wired into public /screen yet (F stays out_of_scope on the public route until its live
+    switch); this route screens an F-code by BBL with no address resolution."""
+    b = bbl.strip()
+    if not b:
+        return JSONResponse({"status": "no_input"})
+    with _con() as con:
+        return JSONResponse(build_industrial_screen_view(con, CRITERIA, JURIS, bbl=b))
+
+
+@app.get("/industrial_screen", response_class=HTMLResponse)
+def industrial_screen(request: Request, bbl: str = ""):
+    """TEST ROUTE — renders the industrial screen for verification (byte-identical engine/path)."""
+    b = bbl.strip()
+    with _con() as con:
+        result = build_industrial_screen_view(con, CRITERIA, JURIS, bbl=b) if b else None
     return templates.TemplateResponse(request, "page.html", {
         "result": result, "disclaimer": DISCLAIMER, "form": {"bbl": b},
         "result_json": json.dumps(result, default=str) if result else "null",

@@ -68,6 +68,10 @@ class CompCriteria(BaseModel):
         "pure_retail": 1.0, "retail_office": 1.5, "retail_residential": 1.5, "retail_other": 1.5,
     }
 
+    # industrial (F-code) comp parameters — the whole locked block from comp_criteria.json,
+    # read verbatim by industrial_comps.py (DECISIONS 2026-07-01). Not yet activated publicly.
+    industrial_config: dict = {}
+
     # expense-ratio benchmark note (dynamic, config-driven)
     metro_name: str = ""
     product_type_labels: dict[str, str] = {}
