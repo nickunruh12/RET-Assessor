@@ -225,15 +225,20 @@ def select_industrial_comps(con, subject_bbl: str, juris: Jurisdiction, criteria
     elif subject_bbl[:1] == _MANHATTAN:
         sel = _select_manhattan(con, comp_table, subj, juris, criteria, subcode, in_band,
                                 radii, minc, cap, meta)
-        auto_label = "Citywide — nearest industrial comps (Manhattan reaches out-of-borough)"
+        auto_label = "Citywide — nearest industrial comps"   # out-of-borough parenthetical added below
     else:
         sel = _select_core(con, comp_table, subj, juris, criteria, subcode, in_band, radii,
                            minc, cap, meta)
         auto_label = f"Auto — expands up to {cap:g} mi"
-    meta.radius_auto_label = auto_label
     if sel is None:
+        meta.radius_auto_label = auto_label
         return _refuse(subject_bbl, subject_summary, crit, "insufficient_comps_within_cap", cap=cap), meta
     chosen, radius_used, band_applied, sf_band_relaxed, fallback, candidates_n = sel
+    # Manhattan label claims out-of-borough reach ONLY when a comp actually crossed (same gate
+    # as _MANHATTAN_NOTE); an all-Manhattan cluster keeps the accurate in-borough label.
+    if subject_bbl[:1] == _MANHATTAN and any(c["parcel_id"][:1] != subject_bbl[:1] for c in chosen):
+        auto_label += " (Manhattan reaches out-of-borough)"
+    meta.radius_auto_label = auto_label
 
     icap = icap_bbls(con, [c["parcel_id"] for c in chosen])
     comps = [_to_industrial_comprow(c, subcode, icap) for c in chosen]

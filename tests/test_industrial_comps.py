@@ -68,11 +68,13 @@ def test_manhattan_note_gated_on_actual_cross_borough(client):
     assert {r["parcel_id"][0] for r in allm["variance"]["all_diffs"]} == {"1"}   # never left Manhattan
     assert "very few industrial parcels" not in (allm.get("retail_fallback_note") or "")
     assert not allm.get("cross_borough_note")                                    # consistent
+    assert "out-of-borough" not in allm["radius_control"]["auto_label"]          # label also accurate
 
-    # 1007610041 genuinely reaches Queens -> the note fires.
+    # 1007610041 genuinely reaches Queens -> the note AND the label claim out-of-borough.
     crossed = client.get("/api/industrial_screen", params={"bbl": "1007610041"}).json()
     assert len({r["parcel_id"][0] for r in crossed["variance"]["all_diffs"]}) >= 2
     assert "very few industrial parcels" in (crossed.get("retail_fallback_note") or "")
+    assert "out-of-borough" in crossed["radius_control"]["auto_label"]
 
 
 def test_bigbox_citywide_few_peers_disclosure(client):
