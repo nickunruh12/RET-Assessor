@@ -59,6 +59,22 @@ def test_manhattan_reaches_cross_borough_with_disclosure(client):
     assert j["cross_borough_note"]                                 # existing machinery also discloses
 
 
+def test_manhattan_note_gated_on_actual_cross_borough(client):
+    # The Manhattan cross-borough note must fire ONLY when a comp truly left the borough.
+    # 1007880016's citywide-nearest step lands an all-Manhattan cluster -> must NOT claim
+    # "other boroughs" (and the shared cross-borough note is correctly silent too).
+    allm = client.get("/api/industrial_screen", params={"bbl": "1007880016"}).json()
+    assert allm["status"] == "ok"
+    assert {r["parcel_id"][0] for r in allm["variance"]["all_diffs"]} == {"1"}   # never left Manhattan
+    assert "very few industrial parcels" not in (allm.get("retail_fallback_note") or "")
+    assert not allm.get("cross_borough_note")                                    # consistent
+
+    # 1007610041 genuinely reaches Queens -> the note fires.
+    crossed = client.get("/api/industrial_screen", params={"bbl": "1007610041"}).json()
+    assert len({r["parcel_id"][0] for r in crossed["variance"]["all_diffs"]}) >= 2
+    assert "very few industrial parcels" in (crossed.get("retail_fallback_note") or "")
+
+
 def test_bigbox_citywide_few_peers_disclosure(client):
     j = client.get("/api/industrial_screen", params={"bbl": BIGBOX}).json()
     assert j["status"] == "ok" and j["comp_meta"]["comp_count"] == 8

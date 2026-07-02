@@ -310,7 +310,13 @@ def _select_manhattan(con, comp_table, subj, juris, criteria, subcode, in_band, 
         chosen += rest[:minc - len(chosen)]
     if len(chosen) < minc:
         return None
-    meta.fallback_note = _MANHATTAN_NOTE
+    # Fire the cross-borough note ONLY when a comp actually left the subject's borough — the
+    # citywide-nearest step can still land an all-Manhattan cluster (e.g. 1007880016), and
+    # claiming "other boroughs" then would be false. Same borough test the shared cross-borough
+    # note uses (BBL first digit); if nothing crossed, no note.
+    subj_boro = subj["parcel_id"][:1]
+    if any(c["parcel_id"][:1] != subj_boro for c in chosen):
+        meta.fallback_note = _MANHATTAN_NOTE
     band_applied = all(in_band(c) for c in chosen)
     return chosen, max(c["distance_miles"] for c in chosen), band_applied, not band_applied, True, len(citywide)
 
