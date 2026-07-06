@@ -8,7 +8,11 @@
  *  - Honest axis: framed by the actual data range (min..max), never cropped.
  *  - Labels state facts only: "subject", "median", "comps".
  */
-const INK = "#1c1c1c", COMP = "#b4b4b4", SUBJECT_RING = "#1c1c1c", MEDIAN = "#6b6b6b", MEAN = "#404040";
+/* Research-desk palette: comps muted slate, subject the single accent (deep blue ring),
+   mean/median restrained neutral markers. No red/amber/green — neutral discipline intact. */
+const INK = "#10192b", MUTED = "#55617a", COMP = "rgba(85,97,122,.5)", SUBJECT_RING = "#1f5fd0",
+      MEDIAN = "#334155", MEAN = "#8792a6", GRID = "rgba(16,25,43,.05)", AXIS = "rgba(16,25,43,.12)",
+      CHART_FONT = "Inter, -apple-system, Segoe UI, Roboto, sans-serif";
 
 function dataEl() {
   const el = document.getElementById("screen-data");
@@ -85,39 +89,40 @@ function stripPlot(canvas, sig) {
     data: {
       datasets: [
         { label: "comps", data: inBand.map((p, i) => ({ ...p, y: jitter(i) })),
-          backgroundColor: COMP, pointRadius: 5, pointHoverRadius: 7 },
+          backgroundColor: COMP, pointRadius: 4, pointHoverRadius: 6 },
         ...(outBand.length ? [{ label: "size-dissimilar",
           data: outBand.map((p, i) => ({ ...p, y: jitter(i + 313) })),
-          backgroundColor: "#ffffff", pointStyle: "crossRot", borderColor: INK,
-          pointBorderWidth: 2, pointRadius: 7, pointHoverRadius: 9 }] : []),
+          backgroundColor: "transparent", pointStyle: "crossRot", borderColor: MUTED,
+          pointBorderWidth: 1.5, pointRadius: 6, pointHoverRadius: 8 }] : []),
         { label: "median", data: [{ x: sig.median, y: 0, disp: sig.median_display }],
-          backgroundColor: MEDIAN, pointStyle: "rectRot", pointRadius: 9,
-          pointHoverRadius: 11, pointBorderColor: "#ffffff", pointBorderWidth: 1.5 },
+          backgroundColor: MEDIAN, pointStyle: "rectRot", pointRadius: 8,
+          pointHoverRadius: 10, pointBorderColor: "#ffffff", pointBorderWidth: 1.5 },
         // mean — distinct triangle at the TRUE mean (never nudged); may sit near the median
         // diamond on symmetric pools — the white outline keeps the two readable when close.
         { label: "mean", data: [{ x: sig.mean, y: 0, disp: sig.mean_display }],
-          backgroundColor: MEAN, pointStyle: "triangle", pointRadius: 9,
-          pointHoverRadius: 11, pointBorderColor: "#ffffff", pointBorderWidth: 1.5 },
+          backgroundColor: MEAN, pointStyle: "triangle", pointRadius: 8,
+          pointHoverRadius: 10, pointBorderColor: "#ffffff", pointBorderWidth: 1.5 },
+        // subject — the single accent; a bold white-filled ring so it reads instantly.
         { label: "subject", data: [{ ...sp, y: 0 }],
-          backgroundColor: "#ffffff", borderColor: SUBJECT_RING, pointBorderWidth: 2.5,
-          pointRadius: 10, pointHoverRadius: 12 },
+          backgroundColor: "#ffffff", borderColor: SUBJECT_RING, pointBorderWidth: 3,
+          pointRadius: 9, pointHoverRadius: 11 },
       ],
     },
     options: {
       animation: false, responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: 4, right: 14, bottom: 2, left: 6 } },
-      font: { family: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif", size: 12 },
+      layout: { padding: { top: 6, right: 16, bottom: 2, left: 6 } },
       scales: {
         x: { min: lo - pad, max: hi + pad,
-             ticks: { color: INK, font: { size: 11 }, maxRotation: 0, autoSkipPadding: 16,
-                      callback: (v) => COMPACT.format(v) },
-             grid: { color: "rgba(0,0,0,0.06)" }, border: { color: "rgba(0,0,0,0.18)" } },
+             ticks: { color: MUTED, font: { family: CHART_FONT, size: 11 }, maxRotation: 0,
+                      autoSkipPadding: 20, padding: 6, callback: (v) => COMPACT.format(v) },
+             grid: { color: GRID, drawTicks: false },
+             border: { color: AXIS } },
         y: { display: false, min: -1, max: 1 },
       },
       plugins: {
-        legend: { position: "top",
-                  labels: { color: INK, usePointStyle: true, boxWidth: 10, padding: 14,
-                            font: { size: 12 } } },
+        legend: { position: "top", align: "end",
+                  labels: { color: MUTED, usePointStyle: true, pointStyleWidth: 8, boxWidth: 8,
+                            padding: 16, font: { family: CHART_FONT, size: 11.5 } } },
         tooltip: { enabled: false, external: (ctx) => htmlTip(ctx, sig) },
       },
     },

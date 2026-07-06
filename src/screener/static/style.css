@@ -1,151 +1,256 @@
-/* Neutral palette only. No red/amber/green, nothing colored to imply good/bad.
-   The subject is distinguished by a LABEL, never by an alarm color. */
+/* ============================================================================
+   NYC Class-4 Assessment Screen — research-desk visual system (Koyfin-inspired).
+   Restrained, sharp, tabular. ONE accent (deep research blue); everything else is
+   greyscale. NO red/amber/green — nothing is colored to imply good/bad (the subject
+   is distinguished by a ring + label, never by an alarm color). Presentation only —
+   no number, disclosure, citation, or suppression state changes here.
+   ============================================================================ */
 :root {
-  --ink: #1c1c1c;
-  --muted: #6b6b6b;
-  --faint: #9a9a9a;
-  --line: #dcdcdc;
-  --panel: #f6f6f6;
-  --bg: #ffffff;
+  --bg:        #f5f6f8;   /* cool off-white page                       */
+  --surface:   #ffffff;   /* cards / panels                            */
+  --ink:       #10192b;   /* near-black slate — primary text           */
+  --muted:     #55617a;   /* secondary text                            */
+  --faint:     #949cb0;   /* captions, disclosures, footnotes          */
+  --line:      #e6e9f0;   /* hairline separators                       */
+  --line-soft: #eef1f6;   /* even softer rule                          */
+  --panel:     #f1f3f7;   /* inset panels / table header               */
+  --accent:    #1f5fd0;   /* deep research blue — the single accent    */
+  --accent-ink:#183f8f;   /* accent for text on light                  */
+  --accent-tint:#edf3fd;  /* accent wash for the most prominent note   */
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(16,25,43,.04), 0 1px 3px rgba(16,25,43,.05);
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
+
 * { box-sizing: border-box; }
+
 body {
-  font: 15px/1.5 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font);
+  font-size: 14px; line-height: 1.55;
   color: var(--ink); background: var(--bg);
-  max-width: 860px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem;
+  max-width: 908px; margin: 0 auto; padding: 2.25rem 1.5rem 5rem;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1, "cv05" 1;
 }
-h1 { font-size: 1.3rem; margin: .2rem 0 1rem; }
-h2 { font-size: 1.05rem; margin: 1.6rem 0 .6rem; border-bottom: 1px solid var(--line); padding-bottom: .3rem; }
-h3 { font-size: .95rem; margin: 1rem 0 .35rem; }
 
-/* 1. Disclaimer — small, light gray, never hidden, above the numbers */
-.disclaimer { font-size: .8rem; color: var(--faint); margin: 0 0 1rem; }
+/* every figure sits on the tabular grid so columns align */
+.signal-stats, .signal-readout, .signal-dispersion, dd, .comp-table, .variance table,
+.taxable-series, .comp-meta, #rung3-result, #opex-result, .radius-control {
+  font-variant-numeric: tabular-nums;
+}
 
-/* Welcome / landing — the front door; neutral, institutional, no alarm color. */
-.welcome { max-width: 640px; margin: 2.5rem auto 0; }
-.welcome-blurb { font-size: 1rem; line-height: 1.65; color: var(--ink); margin: 1rem 0 1.75rem; }
-.welcome-blurb code { font-size: .9em; color: var(--muted); }
-.welcome-actions { margin: 1.5rem 0; }
-.btn-primary { display: inline-block; padding: .6rem 1.5rem; background: var(--ink); color: #fff;
-  border-radius: 6px; text-decoration: none; font-weight: 600; font-size: .95rem; }
-.btn-primary:hover { background: #000; }
-.welcome-coming-soon { font-size: .85rem; color: var(--faint); margin: 1.75rem 0 2rem; }
-.soon-tag { display: inline-block; font-size: .6rem; font-weight: 700; letter-spacing: .04em;
-  text-transform: uppercase; padding: .1rem .35rem; border: 1px solid var(--faint);
-  border-radius: 3px; color: var(--faint); vertical-align: middle; }
+h1 { font-size: 1.4rem; font-weight: 680; letter-spacing: -.022em; margin: 0 0 .3rem; }
+/* Section header — sharp, tight, with a short accent tick that encodes "new band". */
+h2 {
+  font-size: .82rem; font-weight: 650; letter-spacing: .02em; text-transform: uppercase;
+  color: var(--muted); margin: 0 0 1rem; padding: 0 0 .55rem;
+  border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: .5rem;
+}
+h2::before { content: ""; width: 3px; height: .82rem; background: var(--accent); border-radius: 2px; }
+h3 { font-size: .9rem; font-weight: 620; letter-spacing: -.005em; margin: 1.1rem 0 .35rem; color: var(--ink); }
+code { font-family: "SF Mono", ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: .86em; color: var(--muted); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
 
+/* 1. Disclaimer — small, quiet, never hidden, above the numbers */
+.disclaimer { font-size: .78rem; color: var(--faint); letter-spacing: .002em; margin: 0 0 1.75rem; }
+
+/* ---- Header + lookup forms -------------------------------------------------- */
+header h1 { margin-bottom: 1rem; }
 .lookup { margin: .4rem 0; }
-.lookup fieldset { border: 1px solid var(--line); border-radius: 6px; padding: .5rem .7rem; }
-.lookup legend { font-size: .8rem; color: var(--muted); padding: 0 .3rem; }
-.lookup input, .lookup select { padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 4px; margin: .15rem .25rem .15rem 0; }
-.lookup button, .rung3 button { padding: .35rem .8rem; border: 1px solid var(--muted); background: var(--panel); border-radius: 4px; cursor: pointer; }
+.lookup fieldset {
+  border: 1px solid var(--line); border-radius: var(--radius); padding: .7rem .85rem;
+  background: var(--surface); box-shadow: var(--shadow); display: flex; flex-wrap: wrap;
+  align-items: center; gap: .45rem;
+}
+.lookup legend { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); padding: 0 .4rem; }
+.lookup input, .lookup select {
+  padding: .44rem .6rem; border: 1px solid var(--line); border-radius: 7px; margin: 0;
+  font: inherit; font-size: .9rem; color: var(--ink); background: var(--surface);
+}
+.lookup input:focus, .lookup select:focus { outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint); }
+.lookup button, .rung3 button {
+  padding: .44rem 1rem; border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  border-radius: 7px; cursor: pointer; font: inherit; font-size: .88rem; font-weight: 600;
+}
+.lookup button:hover, .rung3 button:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
 
-dl { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; margin: .4rem 0; }
-dl dt { color: var(--muted); }
-.src { color: var(--faint); font-size: .82rem; }
-.comp-meta { color: var(--muted); font-size: .85rem; }
-.caution { color: var(--ink); background: var(--panel); border-left: 3px solid var(--line); padding: .5rem .7rem; font-size: .88rem; }
-/* Cross-borough composition note — prominent but neutral (no alert color). */
-.cross-borough-note { color: var(--ink); background: var(--panel); border-left: 3px solid var(--muted); padding: .55rem .8rem; font-size: .9rem; margin: .2rem 0 1rem; }
-.reconcile-note { color: var(--ink); background: var(--panel); border-left: 3px solid var(--muted); padding: .55rem .8rem; font-size: .9rem; margin: .4rem 0 0; }
-/* ICAP disclosure: conditional subject banner + always-on comp tag (display only) */
-.icap-banner { color: var(--ink); background: var(--panel); border-left: 3px solid var(--muted); padding: .55rem .8rem; font-size: .9rem; margin: 0 0 1rem; }
-.icap-banner .src { display: block; margin-top: .2rem; }
-.icap-tag { display: inline-block; font-size: .6rem; font-weight: 700; letter-spacing: .03em; padding: .05rem .25rem; border: 1px solid var(--muted); border-radius: 3px; color: var(--muted); vertical-align: middle; }
-/* per-SF size-outlier flagging (retail band-relax): row tag + chart header note */
-.size-flag { display: inline-block; font-size: .58rem; font-weight: 700; letter-spacing: .02em; padding: .05rem .25rem; border: 1px solid var(--ink); border-radius: 3px; color: var(--ink); vertical-align: middle; }
-.size-flag-note { font-size: .8rem; color: var(--ink); margin: .2rem 0 .1rem; font-style: italic; }
-/* K3 department-store quality caveat — most prominent disclosure, top of the result */
-.k3-quality-note { color: var(--ink); background: var(--panel); border: 1px solid var(--muted);
-  border-left: 5px solid var(--ink); border-radius: 6px; padding: .7rem .9rem; margin: 0 0 1.1rem;
-  font-size: .95rem; font-weight: 600; }
-/* Tax-methodology derivation chain under the Tax Bill chart (Item 1) */
-.tax-method { margin: .4rem 0 .2rem; }
-.tax-method-head { font-size: .82rem; margin: .2rem 0; }
-.tax-method-chain { font-size: .8rem; margin: .15rem 0 .35rem 1.1rem; padding: 0; line-height: 1.45; }
-.tax-basis-caveat, .pilot-caveat { font-size: .76rem; margin: .25rem 0 0; }
+/* ---- Cards: the primary bands sit on white surfaces over the grey page ------ */
+.subject, .signals, .variance {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 1.4rem 1.5rem; margin: 0 0 1.5rem;
+}
 
-.signal { margin: 1rem 0 1.4rem; }
-.signal-stats { font-size: .9rem; color: var(--ink); margin: .2rem 0; }
-.signal-readout { font-size: .82rem; color: var(--muted); margin: .3rem 0 0; }
-/* descriptive spread sub-line: lighter + tighter than the readout, stacked to avoid scroll */
-.signal-dispersion { font-size: .76rem; line-height: 1.35; margin: .15rem 0 0; }
-.dispersion-caveat { font-size: .76rem; margin: .1rem 0 .6rem; font-style: italic; }
-.signal-refusal { font-size: .9rem; color: var(--ink); background: var(--panel); padding: .5rem .7rem; border-left: 3px solid var(--line); }
+/* ---- Subject parcel — definition grid, label muted, value ink -------------- */
+dl { display: grid; grid-template-columns: max-content 1fr; gap: .55rem 1.5rem; margin: .2rem 0 0; }
+dl dt { color: var(--muted); font-size: .82rem; font-weight: 500; }
+dl dd { margin: 0; color: var(--ink); font-weight: 550; }
+.src { color: var(--faint); font-size: .8rem; font-weight: 400; }
+.comp-meta { color: var(--muted); font-size: .84rem; margin: 1rem 0 .3rem; }
 
-/* Fixed-height box bounds the responsive canvas. Without an explicit container
-   height, Chart.js (responsive + a canvas in an unconstrained block) loops:
-   each resize grows the canvas, which grows the page, which triggers another
-   resize — the chart scrolls/grows then vanishes. The bounded box stops that. */
-.chart-box { position: relative; height: 200px; width: 100%; margin: .2rem 0 .4rem; }
-/* external chart tooltip (lets the first line bold the address with the BBL un-bolded) */
-.chart-tip { position: absolute; pointer-events: none; z-index: 30; background: rgba(28,28,28,.92);
-  color: #fff; font-size: .78rem; line-height: 1.4; padding: .4rem .55rem; border-radius: 5px;
-  white-space: nowrap; transform: translate(-50%, -112%); opacity: 0; transition: opacity .08s; }
-.chart-tip strong { font-weight: 700; }
-.chart-tip .tip-head { text-decoration: underline; text-underline-offset: 2px; }
+/* ---- Disclosures / callouts — quiet, secondary, honest (never alarms) ------- */
+.caution, .cross-borough-note, .reconcile-note, .icap-banner {
+  color: var(--muted); background: var(--panel); border-left: 2px solid var(--line);
+  padding: .6rem .85rem; font-size: .84rem; border-radius: 0 6px 6px 0; margin: .6rem 0;
+}
+.cross-borough-note { margin: .2rem 0 1rem; }
+.reconcile-note { margin: .6rem 0 0; }
+.icap-banner { margin: 0 0 1rem; }
+.icap-banner .src { display: block; margin-top: .25rem; }
+/* small display-only tags: ICAP, size-dissimilar, land-dominant — one muted pill */
+.icap-tag, .size-flag {
+  display: inline-block; font-size: .58rem; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; padding: .08rem .3rem; border: 1px solid var(--line);
+  border-radius: 4px; color: var(--muted); background: var(--panel); vertical-align: middle;
+}
+.size-flag-note, .land-dominant-note { font-size: .8rem; color: var(--muted); margin: .3rem 0 .1rem; }
+/* K3 department-store quality caveat — the ONE prominent note (accent-tinted). */
+.k3-quality-note {
+  color: var(--ink); background: var(--accent-tint); border: 1px solid #d5e3fa;
+  border-left: 3px solid var(--accent); border-radius: 8px; padding: .8rem 1rem; margin: 0 0 1.25rem;
+  font-size: .9rem; font-weight: 520; line-height: 1.5;
+}
+
+/* Tax-methodology derivation chain under the Tax Bill chart */
+.tax-method { margin: .5rem 0 .2rem; }
+.tax-method-head { font-size: .82rem; font-weight: 600; color: var(--muted); margin: .2rem 0; }
+.tax-method-chain { font-size: .82rem; margin: .2rem 0 .4rem 1.1rem; padding: 0; line-height: 1.55; color: var(--muted); }
+.tax-method-chain strong { color: var(--ink); }
+.tax-basis-caveat, .pilot-caveat { font-size: .76rem; color: var(--faint); margin: .3rem 0 0; }
+
+/* ---- Signal distributions -------------------------------------------------- */
+.signal { margin: 1.25rem 0 1.75rem; }
+.signal:last-child { margin-bottom: .25rem; }
+.signal-stats { font-size: .88rem; color: var(--ink); margin: .2rem 0 .1rem; font-weight: 520; }
+.signal-readout { font-size: .82rem; color: var(--muted); margin: .35rem 0 0; }
+.signal-dispersion { font-size: .76rem; color: var(--faint); line-height: 1.45; margin: .2rem 0 0; }
+.percentile-basis { font-size: .78rem; color: var(--muted); margin: .2rem 0 0; }
+.dispersion-caveat { font-size: .76rem; color: var(--faint); font-style: normal; margin: .3rem 0 .6rem; }
+.signal-refusal { font-size: .86rem; color: var(--muted); background: var(--panel);
+  padding: .65rem .85rem; border-left: 2px solid var(--line); border-radius: 0 6px 6px 0; }
+.sf-src, .signal-caveat { font-size: .78rem; color: var(--faint); margin: .25rem 0 0; }
+.gloss { margin: -.4rem 0 1rem; font-size: .82rem; color: var(--faint); }
+
+/* Fixed-height box bounds the responsive canvas (prevents the Chart.js resize loop). */
+.chart-box { position: relative; height: 216px; width: 100%; margin: .5rem 0 .5rem; }
 .chart-box > canvas.strip { position: absolute; inset: 0; display: block; }
+/* research-report tooltip: dark card, bold address line, hairline-tight lines */
+.chart-tip { position: absolute; pointer-events: none; z-index: 30;
+  background: rgba(16,25,43,.96); color: #fff; font-size: .76rem; line-height: 1.45;
+  padding: .5rem .65rem; border-radius: 7px; white-space: nowrap; font-variant-numeric: tabular-nums;
+  box-shadow: 0 6px 20px rgba(16,25,43,.25); transform: translate(-50%, -116%); opacity: 0;
+  transition: opacity .09s; }
+.chart-tip strong { font-weight: 700; }
+.chart-tip .tip-head { color: #fff; }
 
-.variance table { border-collapse: collapse; width: 100%; font-size: .82rem; margin: .3rem 0 1rem; }
-.variance th, .variance td { border-bottom: 1px solid var(--line); padding: .3rem .4rem; text-align: left; vertical-align: top; }
-.variance th { color: var(--muted); font-weight: 600; }
-.full-set summary { cursor: pointer; color: var(--muted); font-size: .85rem; }
-/* stand out from body text per the comp-count toggle request */
-.full-set summary.full-set-toggle { color: var(--ink); font-weight: 700; text-decoration: underline; font-size: .9rem; }
-/* Shared comp table — fixed layout so all columns fit with NO horizontal scroll;
-   headers + cells wrap and are centered. Neutral only. */
-.table-wrap { margin: .3rem 0 1.2rem; border: 1px solid var(--line); border-radius: 6px; }
-.comp-table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: .63rem; }
+/* ---- Variance tables ------------------------------------------------------- */
+.variance table { border-collapse: collapse; width: 100%; font-size: .82rem; margin: .3rem 0 1.25rem; }
+.variance th, .variance td { border-bottom: 1px solid var(--line-soft); padding: .4rem .5rem; text-align: left; vertical-align: top; }
+.variance th { color: var(--muted); font-weight: 600; font-size: .74rem; text-transform: uppercase; letter-spacing: .03em; }
+.full-set { margin-top: .5rem; }
+.full-set summary { cursor: pointer; color: var(--muted); font-size: .84rem; }
+.full-set summary.full-set-toggle { color: var(--accent); font-weight: 600; text-decoration: none; font-size: .86rem; }
+.full-set summary.full-set-toggle:hover { text-decoration: underline; }
+.vview { margin-bottom: .6rem; }
+.vview h3 .src { font-weight: 400; color: var(--faint); }
+
+/* Shared comp table — minimal chrome; alignment carries the precision. */
+.table-wrap { margin: .35rem 0 1.25rem; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.comp-table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: .66rem; }
 .comp-table th, .comp-table td {
-  border-bottom: 1px solid var(--line); padding: .26rem .16rem;
+  border-bottom: 1px solid var(--line-soft); padding: .4rem .3rem;
   text-align: center; vertical-align: top; white-space: normal; word-break: break-word;
 }
-.comp-table th { color: var(--muted); font-weight: 600; background: var(--panel); }
-.comp-table td .src { display: block; }
+.comp-table tbody tr:last-child td { border-bottom: none; }
+.comp-table tbody tr:hover td { background: #fafbfd; }
+.comp-table th { color: var(--muted); font-weight: 600; background: var(--panel);
+  text-transform: uppercase; letter-spacing: .02em; font-size: .6rem; }
+.comp-table td .src { display: block; font-size: .92em; }
 
-/* 5. CONTEXT — visually separated from the SIGNAL section */
-.context { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .6rem 1rem 1rem; margin-top: 2rem; }
-.ctx-item { margin: .5rem 0; font-size: .88rem; }
+/* ---- CONTEXT panel — secondary reference, quiet ---------------------------- */
+.context { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.25rem 1.25rem; margin-top: 1.5rem; }
+.context h2 { border-bottom-color: var(--line); }
+.ctx-item { margin: .6rem 0; font-size: .86rem; color: var(--muted); }
+.ctx-item strong { color: var(--ink); font-weight: 600; }
 .ctx-item a { display: inline-block; margin-left: .3rem; }
 
-/* 6. RUNG 3 — partitioned, dashed border to read as a distinct, user-supplied area */
-.rung3 { border: 1px dashed var(--muted); border-radius: 8px; padding: .6rem 1rem 1rem; margin-top: 2rem; }
-.rung3 .userbox { display: flex; gap: .5rem; align-items: center; margin: .5rem 0; flex-wrap: wrap; }
-.rung3 .userbox input { padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 4px; min-width: 14rem; }
-#rung3-result, #opex-result { margin-top: .6rem; font-size: .92rem; }
-.rung3-stamp { color: var(--muted); font-size: .82rem; }
-.benchmark-note { margin-top: .6rem; }
-.gloss { margin: -.3rem 0 .8rem; }
+/* ---- RUNG 3 + Expense — user-supplied, partitioned (dashed = "your input") -- */
+.rung3 { border: 1px dashed #c4ccdb; border-radius: var(--radius); padding: 1rem 1.25rem 1.25rem;
+  margin-top: 1.5rem; background: var(--surface); }
+.rung3 h2 { border-bottom-color: var(--line); }
+.rung3 h2::before { background: #c4ccdb; }
+.rung3 .userbox { display: flex; gap: .5rem; align-items: center; margin: .6rem 0; flex-wrap: wrap; }
+.rung3 .userbox input { padding: .44rem .6rem; border: 1px solid var(--line); border-radius: 7px;
+  min-width: 14rem; font: inherit; font-size: .9rem; }
+.rung3 .userbox input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+#rung3-result, #opex-result { margin-top: .7rem; font-size: .9rem; }
+.rung3-stamp { color: var(--faint); font-size: .78rem; }
+.benchmark-note { margin-top: .7rem; color: var(--muted); font-size: .84rem; }
 
-/* Phase-In Note — small labeled block, neutral. */
-.phase-in-note { margin: 1rem 0 .4rem; padding: .5rem .7rem; background: var(--panel); border-left: 3px solid var(--line); }
-.phase-in-note h3 { margin: 0 0 .35rem; }
-.phase-in-note p { margin: .25rem 0; font-size: .88rem; }
-.phase-in-note .phase-in-pending strong { font-size: 1.02rem; }
-/* abstract ratio demoted: smaller and set off below the concrete figures */
-.phase-in-note .phase-in-ratio { margin-top: .55rem; font-size: .72rem; }
-/* 5-year transitional-taxable series: one line per roll year, gaps muted */
-.taxable-series { list-style: none; margin: .15rem 0 .35rem; padding: 0; font-size: .84rem; }
-.taxable-series li { margin: .1rem 0; }
-.taxable-series .series-pct { color: var(--muted); font-size: .78rem; }
+/* Phase-In Note — small labeled block, quiet accent tick */
+.phase-in-note { margin: 1.25rem 0 .4rem; padding: .8rem 1rem; background: var(--panel);
+  border-left: 2px solid var(--line); border-radius: 0 8px 8px 0; }
+.phase-in-note h3 { margin: 0 0 .4rem; }
+.phase-in-note p { margin: .3rem 0; font-size: .86rem; color: var(--muted); }
+.phase-in-note .phase-in-pending strong { font-size: 1rem; color: var(--ink); }
+.phase-in-note .phase-in-ratio { margin-top: .6rem; font-size: .74rem; color: var(--faint); }
+.taxable-series { list-style: none; margin: .2rem 0 .4rem; padding: 0; font-size: .84rem; color: var(--muted); }
+.taxable-series li { margin: .12rem 0; }
+.taxable-series .series-pct { color: var(--faint); font-size: .78rem; }
 .taxable-series .series-gap { color: var(--faint); }
 
-/* Radius control — neutral. AUTO is a separate affordance; OVERRIDE is the slider. */
-.radius-control { font-size: .82rem; color: var(--muted); margin: .5rem 0 .2rem;
-  padding: .5rem .7rem; border: 1px solid var(--line); border-radius: 6px; }
-.radius-mode { margin: 0 0 .4rem; }
-.radius-used, .radius-mode strong { color: var(--ink); }
+/* ---- Radius control -------------------------------------------------------- */
+.radius-control { font-size: .82rem; color: var(--muted); margin: .6rem 0 .2rem;
+  padding: .7rem .85rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.radius-mode { margin: 0 0 .5rem; }
+.radius-used, .radius-mode strong { color: var(--ink); font-weight: 600; }
 .radius-affordances { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
-.radius-auto { padding: .2rem .5rem; border: 1px solid var(--muted); border-radius: 4px; }
-.radius-auto.active { background: var(--panel); font-weight: 600; }
+.radius-auto { padding: .28rem .6rem; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); }
+.radius-auto.active { background: var(--accent-tint); border-color: #d5e3fa; color: var(--accent-ink); font-weight: 600; }
 .radius-slider-wrap { display: flex; gap: .5rem; align-items: center; }
-.radius-slider-wrap input[type=range] { accent-color: var(--ink); width: 12rem; }
-#radius-live { min-width: 16rem; }
+.radius-slider-wrap input[type=range] { accent-color: var(--accent); width: 12rem; }
+#radius-live { min-width: 16rem; color: var(--faint); }
 
-.refusal { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; margin: 1rem 0; }
-.refusal-msg { font-size: 1rem; margin: 0 0 .3rem; }
-.refusal-meta, .subject-mini { color: var(--muted); font-size: .85rem; }
+/* ---- Refusal state --------------------------------------------------------- */
+.refusal { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.25rem 1.5rem; margin: 1rem 0; }
+.refusal-msg { font-size: .98rem; color: var(--ink); margin: 0 0 .4rem; line-height: 1.5; }
+.refusal-meta, .subject-mini { color: var(--faint); font-size: .82rem; }
 
+/* ---- Provenance footer — quietest layer ------------------------------------ */
 .provenance { margin-top: 2rem; }
-.provenance summary { cursor: pointer; color: var(--muted); font-size: .85rem; }
-.provenance ul { font-size: .8rem; color: var(--muted); }
+.provenance summary { cursor: pointer; color: var(--muted); font-size: .82rem; font-weight: 500; }
+.provenance ul { font-size: .78rem; color: var(--faint); line-height: 1.6; }
+.provenance code { color: var(--muted); }
+
+/* ============================================================================
+   Welcome / landing — the front door. Same system; the type does the work.
+   ============================================================================ */
+.welcome { max-width: 660px; margin: 3rem auto 0; }
+.welcome h1 { font-size: 1.9rem; letter-spacing: -.03em; line-height: 1.12; margin: 0 0 1.25rem; }
+.welcome-blurb { font-size: 1.02rem; line-height: 1.7; color: var(--muted); margin: 0 0 2rem; }
+.welcome-blurb code { color: var(--accent-ink); }
+.welcome-actions { margin: 0 0 2rem; }
+.btn-primary { display: inline-block; padding: .7rem 1.6rem; background: var(--accent); color: #fff;
+  border-radius: 8px; text-decoration: none; font-weight: 600; font-size: .95rem; letter-spacing: .002em;
+  box-shadow: var(--shadow); }
+.btn-primary:hover { background: var(--accent-ink); text-decoration: none; }
+.welcome-coming-soon { font-size: .86rem; color: var(--faint); margin: 0 0 2.5rem;
+  padding-top: 1.5rem; border-top: 1px solid var(--line); }
+.soon-tag { display: inline-block; font-size: .6rem; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; padding: .12rem .38rem; border: 1px solid var(--line);
+  border-radius: 4px; color: var(--muted); background: var(--surface); vertical-align: middle; margin: 0 .15rem; }
+.welcome .disclaimer { margin-top: 0; }
+
+/* ---- Responsive ------------------------------------------------------------ */
+@media (max-width: 640px) {
+  body { padding: 1.25rem 1rem 3rem; }
+  .subject, .signals, .variance { padding: 1.1rem 1rem; }
+  dl { grid-template-columns: 1fr; gap: .1rem .5rem; }
+  dl dt { margin-top: .5rem; }
+  .welcome h1 { font-size: 1.55rem; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
