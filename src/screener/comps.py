@@ -90,6 +90,10 @@ class CompRow(CitedRow):
     curacttot: float | None
     has_icap: bool = False      # DISCLOSURE ONLY — current ICAP abatement (rgyu-ii48);
                                 # never filters/sorts the comp or changes its statutory tax
+    land_dominant: bool = False  # industrial only: PLUTO coverage (BldgArea/LotArea) < the
+                                # comp-exclusion threshold. EXCLUDED from the per-SF calc only
+                                # (stays in the value distribution + comp table). False for
+                                # office/retail (never computed) -> those paths byte-identical.
 
 
 @dataclass

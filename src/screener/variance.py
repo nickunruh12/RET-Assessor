@@ -67,7 +67,8 @@ class VarianceRow(CitedRow):
     stories: float | None                # display only; never used to rank or sort
     sf_dataset_version: str | None
     has_icap: bool                       # DISCLOSURE ONLY — current ICAP abatement (rgyu-ii48)
-    differs_on: str
+    land_dominant: bool = False          # DISCLOSURE ONLY — excluded from per-SF (industrial)
+    differs_on: str = ""
 
 
 @dataclass
@@ -157,6 +158,7 @@ def _to_variance_row(comp: CompRow, subj: dict) -> VarianceRow:
         stories=comp.stories,
         sf_dataset_version=comp.sf_dataset_version,
         has_icap=getattr(comp, "has_icap", False),
+        land_dominant=getattr(comp, "land_dominant", False),
         differs_on=_differs_on(comp, subj, assessed_pct, sf_pct),
     )
 

@@ -360,3 +360,34 @@ unimodal, right-skewed, ~85% in 2,500–25,000 SF with a thin big-box tail. **Co
 industrial is buildable on this configuration** — unlike commercial condos, the comparability
 data exists (value on the parcel, ~100% SF, coordinates); the parameters above tune for
 industrial's dispersion and land-value tail rather than working around missing data.
+
+## Industrial land-dominant per-SF comp exclusion (LOCKED 2026-07-01)
+
+The ONLY comp-quality fix from the industrial calibration session. CV/dispersion suppression
+was measured and ABANDONED (continuum, no clean cutoff — mid p90 0.43 overlaps large p10 0.24;
+not built). What WAS built:
+
+- **Land-dominant comps are excluded from the per-SF calc only.** Any industrial comp with PLUTO
+  coverage (BldgArea/LotArea) below `coverage_exclusion_threshold` (0.30) has a land-driven
+  value, so its per-SF is not comparable — dropped from the per-SF mean/median/SD/percentile
+  AND the per-SF chart. It STAYS in the value (curmkttot) distribution and the comp table,
+  marked "land-dominant." Fires on ~24% of sets (measured). Disclosure: "N comp(s) excluded from
+  per-SF as land-dominant (building covers under 30% of lot); still shown in the value
+  distribution and comp table."
+- **Two thresholds, one value now, tuned independently later.** `coverage_exclusion_threshold`
+  (comp-side, per-SF exclusion) is a SEPARATE config key from `coverage_ratio_threshold`
+  (subject-side disclosure). Both 0.30 deliberately.
+- **Subject vs comp reconciliation (no contradiction).** Subject land-dominant = the subject's
+  OWN per-SF is caveated (subject-side note). Comps land-dominant = EXCLUDED from per-SF
+  (comp-side disclosure). The old comp-side wording ("N comps also land-dominant", which implied
+  they were still in the stats) was removed.
+- **Percentile filters STACK.** The per-SF percentile computes on comps that are (in-band, if
+  band-relaxed) AND (not land-dominant); a comp in-band but land-dominant is out. `percentile_n`
+  states the effective post-both-filter count; the sub-5 floor uses that post-filter count.
+- **Floor guard (dead code at 0.30, insurance).** If the exclusion leaves < 5 usable per-SF
+  comps, the per-SF stat is suppressed via the existing per-signal refusal path. Gated on an
+  exclusion having occurred, so office/retail can never trip it.
+- **Office/retail byte-identical.** The `land_dominant` flag is False on office/retail comps
+  (never computed), so every shared-path branch (stats, serialize distributions/points/table,
+  variance) is a no-op for them. Confirmed: office/retail PSF n, distribution, and comp table
+  unchanged; excluded=0, no note, no marks.

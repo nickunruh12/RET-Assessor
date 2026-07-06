@@ -115,22 +115,68 @@ def test_condo_and_other_out_of_scope_still_refuse(client):
         assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1"
 
 
-# --- coverage (item 5) — now LIVE (PLUTO LotArea loaded) --------------------------------
-def test_coverage_disclosure_fires_on_low_coverage_f8_with_provenance(client):
+# --- coverage (item 5) — SUBJECT-side caveat (LIVE) -------------------------------------
+def test_subject_coverage_caveat_fires_on_low_coverage_f8_with_provenance(client):
+    # LOW_COVER is itself land-dominant -> the SUBJECT-side caveat fires (its own per-SF is
+    # caveated). Comp-side land-dominance is the separate exclusion disclosure (below).
     j = client.get("/api/industrial_screen", params={"bbl": LOW_COVER}).json()
     if j.get("status") != "ok":
         pytest.skip(f"{LOW_COVER} not screenable ({j.get('reason')})")
     note = j.get("retail_fallback_note") or ""
-    assert "Land-dominant" in note                                 # disclosure fired
+    assert "This parcel is land-dominant" in note                  # subject-side caveat fired
     assert "building-area" in note and "lot-area" in note          # shows BldgArea/LotArea + ratio
     assert "64uk-42ks" in note                                     # carries PLUTO citation
+    # comp-side never repeated in the subject caveat (was the contradiction we removed)
+    assert "comps are also land-dominant" not in note
 
 
-def test_coverage_disclosure_quiet_on_normal_coverage(client):
-    # A dense same-subcode F5 cluster (band held, ~1.0 coverage) must NOT fire land-dominant.
+def test_subject_coverage_caveat_quiet_on_normal_coverage(client):
     j = client.get("/api/industrial_screen", params={"bbl": CORE}).json()
     assert j["status"] == "ok"
-    assert "Land-dominant" not in (j.get("retail_fallback_note") or "")
+    assert "This parcel is land-dominant" not in (j.get("retail_fallback_note") or "")
+
+
+# --- LAYER 1: land-dominant comp exclusion from per-SF ----------------------------------
+def _persf(j):
+    return next(s for s in j["signals"] if s["key"] == "mv_per_gross_sf")
+
+
+def test_land_dominant_comps_excluded_from_per_sf_but_kept_in_table(client):
+    # LOW_COVER's set has land-dominant comps -> excluded from per-SF, still marked in the table.
+    j = client.get("/api/industrial_screen", params={"bbl": LOW_COVER}).json()
+    if j.get("status") != "ok":
+        pytest.skip("subject not screenable")
+    ps = _persf(j)
+    n_excl = ps["land_dominant_excluded"]
+    assert n_excl >= 1                                             # exclusion happened
+    assert ps["refused"] is False                                 # PSF still computed on the rest
+    assert ps["land_dominant_note"] and "excluded from per-SF as land-dominant" in ps["land_dominant_note"]
+    marked = [r for r in j["variance"]["all_diffs"] if r.get("land_dominant")]
+    assert len(marked) == n_excl                                  # comps stay in table, marked
+    # excluded comps are NOT in the per-SF chart distribution, but ARE in the value one
+    assert len(ps["distribution"]) == ps["n"]                     # PSF pop excludes land-dominant
+    val = next(s for s in j["signals"] if s["key"] == "assessed_value_market")
+    assert val["n"] == j["comp_meta"]["comp_count"]               # value distribution keeps them
+
+
+def test_no_land_dominant_comps_no_exclusion_disclosure(client):
+    # A clean set: nothing excluded, no note, no marks.
+    j = client.get("/api/industrial_screen", params={"bbl": CORE}).json()
+    ps = _persf(j)
+    assert ps["land_dominant_excluded"] == 0 and ps.get("land_dominant_note") is None
+    assert not any(r.get("land_dominant") for r in j["variance"]["all_diffs"])
+
+
+def test_percentile_filter_stacks_inband_and_non_land_dominant(client):
+    # On a band-relaxed set the per-SF percentile computes on comps that are (in-band) AND
+    # (not land-dominant); percentile_n states the effective post-both-filter count.
+    j = client.get("/api/industrial_screen", params={"bbl": LOW_COVER}).json()
+    if j.get("status") != "ok":
+        pytest.skip("subject not screenable")
+    ps = _persf(j)
+    if ps["subject_percentile"] is not None:
+        assert ps["percentile_n"] is not None                     # effective count stated
+        assert ps["percentile_n"] <= ps["n"]                      # never more than the PSF pool
 
 
 def test_coverage_ratio_math():
@@ -139,20 +185,16 @@ def test_coverage_ratio_math():
     assert coverage_ratio(3000, None) is None and coverage_ratio(3000, 0) is None
 
 
-def test_coverage_note_fires_on_subject_or_two_comps():
-    # subject land-dominant -> fires
-    assert coverage_note(0.08, [1.0, 1.2, 0.9], 0.30) is not None
-    # 2+ land-dominant comps -> fires
-    assert coverage_note(1.0, [0.2, 0.25, 1.1], 0.30) is not None
-    # only one low comp, healthy subject -> does not fire
-    assert coverage_note(1.0, [0.2, 1.1, 1.2], 0.30) is None
-    # all healthy -> None
-    assert coverage_note(1.0, [1.0, 1.1], 0.30) is None
+def test_coverage_note_subject_side_only():
+    # Fires ONLY on subject land-dominance now (comp-side is the exclusion, handled elsewhere).
+    assert coverage_note(0.08, 0.30) is not None                  # subject land-dominant -> fires
+    assert coverage_note(0.30, 0.30) is None                      # at threshold -> no
+    assert coverage_note(1.0, 0.30) is None                       # healthy subject -> no
+    assert coverage_note(None, 0.30) is None                      # unmeasurable -> no
 
 
 def test_coverage_note_no_verdict_language():
-    note = coverage_note(0.08, [], 0.30)
-    low = note.lower()
+    low = coverage_note(0.08, 0.30).lower()
     for banned in ("outlier", "flagged", "over-assessed", "under-assessed", "overvalued",
                    "undervalued", "should", "fair", "true value"):
         assert banned not in low

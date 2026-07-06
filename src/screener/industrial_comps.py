@@ -44,7 +44,8 @@ from .taxable_series import taxable_series
 _DEFAULTS = {
     "sf_band": 0.75, "radius_start_miles": 0.5, "radius_cap_miles": 1.75, "radius_step_miles": 0.1,
     "min_comp_count": 8, "big_box_sf_threshold": 100000, "big_box_citywide_no_cap": True,
-    "coverage_ratio_threshold": 0.30, "subcode_match_first": True,
+    "coverage_ratio_threshold": 0.30, "coverage_exclusion_threshold": 0.30,
+    "subcode_match_first": True,
 }
 
 _MANHATTAN = "1"                                        # BBL first digit -> borough (1 = Manhattan)
@@ -108,52 +109,52 @@ def _pull_f_candidates(con, comp_table, subj, juris, criteria, *, cap):
     return rows if cap is None else [c for c in rows if c["distance_miles"] <= cap + 1e-9]
 
 
-# --- land-value coverage (item 5) — pure functions, DORMANT until LotArea is loaded ----------
+# --- land-value coverage (item 5) ------------------------------------------------------------
+# Two complementary, non-contradictory disclosures share the 0.30 measurement:
+#   * SUBJECT land-dominant  -> the subject's OWN per-SF is caveated (coverage_note, here).
+#   * COMPS  land-dominant   -> those comps are EXCLUDED from the per-SF calc (stats/serialize).
+# The comp-side is NOT described here anymore (it used to say "N comps also land-dominant",
+# which implied they were still in the stats — they are not).
 def coverage_ratio(bldgarea, lotarea):
     """BldgArea / LotArea, or None when either is missing/zero. Display-only, never comp math."""
     return (bldgarea / lotarea) if (bldgarea and lotarea and lotarea > 0) else None
 
 
-def coverage_note(subj_cov, comp_covs, threshold) -> str | None:
-    """Fire when the SUBJECT or 2+ comps are land-dominant (coverage < threshold). Non-
-    computational disclosure. F8 (median coverage ~0.08) fires this near-universally — intended."""
-    low_subj = subj_cov is not None and subj_cov < threshold
-    low_comps = sum(1 for c in comp_covs if c is not None and c < threshold)
-    if not (low_subj or low_comps >= 2):
+def coverage_note(subj_cov, threshold) -> str | None:
+    """SUBJECT-side caveat: fires when the SUBJECT's own coverage < threshold, so its own per-SF
+    is skewed by land value. Comp-side land-dominance is handled by the per-SF EXCLUSION, not
+    here. F8 subjects (median coverage ~0.08) fire this near-universally — intended."""
+    if subj_cov is None or subj_cov >= threshold:
         return None
-    return ("Land-dominant parcel: the building covers a small share of the lot "
-            f"(building-area ÷ lot-area under {threshold:g}), so value per building-SF is "
-            "skewed by land value. Shown for context only; comps and the distributions are "
-            "unchanged.")
+    return ("This parcel is land-dominant: its building covers a small share of the lot "
+            f"(building-area ÷ lot-area under {threshold:g}), so the subject's own per-SF is "
+            "skewed by land value — read its per-SF position with that caveat.")
 
 
-def _coverage_display(subj: dict, subj_cov, comp_covs, threshold) -> str | None:
-    """The rendered coverage disclosure: the generic fire text + the subject's concrete
-    BldgArea/LotArea ratio and LotArea, cited to PLUTO (LotArea is a new sourced PLUTO field
-    and carries provenance like every other number). None when it does not fire."""
-    base = coverage_note(subj_cov, comp_covs, threshold)
+def _coverage_display(subj: dict, subj_cov, threshold) -> str | None:
+    """The rendered SUBJECT-side coverage disclosure: caveat text + the subject's concrete
+    BldgArea/LotArea ratio, cited to PLUTO. None when the subject is not land-dominant."""
+    base = coverage_note(subj_cov, threshold)
     if base is None:
         return None
     parts = [base]
     ba, la = subj.get("pluto_bldgarea"), subj.get("pluto_lotarea")
     if subj_cov is not None and ba and la:
         parts.append(f"Subject: building-area {ba:,.0f} SF ÷ lot-area {la:,.0f} SF = {subj_cov:.2f}.")
-    low_n = sum(1 for c in comp_covs if c is not None and c < threshold)
-    if low_n >= 2:
-        parts.append(f"{low_n} comps are also land-dominant (coverage under {threshold:g}).")
     ver = subj.get("pluto_dataset_version")
     if ver:
         parts.append(f"Source: {ver}.")
     return " ".join(parts)
 
 
-def _to_industrial_comprow(c: dict, subject_subcode: str, icap: set) -> CompRow:
+def _to_industrial_comprow(c: dict, subject_subcode: str, icap: set, land_dominant_thr: float) -> CompRow:
     rd = c["retrieval_date"]
     citation = Citation(
         source_dataset=c["source_dataset"], dataset_version=c["dataset_version"],
         roll_year=c["roll_year"],
         retrieval_date=rd if isinstance(rd, date) else date.fromisoformat(str(rd)),
         parcel_id=c["parcel_id"])
+    cov = coverage_ratio(c.get("pluto_bldgarea"), c.get("pluto_lotarea"))
     return CompRow(
         citation=citation, bldg_class=c.get("bldg_class"), bucket=c["bldg_class"],
         match_type="exact" if c["bldg_class"] == subject_subcode else "adjacent",
@@ -164,7 +165,8 @@ def _to_industrial_comprow(c: dict, subject_subcode: str, icap: set) -> CompRow:
         latitude=c["pluto_latitude"], longitude=c["pluto_longitude"],
         curmkttot=c.get("curmkttot"), curtxbtot=c.get("curtxbtot"),
         curtrntot=c.get("curtrntot"), curacttot=c.get("curacttot"),
-        has_icap=c["parcel_id"] in icap)
+        has_icap=c["parcel_id"] in icap,
+        land_dominant=cov is not None and cov < land_dominant_thr)
 
 
 def _refuse(bbl, subject, crit, note, *, cap=None, candidates=0) -> CompSet:
@@ -241,21 +243,22 @@ def select_industrial_comps(con, subject_bbl: str, juris: Jurisdiction, criteria
     meta.radius_auto_label = auto_label
 
     icap = icap_bbls(con, [c["parcel_id"] for c in chosen])
-    comps = [_to_industrial_comprow(c, subcode, icap) for c in chosen]
+    excl_thr = cfg["coverage_exclusion_threshold"]     # comp-side: EXCLUDE from per-SF (separate key)
+    comps = [_to_industrial_comprow(c, subcode, icap, excl_thr) for c in chosen]
     exact_n = sum(1 for c in comps if c.match_type == "exact")
     adj = [c for c in comps if c.match_type == "adjacent"]
     breakdown: dict = {}
     for c in adj:
         breakdown[c.bucket] = breakdown.get(c.bucket, 0) + 1
 
-    # Coverage (item 5) — LIVE. Uses PLUTO BldgArea ÷ PLUTO LotArea (both from the same PLUTO
-    # release, so the ratio and the 0.30 threshold share provenance; the roll's land_area is
-    # deliberately NOT used). Fires when the subject or 2+ comps are land-dominant. Non-
-    # computational: never filters/sorts/refuses; it rides in the disclosure slot only.
+    # Coverage (item 5) — SUBJECT-side caveat only. Uses PLUTO BldgArea ÷ PLUTO LotArea (both
+    # from the same PLUTO release, so the ratio and the threshold share provenance; the roll's
+    # land_area is deliberately NOT used). The comp-side land-dominance is the per-SF EXCLUSION
+    # above (land_dominant flags), disclosed by serialize — NOT repeated here. Separate config
+    # key from the exclusion threshold so the two tune independently (deliberately 0.30 now).
     cov_thr = cfg["coverage_ratio_threshold"]
     subj_cov = coverage_ratio(subj.get("pluto_bldgarea"), subj.get("pluto_lotarea"))
-    comp_covs = [coverage_ratio(c.get("pluto_bldgarea"), c.get("pluto_lotarea")) for c in chosen]
-    meta.coverage_note = _coverage_display(subj, subj_cov, comp_covs, cov_thr)
+    meta.coverage_note = _coverage_display(subj, subj_cov, cov_thr)
 
     cs = CompSet(subject_bbl, subject_summary, comps, len(comps), round(radius_used, 4), False,
                  crit, candidates_within_cap=candidates_n, fallback_triggered=fallback,

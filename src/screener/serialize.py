@@ -334,7 +334,7 @@ def _signal_distributions(cs: CompSet, rate: float) -> dict[str, list[float]]:
         "assessed_value_market": [c.curmkttot for c in cs.comps if c.curmkttot is not None],
         "tax_bill": [c.curtxbtot * rate for c in cs.comps if c.curtxbtot is not None],
         "mv_per_gross_sf": [c.curmkttot / c.sf for c in cs.comps
-                            if c.sf and c.curmkttot is not None],
+                            if c.sf and c.curmkttot is not None and not c.land_dominant],
     }
 
 
@@ -362,7 +362,7 @@ def _signal_comp_points(cs: CompSet, rate: float, *, flag_size_outliers: bool = 
                      lambda c: c.curtxbtot is not None,
                      (subj.get("curtxbtot") * rate) if subj.get("curtxbtot") is not None else None, "$"),
         "mv_per_gross_sf": (lambda c: (c.curmkttot / c.sf) if (c.sf and c.curmkttot is not None) else None,
-                            lambda c: bool(c.sf) and c.curmkttot is not None,
+                            lambda c: bool(c.sf) and c.curmkttot is not None and not c.land_dominant,
                             (subj.get("curmkttot") / subj.get("sf"))
                             if (subj.get("sf") and subj.get("curmkttot") is not None) else None, "gross_sf"),
     }
@@ -447,6 +447,8 @@ def _signal_view(sig, dist_values: list[float], extra: dict) -> dict:
         "subject_value": _f(sig.subject_value), "subject_percentile": sig.subject_percentile,
         # Per-SF percentile basis/suppression (FIX 1/2/4): n it was computed on + stated reason.
         "percentile_n": sig.percentile_n, "percentile_note": sig.percentile_note,
+        # Per-SF: comps dropped as land-dominant (industrial); 0 elsewhere.
+        "land_dominant_excluded": sig.land_dominant_excluded,
         "distribution": [round(float(v), 4) for v in dist_values] if not sig.refused else [],
         "notes": sig.notes,
         # display strings (precision per item 2): whole $ -> 0 dp, PSF -> 2 dp, percentile -> 2 dp
@@ -551,6 +553,9 @@ def _variance_row(d, subj: dict, rate: float) -> dict:
         # only way an out-of-band comp is in the set) and per-SF is shown — gated downstream.
         "size_dissimilar": bool(d.sf is not None and subj_sf
                                 and (d.sf < 0.5 * subj_sf or d.sf > 1.5 * subj_sf)),
+        # land-dominant (industrial): excluded from per-SF, still shown here marked. False for
+        # office/retail comps (flag never set) -> those tables byte-identical.
+        "land_dominant": bool(getattr(d, "land_dominant", False)),
         # raw values + provenance still travel per row (not rendered in the table cells)
         "stories": d.stories, "comp_sf": d.sf,
         "sf_abs_delta": sf_abs, "sf_pct_diff": d.sf_pct_diff,
@@ -691,6 +696,15 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
                                                             "Based on gross building area")
             if per_sf_size_flag:
                 extra["size_flag_note"] = SIZE_DISSIMILAR_NOTE
+            # Land-dominant exclusion disclosure (industrial): fires when 1+ comp was dropped
+            # from the per-SF calc. 0 for office/retail -> not added -> byte-identical.
+            n_ld = stats.signals["mv_per_gross_sf"].land_dominant_excluded
+            if n_ld:
+                thr = (criteria.industrial_config or {}).get("coverage_exclusion_threshold", 0.30)
+                extra["land_dominant_note"] = (
+                    f"{n_ld} comp{'s' if n_ld != 1 else ''} excluded from per-SF as land-dominant "
+                    f"(building covers under {thr:.0%} of lot); still shown in the value "
+                    f"distribution and comp table.")
         if key == "tax_bill":
             extra["caveat"] = TAX_BILL_CAVEAT          # item 4
         extra["comp_points"] = cpoints[key]["comps"]
