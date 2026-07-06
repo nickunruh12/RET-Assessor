@@ -219,7 +219,13 @@ def compute_stats(cs: CompSet, criteria: CompCriteria, *, suppress_per_sf: bool 
             for c in psf_comps
         ]
         present_n = sum(1 for v in comp_psf if v is not None)
-        subj_psf = subj["curmkttot"] / subj["sf"] if subj.get("curmkttot") is not None else None
+        # A land-dominant SUBJECT's own per-SF is meaningless (tiny building, land-driven value),
+        # so WITHHOLD the subject's per-SF point + percentile — the subject-coverage caveat that
+        # already fires explains why. Same trigger (subject_land_dominant, set from subj coverage
+        # in industrial_comps); absent on office/retail subjects -> those never withhold.
+        subject_land_dominant = bool(subj.get("subject_land_dominant"))
+        subj_psf = (None if subject_land_dominant
+                    else (subj["curmkttot"] / subj["sf"] if subj.get("curmkttot") is not None else None))
 
         # FLOOR GUARD (dead code at 0.30 per measurement — insurance for future thresholds):
         # if the exclusion leaves < 5 usable per-SF comps, suppress the per-SF stat via the same
@@ -261,7 +267,13 @@ def compute_stats(cs: CompSet, criteria: CompCriteria, *, suppress_per_sf: bool 
             # band by design), so both keep their full-pool percentile. Office never relaxes the
             # band, so this whole block is skipped for office (behaviour byte-identical).
             is_k3 = subj.get("retail_category") == "K3_department"
-            if is_k3 or cs.sf_band_relaxed:
+            if subject_land_dominant:
+                # Subject per-SF already withheld (subj_psf None -> value/percentile None); state
+                # why in the same note slot the percentile uses. No in-band ranking is computed.
+                thr = (criteria.industrial_config or {}).get("coverage_ratio_threshold", 0.30)
+                sig.percentile_note = (f"Subject per-SF withheld: land-dominant (building covers "
+                                       f"under {thr:.0%} of lot).")
+            elif is_k3 or cs.sf_band_relaxed:
                 band = criteria.sf_band
                 subj_sf = subj.get("sf")
                 inband_psf = [

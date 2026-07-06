@@ -259,6 +259,10 @@ def select_industrial_comps(con, subject_bbl: str, juris: Jurisdiction, criteria
     cov_thr = cfg["coverage_ratio_threshold"]
     subj_cov = coverage_ratio(subj.get("pluto_bldgarea"), subj.get("pluto_lotarea"))
     meta.coverage_note = _coverage_display(subj, subj_cov, cov_thr)
+    # SAME trigger, one boolean: when the subject is land-dominant its own per-SF is meaningless
+    # (tiny building, land-driven value), so the stats layer withholds the subject's per-SF point
+    # + percentile. Reuses subj_cov (no new coverage computation); read via cs.subject downstream.
+    subject_summary["subject_land_dominant"] = bool(subj_cov is not None and subj_cov < cov_thr)
 
     cs = CompSet(subject_bbl, subject_summary, comps, len(comps), round(radius_used, 4), False,
                  crit, candidates_within_cap=candidates_n, fallback_triggered=fallback,

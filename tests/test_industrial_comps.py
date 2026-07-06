@@ -179,6 +179,30 @@ def test_percentile_filter_stacks_inband_and_non_land_dominant(client):
         assert ps["percentile_n"] <= ps["n"]                      # never more than the PSF pool
 
 
+def test_land_dominant_subject_per_sf_withheld(client):
+    # A land-dominant subject's own per-SF is meaningless -> withheld (value, percentile, and
+    # the chart point), with a stated reason; the caveat still fires; comp-side + value untouched.
+    j = client.get("/api/industrial_screen", params={"bbl": LOW_COVER}).json()
+    if j.get("status") != "ok":
+        pytest.skip("subject not screenable")
+    ps = _persf(j)
+    assert ps["subject_value"] is None and ps["subject_percentile"] is None      # withheld
+    assert ps["subject_point"]["x"] is None                                      # not plotted
+    assert "Subject per-SF withheld" in ps["percentile_note"] and "land-dominant" in ps["percentile_note"]
+    assert "This parcel is land-dominant" in (j.get("retail_fallback_note") or "")  # caveat still fires
+    assert ps["mean"] is not None and ps["refused"] is False                     # comp-side stats intact
+    val = next(s for s in j["signals"] if s["key"] == "assessed_value_market")
+    assert val["subject_point"]["x"] is not None                                 # value chart unchanged
+
+
+def test_normal_coverage_subject_per_sf_plots_as_before(client):
+    # A healthy-coverage subject plots its per-SF exactly as before (not withheld).
+    j = client.get("/api/industrial_screen", params={"bbl": CORE}).json()
+    ps = _persf(j)
+    assert ps["subject_value"] is not None and ps["subject_point"]["x"] is not None
+    assert "withheld" not in (ps.get("percentile_note") or "")
+
+
 def test_coverage_ratio_math():
     assert coverage_ratio(3000, 10000) == 0.3
     assert coverage_ratio(500, 10000) == 0.05

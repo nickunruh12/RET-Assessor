@@ -363,8 +363,11 @@ def _signal_comp_points(cs: CompSet, rate: float, *, flag_size_outliers: bool = 
                      (subj.get("curtxbtot") * rate) if subj.get("curtxbtot") is not None else None, "$"),
         "mv_per_gross_sf": (lambda c: (c.curmkttot / c.sf) if (c.sf and c.curmkttot is not None) else None,
                             lambda c: bool(c.sf) and c.curmkttot is not None and not c.land_dominant,
-                            (subj.get("curmkttot") / subj.get("sf"))
-                            if (subj.get("sf") and subj.get("curmkttot") is not None) else None, "gross_sf"),
+                            # subject per-SF point WITHHELD when the subject is land-dominant
+                            # (industrial) — its own per-SF is meaningless; None -> not plotted.
+                            None if subj.get("subject_land_dominant") else
+                            ((subj.get("curmkttot") / subj.get("sf"))
+                             if (subj.get("sf") and subj.get("curmkttot") is not None) else None), "gross_sf"),
     }
     out = {}
     for key, (metric, keep, subj_metric, unit) in specs.items():
