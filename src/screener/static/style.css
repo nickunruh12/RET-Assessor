@@ -56,7 +56,12 @@ a:hover { text-decoration: underline; }
 .disclaimer { font-size: .78rem; color: var(--faint); letter-spacing: .002em; margin: 0 0 1.75rem; }
 
 /* ---- Header + lookup forms -------------------------------------------------- */
-header h1 { margin-bottom: 1rem; }
+header h1 { margin-bottom: 1.1rem; }
+/* one lookup band: address search + BBL search side by side on desktop, stacked on mobile */
+.lookup-row { display: flex; flex-wrap: wrap; gap: .75rem; align-items: stretch; }
+.lookup-row .lookup { margin: 0; flex: 1 1 26rem; }
+.lookup-row .lookup:last-child { flex: 1 1 14rem; }
+.lookup-row .lookup fieldset { height: 100%; }
 .lookup { margin: .4rem 0; }
 .lookup fieldset {
   border: 1px solid var(--line); border-radius: var(--radius); padding: .7rem .85rem;

@@ -37,6 +37,7 @@
 
   <header>
     <h1>NYC Class-4 Commercial Assessment Screen</h1>
+    <div class="lookup-row">
     <form class="lookup" method="get" action="/screen">
       {# carry the screening mode through re-runs so a future custom_comps mode persists #}
       <input type="hidden" name="mode" value="{{ mode or 'auto_generate' }}">
@@ -63,6 +64,7 @@
         <button type="submit">Screen BBL</button>
       </fieldset>
     </form>
+    </div>
   </header>
 
   {% if result %}
