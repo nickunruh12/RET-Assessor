@@ -35,6 +35,8 @@
   <header>
     <h1>NYC Class-4 Commercial Assessment Screen</h1>
     <form class="lookup" method="get" action="/screen">
+      {# carry the screening mode through re-runs so a future custom_comps mode persists #}
+      <input type="hidden" name="mode" value="{{ mode or 'auto_generate' }}">
       <fieldset>
         <legend>Look up by address</legend>
         <input type="text" name="house_number" placeholder="house no." value="{{ form.house_number or '' }}">
@@ -51,6 +53,7 @@
       </fieldset>
     </form>
     <form class="lookup" method="get" action="/screen">
+      <input type="hidden" name="mode" value="{{ mode or 'auto_generate' }}">
       <fieldset>
         <legend>or by BBL</legend>
         <input type="text" name="bbl" placeholder="10-digit BBL" value="{{ form.bbl or '' }}">

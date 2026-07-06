@@ -72,7 +72,8 @@ def test_borough_is_select_with_five_boroughs(client):
 
 
 def test_borough_blank_default_on_fresh_page(client):
-    assert _borough_selected(client.get("/").text) == ""      # blank/none default
+    # the lookup form now lives on /screen (/ is the welcome page); default borough is blank
+    assert _borough_selected(client.get("/screen").text) == ""      # blank/none default
 
 
 def test_borough_blank_with_zip_does_not_short_circuit(client, monkeypatch):
@@ -117,11 +118,15 @@ def test_static_assets_are_cache_busted():
     from fastapi.testclient import TestClient
 
     from screener.api import app
-    for path in ("/", "/screen?bbl=1013000001"):
-        html = TestClient(app).get(path).text
-        assert f"/static/app.js?v={ASSET_VERSION}" in html        # versioned, not bare
-        assert f"/static/style.css?v={ASSET_VERSION}" in html
-        assert 'src="/static/app.js"' not in html                # no un-versioned bare ref
+    c = TestClient(app)
+    # the tool page loads both versioned assets; the welcome page (/) has no charts, so it loads
+    # only the versioned stylesheet (no app.js). Neither may carry an un-versioned bare ref.
+    tool = c.get("/screen?bbl=1013000001").text
+    assert f"/static/app.js?v={ASSET_VERSION}" in tool and f"/static/style.css?v={ASSET_VERSION}" in tool
+    assert 'src="/static/app.js"' not in tool
+    welcome = c.get("/").text
+    assert f"/static/style.css?v={ASSET_VERSION}" in welcome
+    assert 'href="/static/style.css"' not in welcome             # no un-versioned bare ref
 
 
 def test_per_sf_label_is_dof_prefixed_everywhere(client):

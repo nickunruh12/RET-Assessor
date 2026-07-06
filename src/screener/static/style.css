@@ -21,6 +21,19 @@ h3 { font-size: .95rem; margin: 1rem 0 .35rem; }
 /* 1. Disclaimer — small, light gray, never hidden, above the numbers */
 .disclaimer { font-size: .8rem; color: var(--faint); margin: 0 0 1rem; }
 
+/* Welcome / landing — the front door; neutral, institutional, no alarm color. */
+.welcome { max-width: 640px; margin: 2.5rem auto 0; }
+.welcome-blurb { font-size: 1rem; line-height: 1.65; color: var(--ink); margin: 1rem 0 1.75rem; }
+.welcome-blurb code { font-size: .9em; color: var(--muted); }
+.welcome-actions { margin: 1.5rem 0; }
+.btn-primary { display: inline-block; padding: .6rem 1.5rem; background: var(--ink); color: #fff;
+  border-radius: 6px; text-decoration: none; font-weight: 600; font-size: .95rem; }
+.btn-primary:hover { background: #000; }
+.welcome-coming-soon { font-size: .85rem; color: var(--faint); margin: 1.75rem 0 2rem; }
+.soon-tag { display: inline-block; font-size: .6rem; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; padding: .1rem .35rem; border: 1px solid var(--faint);
+  border-radius: 3px; color: var(--faint); vertical-align: middle; }
+
 .lookup { margin: .4rem 0; }
 .lookup fieldset { border: 1px solid var(--line); border-radius: 6px; padding: .5rem .7rem; }
 .lookup legend { font-size: .8rem; color: var(--muted); padding: 0 .3rem; }

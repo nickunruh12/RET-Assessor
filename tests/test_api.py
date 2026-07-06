@@ -27,6 +27,36 @@ def test_home_renders_disclaimer(client):
     assert "not a verdict, not tax advice, not an appraisal" in r.text
 
 
+def test_welcome_page_has_blurb_coming_soon_and_get_started(client):
+    raw = client.get("/").text
+    html = " ".join(raw.split())                                          # normalize line-wraps
+    assert "screens a New York City commercial property" in html         # blurb
+    assert "no invented numbers and no verdicts" in html
+    assert "Custom comp list" in html and "coming soon" in html          # secondary note
+    assert 'href="/screen?mode=auto_generate"' in raw                    # Get Started -> named mode
+    assert "Get Started" in html
+    # welcome is the front door, NOT the screening form (no lookup fields / no property-type select)
+    assert 'name="bbl"' not in raw and 'name="borough"' not in raw
+
+
+def test_get_started_enters_auto_generate_mode_and_screens(client):
+    # Entering via the mode link screens exactly as before (mode wrapper doesn't change results).
+    j_mode = client.get("/api/screen", params={"bbl": "1000090001", "mode": "auto_generate"}).json()
+    j_plain = client.get("/api/screen", params={"bbl": "1000090001"}).json()
+    assert j_mode["status"] == "ok"
+    import json as _json
+    assert _json.dumps(j_mode, sort_keys=True, default=str) == _json.dumps(j_plain, sort_keys=True, default=str)
+    # an unknown mode falls back to auto_generate (safe default) -> identical output
+    j_bad = client.get("/api/screen", params={"bbl": "1000090001", "mode": "nonsense"}).json()
+    assert _json.dumps(j_bad, sort_keys=True, default=str) == _json.dumps(j_plain, sort_keys=True, default=str)
+
+
+def test_screen_form_carries_mode(client):
+    # the lookup form preserves the mode so a future custom_comps mode persists across re-runs
+    html = client.get("/screen", params={"mode": "auto_generate"}).text
+    assert '<input type="hidden" name="mode" value="auto_generate">' in html
+
+
 def test_partial_address_surfaces_missing_inputs_refusal_not_blank(client):
     # house+street present, borough AND zip blank -> visible refusal (not a blank page),
     # reusing the existing missing_inputs path/message.

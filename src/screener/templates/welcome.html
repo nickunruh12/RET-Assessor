@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NYC Class-4 Commercial Assessment Screen</title>
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
+</head>
+<body>
+  <section class="welcome">
+    <h1>NYC Class-4 Commercial Assessment Screen</h1>
+
+    <p class="welcome-blurb">
+      This tool screens a New York City commercial property's tax assessment against comparable
+      properties. Instead of manually pulling and comparing twenty or more assessment comps to
+      sanity-check a tax basis, an underwriter enters an address or BBL and sees where the subject
+      sits — estimated market value, tax bill, and value per square foot — within a distribution
+      of nearby peers. Comparables are selected deterministically by measured property type,
+      building size, and location; every figure traces to a public source — the NYC Department of
+      Finance assessment roll (<code>8y4t-faws</code>) and PLUTO — with no invented numbers and no
+      verdicts. It returns a distribution to read, not a conclusion.
+    </p>
+
+    <div class="welcome-actions">
+      {# Enter the screening tool in a NAMED MODE (auto_generate). The mode carries through so a
+         future "custom_comps" mode slots in as a branch, not a rewrite (see api._resolve_mode). #}
+      <a class="btn-primary" href="/screen?mode=auto_generate">Get Started</a>
+    </div>
+
+    <p class="welcome-coming-soon">
+      Custom comp list <span class="soon-tag">coming soon</span> — a future mode where you supply
+      your own comparables instead of auto-generating them.
+    </p>
+
+    <p class="disclaimer">{{ disclaimer }}</p>
+  </section>
+</body>
+</html>

@@ -163,24 +163,44 @@ def _build_form(con, effective_bbl, typed: dict) -> dict:
     return form
 
 
+# Named screening MODES — the front-door mode-fork. "auto_generate" (the only mode today) runs
+# the existing engine: the tool selects comps by MEASURED property type, size, and location.
+# FUTURE: "custom_comps" — the user supplies their own comp list, bypassing selection — slots in
+# as a branch in the screen handlers (see the marked fork), NOT a restructure. Property type is
+# ALWAYS measured from the parcel, never user-selected (hard architectural boundary — no type
+# dropdown, ever).
+SCREEN_MODES = ("auto_generate",)          # add "custom_comps" here when that mode ships
+
+
+def _resolve_mode(mode: str) -> str:
+    """Validate the requested screening mode; unknown/blank -> auto_generate (safe default)."""
+    return mode if mode in SCREEN_MODES else "auto_generate"
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    return templates.TemplateResponse(request, "page.html", {
-        "result": None, "result_json": "null", "disclaimer": DISCLAIMER, "form": {},
-        "asset_version": ASSET_VERSION,
+    """Welcome / landing page — the front door. 'Get Started' enters the tool in auto_generate
+    mode (/screen?mode=auto_generate)."""
+    return templates.TemplateResponse(request, "welcome.html", {
+        "disclaimer": DISCLAIMER, "asset_version": ASSET_VERSION,
     })
 
 
 @app.get("/screen", response_class=HTMLResponse)
 def screen(request: Request, bbl: str = "", house_number: str = "", street: str = "",
-           borough: str = "", zip: str = "", radius: str = ""):
+           borough: str = "", zip: str = "", radius: str = "", mode: str = "auto_generate"):
+    mode = _resolve_mode(mode)
     typed = {"bbl": bbl, "house_number": house_number, "street": street, "borough": borough, "zip": zip}
     with _con() as con:
+        # --- MODE FORK ---------------------------------------------------------------------
+        # auto_generate: the tool selects comps by measured type/size/location (the live engine).
+        # FUTURE: custom_comps mode branches HERE — screen against a user-supplied comp list,
+        # bypassing selection (not built; see BACKLOG.md). Property type stays MEASURED either way.
         result, resolved_bbl = _screen_view(con, bbl=bbl, house_number=house_number, street=street,
                                             borough=borough, zip_code=zip, radius=radius)
         form = _build_form(con, resolved_bbl or bbl, typed)
     return templates.TemplateResponse(request, "page.html", {
-        "result": result, "disclaimer": DISCLAIMER, "form": form,
+        "result": result, "disclaimer": DISCLAIMER, "form": form, "mode": mode,
         "result_json": json.dumps(result, default=str) if result else "null",
         "asset_version": ASSET_VERSION,
     })
@@ -240,7 +260,9 @@ def industrial_screen(request: Request, bbl: str = ""):
 
 @app.get("/api/screen")
 def api_screen(bbl: str = "", house_number: str = "", street: str = "",
-               borough: str = "", zip: str = "", radius: str = ""):
+               borough: str = "", zip: str = "", radius: str = "", mode: str = "auto_generate"):
+    _resolve_mode(mode)   # MODE FORK: auto_generate runs the engine below; custom_comps branches
+                          # here later (not built). The JSON result is identical across modes today.
     with _con() as con:
         result, _ = _screen_view(con, bbl=bbl, house_number=house_number, street=street,
                                  borough=borough, zip_code=zip, radius=radius)
