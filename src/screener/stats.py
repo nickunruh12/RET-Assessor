@@ -263,9 +263,10 @@ def compute_stats(cs: CompSet, criteria: CompCriteria, *, suppress_per_sf: bool 
             # Filters STACK: the percentile pool is (in-band, if band-relaxed) AND (not
             # land-dominant, via psf_comps) — a comp that is in-band but land-dominant is out.
             # The restriction fires ONLY for K3 (always) or a band-RELAXED set. A band-held set is
-            # already all-in-band, and K8 big-box is a deliberate citywide FORMAT-peer pool (no SF
-            # band by design), so both keep their full-pool percentile. Office never relaxes the
-            # band, so this whole block is skipped for office (behaviour byte-identical).
+            # already all-in-band, so it keeps its full-pool percentile. Big-box (retail K8 AND
+            # industrial) sets sf_band_relaxed=True — its citywide pool spans a wide size range,
+            # so it DOES get the in-band restriction (a size-dispersed pool suppresses the rank).
+            # Office never relaxes the band, so this whole block is skipped for it (byte-identical).
             is_k3 = subj.get("retail_category") == "K3_department"
             if subject_land_dominant:
                 # Subject per-SF already withheld (subj_psf None -> value/percentile None); state

@@ -238,11 +238,12 @@ def _select_k8(con, comp_table, subj, juris, criteria, meta):
     if len(chosen) < criteria.min_comp_count:
         return None
     maxd = max(c["distance_miles"] for c in chosen)
-    meta.fallback_note = (f"Big-box comps drawn citywide (location-uniform format); "
-                          f"furthest comp {maxd:.1f} mi.")
-    # No SF band for the citywide format — band 'applied' True to suppress the SF-band message;
-    # the citywide note is the disclosure. Not a band-relax, so no size flags.
-    return chosen, maxd, True, False, False, len(cand)
+    meta.fallback_note = (f"Big-box comps drawn citywide; furthest comp {maxd:.1f} mi.")
+    # sf_band_relaxed=True — the citywide pool spans a wide size range, so enable the SAME shared
+    # size-dissimilar ✕ marking + in-band percentile restriction the industrial big-box path
+    # uses (validation found a confident per-SF on a 15K–253K pool vs a 336K subject). The
+    # directional "few true peers" caveat fires from build_retail_screen_view for pure-share K8.
+    return chosen, maxd, True, True, False, len(cand)
 
 
 def _select_seek5(con, comp_table, subj, juris, criteria, category, cap, in_band, per_sf_shown, meta):
@@ -331,6 +332,16 @@ K3_QUALITY_NOTE = ("Department stores have very few true comparables in NYC. Thi
                    "of other types, not against other department stores. Treat the position "
                    "read as directional, not precise.")
 
+# K8 (big-box) ONLY — same hardening the industrial big-box path uses (few-true-peers caveat +
+# size-dissimilar marking). Fires on PURE-SHARE K8 (per-SF actually shown), where the citywide
+# nearest-8 pool spans a wide size range so the per-SF read is dispersed. Pairs with the
+# sf_band_relaxed=True the K8 selector now sets, which drives the shared size-dissimilar ✕
+# marking + in-band percentile restriction — no new marking logic.
+K8_QUALITY_NOTE = ("Big-box retail has very few true peers in NYC. This is a citywide screen — "
+                   "the subject is compared against the nearest big-box parcels with no distance "
+                   "cap, and their building sizes vary widely. Treat the position read as "
+                   "directional, not precise; size-dissimilar comps are marked below.")
+
 
 def build_retail_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *, bbl: str) -> dict:
     """Assemble the retail screen via the shared office machinery (build_screen_view), injecting
@@ -348,5 +359,7 @@ def build_retail_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *
         con, criteria, juris, bbl=bbl, comp_set=cs,
         suppress_per_sf=not meta.per_sf_shown, per_sf_note=meta.per_sf_note,
         classification_note=meta.classification_note, fallback_note=meta.fallback_note,
-        quality_note=(K3_QUALITY_NOTE if meta.category == "K3_department" else None),
+        quality_note=(K3_QUALITY_NOTE if meta.category == "K3_department"
+                      else K8_QUALITY_NOTE if (meta.category == "K8_bigbox" and meta.per_sf_shown)
+                      else None),
         radius_auto_label=auto_label)

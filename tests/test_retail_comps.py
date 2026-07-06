@@ -268,8 +268,13 @@ def test_k3_quality_note_on_every_k3_top_of_result(client):
         assert "outlier" not in html.lower() and "flagged" not in html.lower()
 
 
-def test_quality_note_only_on_k3(client):
-    for bbl in (K5_GE5, K7_GE5_PURE, K6_LT5, K9_LT5, K8_BBL, PURE):
+def test_directional_quality_note_on_k3_and_pure_share_k8_only(client):
+    # The prominent "few true peers — directional, not precise" caveat fires on K3 (always) and
+    # on PURE-SHARE K8 big-box (hardened to match industrial). It does NOT fire on other retail
+    # formats or office.
+    assert "few true peers" in (client.get("/api/retail_screen", params={"bbl": K8_BBL}).json()
+                                .get("k3_quality_note") or "")            # pure-share K8 -> yes
+    for bbl in (K5_GE5, K7_GE5_PURE, K6_LT5, K9_LT5, PURE):
         assert "k3_quality_note" not in client.get("/api/retail_screen", params={"bbl": bbl}).json()
     assert "k3_quality_note" not in client.get("/api/screen", params={"bbl": "1013000001"}).json()
 
@@ -338,12 +343,32 @@ def test_per_sf_percentile_kept_on_band_held_control(client):
     assert ps["percentile_note"] is None               # no disclosure needed (full-pool rank)
 
 
-def test_k8_keeps_per_sf_percentile(client):
-    # FIX 1 control — K8 is a deliberate citywide FORMAT-peer pool (no SF band by design);
-    # size variation among big-box stores is expected, so its per-SF percentile is kept.
+def test_k8_hardened_directional_caveat_and_size_marking(client):
+    # Pure-share K8 is HARDENED (matches industrial big-box): the citywide pool spans a wide
+    # size range, so it fires the directional caveat + size-dissimilar marking, and the per-SF
+    # percentile goes through the in-band restriction (shown on size-comparable peers, or
+    # suppressed when <5). K8_BBL has a size-comparable pool, so it keeps a percentile here.
     j = client.get("/api/retail_screen", params={"bbl": K8_BBL}).json()
     ps = _per_sf(j)
-    assert ps["refused"] is False and ps["subject_percentile"] is not None
+    assert ps["refused"] is False
+    assert "few true peers" in (j.get("k3_quality_note") or "")           # directional caveat
+    assert j.get("per_sf_size_flag") is True                             # size-dissimilar marking on
+    # percentile survives on the in-band subset (its basis is disclosed since it differs from n)
+    assert ps["subject_percentile"] is not None and ps.get("percentile_note")
+
+
+def test_k8_size_dispersed_pool_suppresses_per_sf_percentile(client):
+    # The validation gap: a large pure-share K8 (336K SF) whose citywide comps are all far
+    # smaller (0 in-band) now SUPPRESSES the confident percentile, marks size-dissimilar, and
+    # fires the directional caveat — no more $/SF at a confident percentile with no caveat.
+    j = client.get("/api/retail_screen", params={"bbl": "3006120130"}).json()
+    if j.get("status") != "ok":
+        pytest.skip("subject not screenable")
+    ps = _per_sf(j)
+    assert ps["subject_percentile"] is None and ps["subject_point"]["x"] is not None  # withheld rank, point still plots
+    assert "size-comparable" in (ps.get("percentile_note") or "")
+    assert j.get("per_sf_size_flag") is True
+    assert "few true peers" in (j.get("k3_quality_note") or "")
 
 
 def test_k3_per_sf_percentile_always_suppressed(client):
