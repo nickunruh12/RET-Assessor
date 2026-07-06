@@ -391,3 +391,19 @@ not built). What WAS built:
   (never computed), so every shared-path branch (stats, serialize distributions/points/table,
   variance) is a no-op for them. Confirmed: office/retail PSF n, distribution, and comp table
   unchanged; excluded=0, no note, no marks.
+
+## Industrial (F-code) LIVE on public /screen (LOCKED 2026-07-01)
+
+Industrial is now public. Mechanism mirrors the retail live switch exactly: a resolved class-4
+F-code is intercepted UPSTREAM in `api._screen_view` (the shared dispatch for /screen +
+/api/screen) and routed to `build_industrial_screen_view` — the same K-only pattern. The broad
+`out_of_scope_v1` gate in `geocode._validate_bbl` is UNTOUCHED, so it keeps refusing every
+non-office/non-K/non-F class (R condos, V vacant, G garage, U utility). `activated_products`
+stays `["O"]`: like retail K, industrial goes live via the interception, not that list. The
+`/industrial_screen` + `/api/industrial_screen` routes remain for byte-identical debugging.
+
+Verified: condo (RG 3024131120), vacant (V1), garage (G7), utility (U0) all still refuse
+`out_of_scope_v1` on public /screen (F-only lift, no commercial leak). Office (1013000001) and
+retail (1000650004) byte-identical. Core/big-box/Manhattan/F8 F-codes render the full industrial
+screen on public /screen. `/api/screen` == `/api/industrial_screen` byte-for-byte for 3000320029
+(locked by test). Public v1 scope is now office + retail + industrial.

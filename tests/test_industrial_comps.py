@@ -1,5 +1,6 @@
-"""Industrial (F-code) engine tests. Reachable via the /industrial_screen TEST routes only
-(F is NOT public yet). Skipped without the built DB. Office/retail asserted unaffected.
+"""Industrial (F-code) engine tests. Industrial is LIVE on public /screen (F-codes intercepted
+in _screen_view); the /industrial_screen route is kept for byte-identical debugging. Skipped
+without the built DB. Office/retail asserted unaffected.
 """
 import warnings
 
@@ -94,7 +95,7 @@ def test_isolated_industrial_refuses_not_reaches_past_cap(client):
     assert j.get("candidates_within_cap", 0) < 8                   # did not reach past the 1.75 cap
 
 
-# --- walls: office/retail unaffected; F NOT public yet -------------------------------
+# --- INDUSTRIAL LIVE on public /screen; walls hold; office/retail unaffected -----------
 def test_office_and_retail_unaffected_public(client):
     assert client.get("/api/screen", params={"bbl": "1013000001"}).json()["status"] == "ok"   # office
     assert client.get("/api/screen", params={"bbl": "1000650004"}).json()["status"] == "ok"   # retail
@@ -103,16 +104,30 @@ def test_office_and_retail_unaffected_public(client):
     assert "Industrial" not in (o["subject"].get("bucket_label") or "")
 
 
-def test_industrial_not_live_on_public_screen_yet(client):
-    # F still refuses out_of_scope on the PUBLIC route (no _screen_view interception yet).
-    j = client.get("/api/screen", params={"bbl": CORE}).json()
-    assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1"
+def test_industrial_now_live_on_public_screen_byte_identical_to_test_route(client):
+    # INDUSTRIAL LIVE — an F-code on the PUBLIC route renders the full industrial screen,
+    # byte-identical to the /industrial_screen route (same engine, no fork).
+    import json
+    pub = client.get("/api/screen", params={"bbl": CORE}).json()
+    test = client.get("/api/industrial_screen", params={"bbl": CORE}).json()
+    assert pub["status"] == "ok" and pub["subject"]["bucket_label"].startswith("Industrial — F")
+    assert json.dumps(pub, sort_keys=True, default=str) == json.dumps(test, sort_keys=True, default=str)
 
 
-def test_condo_and_other_out_of_scope_still_refuse(client):
-    for bbl in ("3024131120",):                                    # RG condo
-        j = client.get("/api/screen", params={"bbl": bbl}).json()
-        assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1"
+def test_live_switch_is_f_only_other_classes_still_refuse(client):
+    # CRITICAL — the flip opens F-codes ONLY. Condos (R*) and other non-office/non-K/non-F
+    # class-4 codes (V vacant, G garage, U utility) must STILL refuse out_of_scope_v1.
+    con = duckdb.connect(str(config.DB_PATH), read_only=True)
+    try:
+        for like in ("R%", "V%", "G%", "U%"):
+            row = con.execute(
+                "SELECT parcel_id FROM parcels WHERE bldg_class LIKE ? LIMIT 1", [like]).fetchone()
+            if not row:
+                continue
+            j = client.get("/api/screen", params={"bbl": row[0]}).json()
+            assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1", (like, j)
+    finally:
+        con.close()
 
 
 # --- coverage (item 5) — SUBJECT-side caveat (LIVE) -------------------------------------

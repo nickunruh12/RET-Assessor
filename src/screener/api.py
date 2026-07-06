@@ -123,6 +123,14 @@ def _screen_view(con, *, bbl, house_number, street, borough, zip_code, radius=""
     # resolver (non-"O"), but carries its bldg_class + bbl, which is all the retail engine needs.
     if (rr.bldg_class or "").startswith("K"):
         return build_retail_screen_view(con, CRITERIA, JURIS, bbl=rr.bbl), rr.bbl
+    # INDUSTRIAL LIVE SWITCH — a resolved class-4 F-code (industrial) routes to the SAME
+    # industrial engine as the /industrial_screen test route (byte-identical: same call, no
+    # resolve/radius plumbing). Same K-only pattern: F-codes are intercepted UPSTREAM; the broad
+    # out_of_scope_v1 gate is untouched, so every non-office/non-K/non-F class (R condos, V
+    # vacant, G garage, U utility) keeps refusing. The F-code resolves to out_of_scope_v1 in the
+    # office resolver (non-"O") but carries its bldg_class + bbl, all the industrial engine needs.
+    if (rr.bldg_class or "").startswith("F"):
+        return build_industrial_screen_view(con, CRITERIA, JURIS, bbl=rr.bbl), rr.bbl
     crit, radius_selection = _effective_criteria(radius)
     result = build_screen_view(con, crit, JURIS, resolve=rr, radius_selection=radius_selection)
     return result, rr.bbl
@@ -206,9 +214,9 @@ def retail_screen(request: Request, bbl: str = ""):
 
 @app.get("/api/industrial_screen")
 def api_industrial_screen(bbl: str = ""):
-    """TEST ROUTE — screens an industrial (F) parcel through the industrial comp engine. NOT
-    wired into public /screen yet (F stays out_of_scope on the public route until its live
-    switch); this route screens an F-code by BBL with no address resolution."""
+    """Direct industrial-engine route, kept for debugging. Industrial is now LIVE on the public
+    /screen + /api/screen routes (F-codes route here automatically); this route screens an
+    F-code by BBL with no address resolution, producing byte-identical output."""
     b = bbl.strip()
     if not b:
         return JSONResponse({"status": "no_input"})
@@ -218,7 +226,8 @@ def api_industrial_screen(bbl: str = ""):
 
 @app.get("/industrial_screen", response_class=HTMLResponse)
 def industrial_screen(request: Request, bbl: str = ""):
-    """TEST ROUTE — renders the industrial screen for verification (byte-identical engine/path)."""
+    """Direct industrial-screen render, kept for debugging. Industrial is now LIVE on public
+    /screen; this route renders an F-code by BBL with no address resolution (byte-identical)."""
     b = bbl.strip()
     with _con() as con:
         result = build_industrial_screen_view(con, CRITERIA, JURIS, bbl=b) if b else None

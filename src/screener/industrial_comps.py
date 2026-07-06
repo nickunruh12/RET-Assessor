@@ -11,10 +11,10 @@ Reused verbatim from comps.py / retail_comps.py: `_radii`, `_rows_to_dicts`, `_s
 EARTH_RADIUS_MI, CompRow, CompSet, REFUSAL_MESSAGES, the icap/taxable-series lookups, and the
 whole serialize/stats/variance output path.
 
-NOT wired into the public /screen route — reachable only via the /industrial_screen +
-/api/industrial_screen TEST routes (F is deliberately absent from activated_products and there
-is no _screen_view interception yet), exactly how retail was staged behind /retail_screen before
-its live switch. Public /screen still refuses F as out_of_scope_v1 until that flip.
+LIVE on the public /screen + /api/screen routes: a resolved F-code is intercepted in
+_screen_view and routed here, the same K-only pattern retail uses (the broad out_of_scope_v1
+gate is untouched, so every non-office/non-K/non-F class keeps refusing). The /industrial_screen
++ /api/industrial_screen routes are kept for byte-identical debugging.
 
 Band note: industrial SELECTS comps at ±sf_band (0.75). The per-SF percentile / ✕ marker keep
 the shared "size-comparable" definition (criteria.sf_band, 0.50) — but that only engages on
