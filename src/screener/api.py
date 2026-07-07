@@ -22,8 +22,8 @@ from .expense_ratio import run_expense_ratio
 from .geocode import GeoclientConfigError, ResolveResult, _validate_bbl, resolve_address
 from .jurisdiction import CompCriteria, get_jurisdiction
 from .rung3 import run_rung3
-from .retail_comps import build_retail_screen_view
-from .industrial_comps import build_industrial_screen_view
+from .retail_comps import build_retail_screen_view, select_retail_comps
+from .industrial_comps import build_industrial_screen_view, select_industrial_comps
 from .serialize import (
     DISCLAIMER,
     RADIUS_MAX,
@@ -103,6 +103,20 @@ def _fixed_radius_criteria(radius: float):
     return CRITERIA.model_copy(update={"radius_start_miles": r, "radius_cap_miles": r}), r
 
 
+def _effective_radius_selection(radius: str) -> str:
+    """Resolve the slider state to a label for retail/industrial: 'default' (auto) or a clamped
+    '%g' string R. The retail/industrial view builders turn a numeric R into a radius_override
+    that BOUNDS their cascade — the same mechanism the live comp_count uses, so the two match."""
+    sel = (radius or "").strip().lower()
+    if sel in ("", "default"):
+        return "default"
+    try:
+        r = float(sel)
+    except ValueError:
+        return "default"
+    return f"{max(RADIUS_MIN, min(RADIUS_MAX, r)):g}"
+
+
 def _screen_view(con, *, bbl, house_number, street, borough, zip_code, radius=""):
     """Returns (result_dict_or_None, resolved_bbl_or_None). resolved_bbl is the parcel
     actually screened, used to repopulate the form on re-runs that carried only the BBL."""
@@ -122,7 +136,9 @@ def _screen_view(con, *, bbl, house_number, street, borough, zip_code, radius=""
     # because they do not start with "K". The K-code resolves to out_of_scope_v1 in the office
     # resolver (non-"O"), but carries its bldg_class + bbl, which is all the retail engine needs.
     if (rr.bldg_class or "").startswith("K"):
-        return build_retail_screen_view(con, CRITERIA, JURIS, bbl=rr.bbl), rr.bbl
+        return build_retail_screen_view(
+            con, CRITERIA, JURIS, bbl=rr.bbl,
+            radius_selection=_effective_radius_selection(radius)), rr.bbl
     # INDUSTRIAL LIVE SWITCH — a resolved class-4 F-code (industrial) routes to the SAME
     # industrial engine as the /industrial_screen test route (byte-identical: same call, no
     # resolve/radius plumbing). Same K-only pattern: F-codes are intercepted UPSTREAM; the broad
@@ -130,7 +146,9 @@ def _screen_view(con, *, bbl, house_number, street, borough, zip_code, radius=""
     # vacant, G garage, U utility) keeps refusing. The F-code resolves to out_of_scope_v1 in the
     # office resolver (non-"O") but carries its bldg_class + bbl, all the industrial engine needs.
     if (rr.bldg_class or "").startswith("F"):
-        return build_industrial_screen_view(con, CRITERIA, JURIS, bbl=rr.bbl), rr.bbl
+        return build_industrial_screen_view(
+            con, CRITERIA, JURIS, bbl=rr.bbl,
+            radius_selection=_effective_radius_selection(radius)), rr.bbl
     crit, radius_selection = _effective_criteria(radius)
     result = build_screen_view(con, crit, JURIS, resolve=rr, radius_selection=radius_selection)
     return result, rr.bbl
@@ -286,10 +304,27 @@ def api_expense_ratio(bbl: str = Query(...), opex: str = Query("")):
 @app.get("/api/comp_count")
 def api_comp_count(bbl: str = Query(...), radius: float = Query(...)):
     """Lightweight live-count for the slider drag: qualifying comps at a FIXED radius.
-    Reuses the comp definition (select_comps); returns ONLY the count, no stats/payload."""
-    crit, r = _fixed_radius_criteria(radius)
+    Routes to the SAME selector the screen uses — office (O), retail (K), industrial (F) —
+    mirroring the _screen_view dispatch, so the live count matches the rendered comp set
+    instead of always 0 for K/F. Returns ONLY the count, no stats/payload."""
+    b = bbl.strip()
+    r = max(RADIUS_MIN, min(RADIUS_MAX, radius))
     with _con() as con:
-        cs = select_comps(con, bbl.strip(), JURIS, crit)
+        row = con.execute(
+            "SELECT bldg_class FROM parcels WHERE parcel_id = ?", [b]).fetchone()
+        bc = (row[0] if row else "") or ""
+        # Same class dispatch as _screen_view, and the SAME radius_override mechanism the screen
+        # uses at this radius — so the live count equals the comp set the screen would render.
+        if bc.startswith("K"):
+            cs, _ = select_retail_comps(con, b, JURIS, CRITERIA, radius_override=r)
+            min_c = CRITERIA.min_comp_count
+        elif bc.startswith("F"):
+            cs, _ = select_industrial_comps(con, b, JURIS, CRITERIA, radius_override=r)
+            min_c = (CRITERIA.industrial_config or {}).get("min_comp_count", CRITERIA.min_comp_count)
+        else:
+            crit, r = _fixed_radius_criteria(radius)
+            cs = select_comps(con, b, JURIS, crit)
+            min_c = crit.min_comp_count
     # On success cs.count is the selected set (>= min). On an insufficient-comps refusal
     # cs.count is 0, but the qualifying pool that fell short is candidates_within_cap —
     # that is the honest "how many qualify at this radius" for the dead-zone preview.
@@ -298,7 +333,7 @@ def api_comp_count(bbl: str = Query(...), radius: float = Query(...)):
         "radius": round(r, 2),
         "count": count,
         "refused": cs.refused,
-        "below_min": count < crit.min_comp_count,
-        "min_comp_count": crit.min_comp_count,
+        "below_min": count < min_c,
+        "min_comp_count": min_c,
         "note": cs.note,
     })

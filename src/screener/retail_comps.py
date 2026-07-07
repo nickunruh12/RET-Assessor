@@ -134,7 +134,8 @@ def _pull_candidates(con, comp_table, subj, juris, criteria, *, cat_in=(), kcode
 
 
 def select_retail_comps(con, subject_bbl: str, juris: Jurisdiction, criteria: CompCriteria,
-                        comp_table: str = "parcels") -> tuple[CompSet, RetailMeta]:
+                        comp_table: str = "parcels", *,
+                        radius_override: float | None = None) -> tuple[CompSet, RetailMeta]:
     subj_rows = _rows_to_dicts(con.execute(
         f"""SELECT p.*, rc.category, rc.per_sf_shown, rc.retail_share, rc.note AS retail_note
             FROM {comp_table} p LEFT JOIN retail_class rc ON rc.parcel_id = p.parcel_id
@@ -147,7 +148,16 @@ def select_retail_comps(con, subject_bbl: str, juris: Jurisdiction, criteria: Co
     if category not in CORE_CATEGORIES and category not in SPECIALIZED:
         return _refuse(subject_bbl, None, _crit_summary(criteria, None), "out_of_scope_v1"), meta
 
-    cap = None if category == "K8_bigbox" else criteria.retail_radius_caps.get(category, 1.0)
+    # Manual radius override (slider): BOUND the search at R. Every category — including the
+    # normally-citywide K8 — is capped at R; the per-format cascade, band relax, fallback, and
+    # the 8-comp refusal gate all still run WITHIN that bound (the user sets how far to search,
+    # not what qualifies). No override -> unchanged auto behavior (per-class caps; K8 citywide).
+    if radius_override is not None:
+        criteria = criteria.model_copy(update={
+            "radius_start_miles": radius_override, "radius_cap_miles": radius_override})
+    cap = (radius_override if radius_override is not None
+           else None if category == "K8_bigbox"
+           else criteria.retail_radius_caps.get(category, 1.0))
     per_sf_shown = bool(subj.get("per_sf_shown"))
     meta = RetailMeta(category, per_sf_shown, subj.get("retail_note"), None,
                       None if per_sf_shown else _PER_SF_SUPPRESS_NOTE)
@@ -182,7 +192,7 @@ def select_retail_comps(con, subject_bbl: str, juris: Jurisdiction, criteria: Co
     if category in CORE_CATEGORIES:
         sel = _select_core(con, comp_table, subj, juris, criteria, category, cap, in_band, meta)
     elif category == "K8_bigbox":
-        sel = _select_k8(con, comp_table, subj, juris, criteria, meta)
+        sel = _select_k8(con, comp_table, subj, juris, criteria, meta, cap)
     elif category in SEEK5_FORMATS:
         sel = _select_seek5(con, comp_table, subj, juris, criteria, category, cap, in_band, per_sf_shown, meta)
     else:                                                       # K3_department
@@ -231,14 +241,17 @@ def _select_core(con, comp_table, subj, juris, criteria, category, cap, in_band,
     return chosen, radius_used, band_applied, bool(subj.get("sf")) and not band_applied, fallback, len(cand)
 
 
-def _select_k8(con, comp_table, subj, juris, criteria, meta):
-    """K8 big-box: 8 NEAREST K8 parcels CITYWIDE (no distance cap); cross-borough expected."""
-    cand = _pull_candidates(con, comp_table, subj, juris, criteria, kcode_in=["K8"], cap=None)
+def _select_k8(con, comp_table, subj, juris, criteria, meta, cap=None):
+    """K8 big-box: 8 NEAREST K8 parcels within `cap` (None = citywide, the auto default; a manual
+    radius bounds them to R and the refusal gate below still applies). Cross-borough expected."""
+    cand = _pull_candidates(con, comp_table, subj, juris, criteria, kcode_in=["K8"], cap=cap)
     chosen = sorted(cand, key=lambda c: c["distance_miles"])[:criteria.min_comp_count]
     if len(chosen) < criteria.min_comp_count:
         return None
     maxd = max(c["distance_miles"] for c in chosen)
-    meta.fallback_note = (f"Big-box comps drawn citywide; furthest comp {maxd:.1f} mi.")
+    meta.fallback_note = (f"Big-box comps drawn within your {cap:g}-mi radius; furthest comp {maxd:.1f} mi."
+                          if cap is not None
+                          else f"Big-box comps drawn citywide; furthest comp {maxd:.1f} mi.")
     # sf_band_relaxed=True — the citywide pool spans a wide size range, so enable the SAME shared
     # size-dissimilar ✕ marking + in-band percentile restriction the industrial big-box path
     # uses (validation found a confident per-SF on a 15K–253K pool vs a 336K subject). The
@@ -343,11 +356,21 @@ K8_QUALITY_NOTE = ("Big-box retail has very few true peers in NYC. This is a cit
                    "directional, not precise; size-dissimilar comps are marked below.")
 
 
-def build_retail_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *, bbl: str) -> dict:
+def build_retail_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *, bbl: str,
+                             radius_selection: str = "default") -> dict:
     """Assemble the retail screen via the shared office machinery (build_screen_view), injecting
-    the retail comp set + per-SF suppression + Stage-1/Stage-2 disclosures."""
+    the retail comp set + per-SF suppression + Stage-1/Stage-2 disclosures.
+
+    `radius_selection` carries the slider state: 'default' = auto (per-class caps, K8 citywide);
+    a numeric string R = manual override that BOUNDS the whole cascade at R (mirrors office)."""
     from .serialize import build_screen_view   # local import: serialize imports comps, not us
-    cs, meta = select_retail_comps(con, bbl, juris, criteria)
+    override = None
+    if radius_selection != "default":
+        try:
+            override = float(radius_selection)
+        except ValueError:
+            override = None
+    cs, meta = select_retail_comps(con, bbl, juris, criteria, radius_override=override)
     # FIX 6 — class-aware radius mode label so it AGREES with the radius actually used: K8 is
     # citywide (no cap); core/specialized expand only up to their per-class cap.
     if meta.category == "K8_bigbox":
@@ -362,4 +385,4 @@ def build_retail_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *
         quality_note=(K3_QUALITY_NOTE if meta.category == "K3_department"
                       else K8_QUALITY_NOTE if (meta.category == "K8_bigbox" and meta.per_sf_shown)
                       else None),
-        radius_auto_label=auto_label)
+        radius_auto_label=auto_label, radius_selection=radius_selection)

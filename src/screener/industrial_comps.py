@@ -175,8 +175,15 @@ def _refuse(bbl, subject, crit, note, *, cap=None, candidates=0) -> CompSet:
 
 
 def select_industrial_comps(con, subject_bbl: str, juris: Jurisdiction, criteria: CompCriteria,
-                            comp_table: str = "parcels") -> tuple[CompSet, IndustrialMeta]:
+                            comp_table: str = "parcels", *,
+                            radius_override: float | None = None) -> tuple[CompSet, IndustrialMeta]:
     cfg = _cfg(criteria)
+    # Manual radius override (slider): BOUND the whole cascade at R — same-subcode/borough sweep,
+    # the Manhattan out-of-borough reach, and the big-box citywide-by-size pull are all capped at
+    # R; band relax, subcode fallback, cross-borough disclosure, and the 8-comp refusal gate still
+    # run WITHIN it. No override -> unchanged auto behavior (config cap 1.75; citywide tails free).
+    if radius_override is not None:
+        cfg = {**cfg, "radius_start_miles": radius_override, "radius_cap_miles": radius_override}
     band, minc = cfg["sf_band"], cfg["min_comp_count"]
     cap, bigbox_sf = cfg["radius_cap_miles"], cfg["big_box_sf_threshold"]
     meta = IndustrialMeta(None, None, None, None, False, None)
@@ -222,11 +229,12 @@ def select_industrial_comps(con, subject_bbl: str, juris: Jurisdiction, criteria
 
     # ---- route: big-box (size) > Manhattan (geography) > core cascade --------------------
     if subj_sf and subj_sf >= bigbox_sf:
-        sel = _select_bigbox(con, comp_table, subj, juris, criteria, subj_sf, minc, meta)
+        sel = _select_bigbox(con, comp_table, subj, juris, criteria, subj_sf, minc, meta,
+                             radius_override)
         auto_label = "Citywide — nearest big-box industrial comps, no distance cap"
     elif subject_bbl[:1] == _MANHATTAN:
         sel = _select_manhattan(con, comp_table, subj, juris, criteria, subcode, in_band,
-                                radii, minc, cap, meta)
+                                radii, minc, cap, meta, radius_override)
         auto_label = "Citywide — nearest industrial comps"   # out-of-borough parenthetical added below
     else:
         sel = _select_core(con, comp_table, subj, juris, criteria, subcode, in_band, radii,
@@ -302,10 +310,13 @@ def _select_core(con, comp_table, subj, juris, criteria, subcode, in_band, radii
     return chosen, max(c["distance_miles"] for c in chosen), False, True, True, len(pool)
 
 
-def _select_manhattan(con, comp_table, subj, juris, criteria, subcode, in_band, radii, minc, cap, meta):
+def _select_manhattan(con, comp_table, subj, juris, criteria, subcode, in_band, radii, minc, cap, meta,
+                      radius_override=None):
     """Manhattan (item 8): in-borough same-subcode ±band first; else reach the NEAREST
     out-of-borough same-subcode comps citywide, then fill with nearest all-F; refuse only if
-    the whole city can't field 8 (never, in practice). Every cross-borough reach disclosed."""
+    the whole city can't field 8 (never, in practice). Every cross-borough reach disclosed.
+    A manual radius bounds even the out-of-borough reach to R (cap=radius_override), so the
+    refusal gate can genuinely fire when the user tightens the search."""
     capped = _pull_f_candidates(con, comp_table, subj, juris, criteria, cap=cap)
     hit = _sweep(capped, radii, minc,
                  predicate=lambda c: c["bldg_class"] == subcode and c["parcel_id"][:1] == _MANHATTAN and in_band(c))
@@ -313,7 +324,7 @@ def _select_manhattan(con, comp_table, subj, juris, criteria, subcode, in_band, 
         radius_used, chosen = hit
         return chosen, radius_used, True, False, False, len(capped)
 
-    citywide = _pull_f_candidates(con, comp_table, subj, juris, criteria, cap=None)
+    citywide = _pull_f_candidates(con, comp_table, subj, juris, criteria, cap=radius_override)
     same = sorted((c for c in citywide if c["bldg_class"] == subcode), key=lambda c: c["distance_miles"])
     chosen = same[:minc]
     ids = {c["parcel_id"] for c in chosen}
@@ -333,28 +344,46 @@ def _select_manhattan(con, comp_table, subj, juris, criteria, subcode, in_band, 
     return chosen, max(c["distance_miles"] for c in chosen), band_applied, not band_applied, True, len(citywide)
 
 
-def _select_bigbox(con, comp_table, subj, juris, criteria, subj_sf, minc, meta):
+def _select_bigbox(con, comp_table, subj, juris, criteria, subj_sf, minc, meta, radius_override=None):
     """Big-box (item 9, ≥ big_box_sf_threshold): drop the band, take the nearest-BY-SIZE F
-    parcels CITYWIDE (no distance cap) — the retail K8 pattern, keyed on size instead of pure
-    distance. Mandatory 'few true peers' disclosure + max comp distance; loud size flags."""
-    pool = _pull_f_candidates(con, comp_table, subj, juris, criteria, cap=None)
+    parcels — CITYWIDE at auto (no distance cap, the retail K8 pattern), or bounded to R when the
+    user sets a manual radius. Mandatory 'few true peers' disclosure + max comp distance; loud
+    size flags. Bounded search still refuses below the 8-comp minimum."""
+    pool = _pull_f_candidates(con, comp_table, subj, juris, criteria, cap=radius_override)
     chosen = sorted(pool, key=lambda c: abs(c["sf"] - subj_sf))[:minc]
     if len(chosen) < minc:
         return None
     maxd = max(c["distance_miles"] for c in chosen)
-    meta.quality_note = (
-        "Big-box industrial has very few true peers in NYC. This is a size-matched citywide "
-        "screen — the subject is compared against the nearest-sized industrial parcels "
-        f"regardless of distance (furthest comp {maxd:.1f} mi). Treat the position read as "
-        "directional, not precise; size-dissimilar comps are marked below.")
+    if radius_override is None:
+        meta.quality_note = (
+            "Big-box industrial has very few true peers in NYC. This is a size-matched citywide "
+            "screen — the subject is compared against the nearest-sized industrial parcels "
+            f"regardless of distance (furthest comp {maxd:.1f} mi). Treat the position read as "
+            "directional, not precise; size-dissimilar comps are marked below.")
+    else:
+        meta.quality_note = (
+            "Big-box industrial has very few true peers in NYC. This is a size-matched screen "
+            f"bounded to your {radius_override:g}-mi radius — the subject is compared against the "
+            f"nearest-sized industrial parcels within it (furthest comp {maxd:.1f} mi). Treat the "
+            "position read as directional, not precise; size-dissimilar comps are marked below.")
     return chosen, maxd, False, True, True, len(pool)
 
 
-def build_industrial_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *, bbl: str) -> dict:
+def build_industrial_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *, bbl: str,
+                                 radius_selection: str = "default") -> dict:
     """Assemble the industrial screen via the SHARED office/retail machinery (build_screen_view),
-    injecting the industrial comp set + disclosures. No new render path."""
+    injecting the industrial comp set + disclosures. No new render path.
+
+    `radius_selection` carries the slider state: 'default' = auto (config cap 1.75, citywide tails
+    free); a numeric string R = manual override that BOUNDS the whole cascade at R (mirrors office)."""
     from .serialize import build_screen_view          # local import: serialize imports comps, not us
-    cs, meta = select_industrial_comps(con, bbl, juris, criteria)
+    override = None
+    if radius_selection != "default":
+        try:
+            override = float(radius_selection)
+        except ValueError:
+            override = None
+    cs, meta = select_industrial_comps(con, bbl, juris, criteria, radius_override=override)
     # Coverage note (when it ever fires) rides alongside the cascade fallback note in the same
     # disclosure slot retail uses; today it is always None (LotArea not loaded).
     fallback = " ".join(n for n in (meta.fallback_note, meta.coverage_note) if n) or None
@@ -362,4 +391,5 @@ def build_industrial_screen_view(con, criteria: CompCriteria, juris: Jurisdictio
         con, criteria, juris, bbl=bbl, comp_set=cs,
         suppress_per_sf=meta.suppress_per_sf, per_sf_note=None,
         classification_note=None, fallback_note=fallback,
-        quality_note=meta.quality_note, radius_auto_label=meta.radius_auto_label)
+        quality_note=meta.quality_note, radius_auto_label=meta.radius_auto_label,
+        radius_selection=radius_selection)

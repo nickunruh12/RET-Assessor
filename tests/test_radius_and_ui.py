@@ -176,3 +176,49 @@ def test_asset_version_tracks_content():
     for name in ("app.js", "style.css"):
         h.update((_HERE / "static" / name).read_bytes())
     assert ASSET_VERSION == h.hexdigest()[:10]
+
+
+# --- Radius override drives K/F comp selection (slider now live for retail + industrial) -----
+# The manual radius BOUNDS the search; the per-class quality cascade still runs within it and the
+# 8-comp refusal gate is preserved. Office is unchanged. comp_count and the rendered screen share
+# one radius_override mechanism, so they must agree at the chosen radius.
+_K_BBL = "1000200012"   # K4 pure retail (lower Manhattan)
+_F_BBL = "3000320029"   # F5 industrial (Brooklyn)
+_O_BBL = "1013010001"   # office
+
+
+@pytest.mark.parametrize("bbl", [_K_BBL, _F_BBL])
+def test_kf_screen_responds_to_manual_radius(client, bbl):
+    # a numeric radius flips the control to OVERRIDE and bounds the screen at that radius,
+    # instead of the old behavior where K/F ignored the slider and used the auto-radius.
+    j = client.get("/api/screen", params={"bbl": bbl, "radius": "1.0"}).json()
+    assert j["status"] == "ok"
+    rc = j["radius_control"]
+    assert rc["mode"] == "override" and rc["selection"] == "1"
+    assert j["comp_meta"]["radius_used_miles"] <= 1.0 + 1e-9
+
+
+@pytest.mark.parametrize("bbl,radius", [(_K_BBL, "1.0"), (_F_BBL, "2")])
+def test_kf_comp_count_matches_screen_at_manual_radius(client, bbl, radius):
+    # the live slider count equals the comp set the screen actually renders at that radius.
+    screen = client.get("/api/screen", params={"bbl": bbl, "radius": radius}).json()
+    assert screen["status"] == "ok"
+    cc = client.get("/api/comp_count", params={"bbl": bbl, "radius": radius}).json()
+    assert cc["count"] == screen["comp_meta"]["comp_count"]
+
+
+@pytest.mark.parametrize("bbl", [_K_BBL, _F_BBL])
+def test_kf_refuses_when_bounded_search_cannot_reach_min(client, bbl):
+    # a very tight radius that can't field 8 comps refuses — the override never bypasses the gate.
+    j = client.get("/api/screen", params={"bbl": bbl, "radius": "0.1"}).json()
+    assert j["status"] == "refused" and j["reason"] == "insufficient_comps_within_cap"
+
+
+def test_office_radius_dispatch_unchanged(client):
+    # office still routes comp_count to the office selector and stays in AUTO by default; the
+    # live count matches the office screen's comp set at its auto radius (office byte-identical).
+    screen = client.get("/api/screen", params={"bbl": _O_BBL}).json()
+    assert screen["status"] == "ok" and screen["radius_control"]["mode"] == "auto"
+    cc = client.get("/api/comp_count",
+                    params={"bbl": _O_BBL, "radius": screen["comp_meta"]["radius_used_miles"]}).json()
+    assert cc["count"] == screen["comp_meta"]["comp_count"]
