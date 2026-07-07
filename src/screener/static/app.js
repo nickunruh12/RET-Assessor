@@ -209,8 +209,8 @@ function wireRadius() {
     timer = setTimeout(async () => {
       try {
         const j = await (await fetch(`/api/comp_count?bbl=${bbl}&radius=${r}`)).json();
-        live.textContent = `${j.radius} mi · ${j.count} comps` +
-          (j.below_min ? ` — below the ${j.min_comp_count}-comp minimum` : "");
+        live.textContent = `${j.radius} mi · ${j.count} comps in range` +
+          (j.below_min ? ` — fewer than the ${j.min_comp_count}-comp minimum` : "");
       } catch (e) { /* preview is best-effort */ }
     }, 120);                                            // ~120ms debounce
   });
