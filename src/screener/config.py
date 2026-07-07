@@ -5,12 +5,16 @@ corresponding decision. Tunables are flagged as such.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 # --- Repo layout ---
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = REPO_ROOT / "raw"
-DB_PATH = REPO_ROOT / "screener.duckdb"
+# DB location: overridable via SCREENER_DB_PATH for deployment (mounted volume, object store, or a
+# wheel install where the repo root isn't where the DB lives). Falls back to the repo-root file so
+# local runs are unchanged.
+DB_PATH = Path(os.environ.get("SCREENER_DB_PATH", REPO_ROOT / "screener.duckdb"))
 COMP_CRITERIA_PATH = REPO_ROOT / "config" / "comp_criteria.json"
 
 # --- Datasets (DECISIONS.md, 2026-06-19) ---

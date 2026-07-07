@@ -79,13 +79,19 @@ def _load_dotenv(path: Path) -> None:
 
 
 def get_api_key() -> str:
-    """Return the Geoclient subscription key, or raise with a clear message. Never logs it."""
+    """Return the Geoclient subscription key, or raise with a clear message. Never logs it.
+
+    Reads the real environment first (host deploys set {ENV_VAR} directly); a local .env is an
+    optional convenience — _load_dotenv no-ops when it is absent and never overrides a real env
+    var (setdefault), so os.environ is always the source of truth.
+    """
     _load_dotenv(config.REPO_ROOT / ".env")
     key = os.environ.get(ENV_VAR, "").strip()
     if not key:
         raise GeoclientConfigError(
-            f"{ENV_VAR} is not set. Add your NYC Geoclient v2 subscription key to the .env "
-            f"file at {config.REPO_ROOT / '.env'} (line: {ENV_VAR}=your_key) and retry."
+            f"{ENV_VAR} is not set. Set it as an environment variable (host deploy), or for local "
+            f"runs add it to the .env file at {config.REPO_ROOT / '.env'} "
+            f"(line: {ENV_VAR}=your_key), then retry."
         )
     return key
 
