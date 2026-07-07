@@ -2,9 +2,9 @@
 touching engine/comp/stats logic. The success/size-guard cases use a throwaway localhost HTTP
 server (no external network), so they stay fast and deterministic.
 """
+import hashlib
 import http.server
 import threading
-from functools import partial
 
 import pytest
 
@@ -73,3 +73,40 @@ def test_download_success_moves_into_place(tmp_path, monkeypatch):
         assert not db.with_name(db.name + ".part").exists()
     finally:
         stop()
+
+
+def test_sha256_match_passes(tmp_path, monkeypatch):
+    # DB present + SCREENER_DB_SHA256 == its real hash -> passes, file untouched.
+    db = tmp_path / "screener.duckdb"
+    body = b"valid duckdb bytes" * 100
+    db.write_bytes(body)
+    monkeypatch.delenv(bootstrap.DB_URL_ENV, raising=False)
+    monkeypatch.setenv(bootstrap.DB_SHA256_ENV, hashlib.sha256(body).hexdigest())
+    assert bootstrap.ensure_db_present(db) == db
+    assert db.read_bytes() == body                    # untouched
+
+
+def test_sha256_mismatch_raises_and_cleans(tmp_path, monkeypatch):
+    # DB present + wrong SCREENER_DB_SHA256 -> raise (expected vs actual) and delete the bad file
+    # so a redeploy re-downloads.
+    db = tmp_path / "screener.duckdb"
+    body = b"corrupted-but-large payload" * 100
+    db.write_bytes(body)
+    actual = hashlib.sha256(body).hexdigest()
+    wrong = "0" * 64
+    monkeypatch.delenv(bootstrap.DB_URL_ENV, raising=False)
+    monkeypatch.setenv(bootstrap.DB_SHA256_ENV, wrong)
+    with pytest.raises(RuntimeError) as e:
+        bootstrap.ensure_db_present(db)
+    msg = str(e.value)
+    assert wrong in msg and actual in msg             # names expected vs actual
+    assert not db.exists()                            # bad file removed
+
+
+def test_sha256_unset_skips_check(tmp_path, monkeypatch):
+    # No SCREENER_DB_SHA256 -> strict no-op: a present file is returned without any hashing.
+    db = tmp_path / "screener.duckdb"
+    db.write_bytes(b"anything at all")
+    monkeypatch.delenv(bootstrap.DB_URL_ENV, raising=False)
+    monkeypatch.delenv(bootstrap.DB_SHA256_ENV, raising=False)
+    assert bootstrap.ensure_db_present(db) == db and db.exists()
