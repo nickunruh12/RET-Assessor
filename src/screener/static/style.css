@@ -218,6 +218,11 @@ dl dd { margin: 0; color: var(--ink); font-weight: 550; }
 .radius-slider-wrap { display: flex; gap: .5rem; align-items: center; }
 .radius-slider-wrap input[type=range] { accent-color: var(--accent); width: 12rem; }
 #radius-live { min-width: 16rem; color: var(--faint); }
+/* Beyond-range (citywide K8 / big-box): the resolved radius exceeds the 2.0 mi override max, so
+   the slider can't represent it. Grey + disable the control so its thumb is never misread as a
+   literal max; the real radius is stated in the label. */
+.beyond-range .radius-slider-wrap input[type=range] { accent-color: var(--faint); opacity: .5; cursor: not-allowed; }
+.beyond-range #radius-live { font-style: italic; }
 
 /* ---- Refusal state --------------------------------------------------------- */
 .refusal { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent);

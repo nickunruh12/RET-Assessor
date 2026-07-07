@@ -222,3 +222,35 @@ def test_office_radius_dispatch_unchanged(client):
     cc = client.get("/api/comp_count",
                     params={"bbl": _O_BBL, "radius": screen["comp_meta"]["radius_used_miles"]}).json()
     assert cc["count"] == screen["comp_meta"]["comp_count"]
+
+
+# --- Radius slider is a read-only reflection of the resolved radius (display only) -----------
+def _slider(html):
+    return re.search(r'<input type="range"[^>]*>', html).group(0)
+
+
+@pytest.mark.parametrize("bbl", [_O_BBL, _K_BBL, _F_BBL])
+def test_slider_thumb_binds_to_resolved_radius(client, bbl):
+    # PART 1: the slider's initial value == the screen's resolved radius_used, so the thumb
+    # position matches the "Radius used" label on initial render (in-range parcels).
+    j = client.get("/api/screen", params={"bbl": bbl}).json()
+    ru = j["comp_meta"]["radius_used_miles"]
+    html = client.get("/screen", params={"bbl": bbl}).text
+    inp = _slider(html)
+    value = float(re.search(r'value="([^"]+)"', inp).group(1))
+    assert value == pytest.approx(ru)          # thumb bound to the same source as the label
+    assert "disabled" not in inp               # in-range parcels keep an active slider
+
+
+def test_beyond_range_parcel_shows_explicit_state_not_pegged_max(client):
+    # PART 2: a citywide big-box parcel resolves > 2.0 mi; the slider can't represent it, so it
+    # is disabled and the label states the real radius + "beyond ... override range" — the thumb
+    # is never silently read as a literal 2.0.
+    BIGBOX_F = "1007600021"
+    j = client.get("/api/screen", params={"bbl": BIGBOX_F}).json()
+    ru = j["comp_meta"]["radius_used_miles"]
+    assert ru > 2.0                            # precondition: genuinely beyond the slider max
+    html = client.get("/screen", params={"bbl": BIGBOX_F}).text
+    assert "beyond-range" in html and "disabled" in _slider(html)
+    assert "beyond the 2 mi override range" in html
+    assert f"Radius used: {ru:g} mi" in html   # the real radius is stated, not the max

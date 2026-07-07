@@ -14,18 +14,35 @@
   {# Radius control — TWO distinct modes: AUTO (the tool expands 0.5->1.0 mi) as a
      separate affordance, and OVERRIDE (a continuous slider, fixed radius, no auto-widen).
      Slider drag shows a live comp count; release re-runs the full screen. #}
+  {# Single source of truth for the "Radius used" readout, so the comp-meta summary line and the
+     slider control never drift: a resolved radius beyond the override max (citywide K8 / big-box)
+     always carries the same "(citywide — beyond the N mi override range)" annotation. #}
+  {% macro radius_used_text(ru, rc) -%}
+    Radius used: {{ "%g"|format(ru) }} mi{% if rc and ru is not none and ru > rc.max %} (citywide — beyond the {{ "%g"|format(rc.max) }} mi override range){% endif %}
+  {%- endmacro %}
+
   {% macro radius_control(rc, bbl, radius_used) %}
   {% if rc and rc.show and bbl %}
-  <div class="radius-control" data-bbl="{{ bbl }}">
+  {# Display-only. Both the "Radius used" label AND the slider thumb read from the SAME resolved
+     radius (radius_used), so on initial render the thumb always matches the number. The value
+     attribute is static HTML — it fires no input/change, so it never re-runs a comp query.
+       PART 1: thumb = radius_used clamped into [min, max].
+       PART 2: when the resolved radius EXCEEDS the override max (citywide K8 / big-box, 7–9+ mi),
+       the slider cannot represent it — it is disabled/greyed and the label states the real radius
+       and "beyond the N mi override range", so the thumb is never misread as a literal max. #}
+  {% set has_ru = radius_used is not none %}
+  {% set beyond = has_ru and radius_used > rc.max %}
+  {% set thumb = ([[radius_used, rc.min]|max, rc.max]|min) if has_ru else rc.handle %}
+  <div class="radius-control{% if beyond %} beyond-range{% endif %}" data-bbl="{{ bbl }}">
     <p class="radius-mode">
       Mode: <strong>{% if rc.mode == 'override' %}OVERRIDE — fixed radius, no auto-widen{% elif rc.auto_label %}{{ rc.auto_label }}{% else %}AUTO — the tool expands 0.5–1.0 mi{% endif %}</strong>
-      · <strong class="radius-used">Radius used: {{ "%g"|format(radius_used) }} mi</strong>
+      · <strong class="radius-used">{{ radius_used_text(radius_used, rc) }}</strong>
     </p>
     <div class="radius-affordances">
       <a class="radius-auto{% if rc.mode == 'auto' %} active{% endif %}" href="/screen?bbl={{ bbl }}&amp;radius=default">{% if rc.auto_label %}Default radius{% else %}Default (auto 0.5–1.0 mi){% endif %}</a>
       <span class="radius-slider-wrap">Override radius:
-        <input type="range" id="radius-slider" min="{{ rc.min }}" max="{{ rc.max }}" step="0.01" value="{{ rc.handle }}">
-        <span id="radius-live" class="src"></span>
+        <input type="range" id="radius-slider" min="{{ rc.min }}" max="{{ rc.max }}" step="0.01" value="{{ thumb }}"{% if beyond %} disabled aria-disabled="true"{% endif %}>
+        <span id="radius-live" class="src">{% if beyond %}beyond override range{% endif %}</span>
       </span>
     </div>
   </div>
@@ -147,7 +164,7 @@
       <p class="reconcile-note classification-note">{{ result.retail_fallback_note }}</p>
       {% endif %}
       <p class="comp-meta">
-        <strong class="radius-used">Radius used: {{ "%g"|format(result.comp_meta.radius_used_miles) }} mi</strong>
+        <strong class="radius-used">{{ radius_used_text(result.comp_meta.radius_used_miles, result.radius_control) }}</strong>
         · comp set: {{ result.comp_meta.comp_count }} comps ·
         {{ result.comp_meta.composition.exact_count }} exact / {{ result.comp_meta.composition.adjacent_count }} adjacent
         {% if result.comp_meta.sf_band_relaxed %} · (gross-SF band relaxed to reach the 8-comp minimum; comp set includes size-dissimilar buildings){% elif not result.comp_meta.sf_band_applied %} · (no gross-SF band: subject SF not reported){% endif %}
