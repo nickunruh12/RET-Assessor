@@ -37,7 +37,8 @@ ENV_VAR = "GEOCLIENT_API_KEY"
 # Messages for resolver-specific outcomes (engine refusals reuse comps.REFUSAL_MESSAGES).
 RESOLVER_MESSAGES = {
     "address_not_found": "address not found; no BBL could be resolved for the input provided",
-    "not_class_4": "out of scope — this parcel is not tax class 4 (commercial)",
+    "not_class_4": "Out of scope: this parcel is not tax class 4 (commercial). This tool "
+                   "screens tax class 4 only.",
     "missing_inputs": "House number, street, and a borough or ZIP are all required to "
                       "identify the address. House number and street alone can match "
                       "multiple boroughs.",

@@ -39,7 +39,7 @@ EARTH_RADIUS_MI = 3958.7613
 # validation and carried so downstream display stays consistent).
 REFUSAL_MESSAGES = {
     "subject_not_found": "no parcel found for this BBL",
-    "out_of_scope_v1": "out of scope for v1 (only office is activated)",
+    "out_of_scope_v1": "Asset class not supported in the current version.",
     # Condo-specific text for the SAME out_of_scope_v1 refusal (message only; routing unchanged).
     "commercial_condo": (
         "This tool can't screen commercial condominiums. NYC assesses condo value at the "

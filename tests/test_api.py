@@ -126,7 +126,7 @@ def test_commercial_condo_gets_specific_message_others_stay_generic(client):
                 continue
             j = client.get("/api/screen", params={"bbl": bbl[0]}).json()
             assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1"
-            assert "only office is activated" in j["message"]        # generic, unchanged
+            assert "Asset class not supported" in j["message"]       # generic, no class list
             assert "condominium" not in j["message"]                 # condo text does not leak
     finally:
         con.close()
