@@ -8,6 +8,7 @@ Run locally (not deployed):
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import duckdb
@@ -17,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import config
+from .bootstrap import ensure_db_present
 from .comps import select_comps
 from .expense_ratio import run_expense_ratio
 from .geocode import GeoclientConfigError, ResolveResult, _validate_bbl, resolve_address
@@ -34,7 +36,18 @@ from .serialize import (
 )
 
 _HERE = Path(__file__).resolve().parent
-app = FastAPI(title="NYC Class-4 Assessment Screen")
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Deployment bootstrap: ensure the DuckDB is present BEFORE any request opens a connection.
+    # Downloads it from SCREENER_DB_URL if missing; a strict no-op when it already exists (local
+    # dev). Runs at app startup, before the first _con(). Never touches engine/comp/stats logic.
+    ensure_db_present()
+    yield
+
+
+app = FastAPI(title="NYC Class-4 Assessment Screen", lifespan=_lifespan)
 app.mount("/static", StaticFiles(directory=_HERE / "static"), name="static")
 templates = Jinja2Templates(directory=_HERE / "templates")
 
