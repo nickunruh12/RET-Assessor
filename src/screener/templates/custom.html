@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Custom comps — NYC Class-4 Commercial Assessment Screen</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
+</head>
+<body>
+  <header>
+    <h1>Custom comps</h1>
+    <p class="gloss src">You supply the comparables. The tool runs its distribution, variance, and
+      provenance analysis on your set — and labels it, unmistakably, as <em>not screened by the
+      tool's selection logic</em>. Property type is always measured from the parcel.</p>
+    <p class="src"><a href="/">← back</a> · <a href="/screen?mode=auto_generate">switch to auto-generate</a></p>
+  </header>
+
+  <!-- STEP 2 — subject entry + confirmation -->
+  <section class="custom-step">
+    <h2>1 · Subject parcel</h2>
+    <form class="lookup" method="get" action="/custom">
+      <fieldset>
+        <legend>Look up the subject by address</legend>
+        <input type="text" name="house_number" placeholder="house no." value="{{ typed.house_number or '' }}">
+        <input type="text" name="street" placeholder="street" value="{{ typed.street or '' }}">
+        <select name="borough" aria-label="borough">
+          {% set sel = typed.borough or '' %}
+          <option value=""{% if not sel %} selected{% endif %}>borough (optional)</option>
+          {% for b in ["Manhattan","Bronx","Brooklyn","Queens","Staten Island"] %}
+          <option value="{{ b }}"{% if sel == b %} selected{% endif %}>{{ b }}</option>
+          {% endfor %}
+        </select>
+      </fieldset>
+      <fieldset>
+        <legend>or by BBL</legend>
+        <input type="text" name="bbl" placeholder="10-digit BBL" value="{{ typed.bbl or '' }}">
+        <button type="submit">Resolve subject</button>
+      </fieldset>
+    </form>
+
+    {% if refusal %}
+    <p class="refusal-msg">{{ refusal }}</p>
+    {% endif %}
+
+    {% if subject %}
+    {% set s = subject %}
+    <div class="subject confirm-panel">
+      <p class="confirm-head"><strong>Confirm this is the right parcel:</strong></p>
+{% include "partials/subject_facts.html" %}
+      {% if s.reconciliation_note %}<p class="reconcile-note">{{ s.reconciliation_note }}</p>{% endif %}
+    </div>
+    {% endif %}
+  </section>
+
+  <!-- STEP 3 — comp entry (per-comp validation, driven by custom.js) -->
+  {% if subject %}
+  <section class="custom-step comp-entry" id="comp-entry"
+           data-subject-bbl="{{ subject_bbl }}"
+           data-autofill-available="{{ 'true' if autofill_available else 'false' }}">
+    <h2>2 · Add comparables (one at a time)</h2>
+    <p class="src">Each comp is resolved and checked on entry. Non–tax-class-4 parcels are excluded;
+      cross-type and land-dominant comps are kept and labeled. The count below is <strong>valid</strong>
+      comps (resolved and class 4), not entries.</p>
+
+    <form id="comp-add-form" class="lookup" onsubmit="return false;">
+      <fieldset>
+        <legend>Comp by BBL</legend>
+        <input type="text" id="comp-bbl" placeholder="10-digit BBL">
+        <button type="submit" id="comp-add">Add comp</button>
+      </fieldset>
+    </form>
+
+    <div id="comp-list-wrap">
+      <p class="comp-count-line">Valid comps: <strong id="valid-count">0</strong>
+        <span class="src">(need {{ 8 }} for a full screen)</span></p>
+      <ul id="comp-list"></ul>
+    </div>
+
+    <!-- <8 options: shown by JS, keyed on VALID count -->
+    <div id="thin-options" class="thin-options" hidden>
+      <p class="reliability-note">Distribution statistics are less reliable below the 8-comp minimum.
+        Choose how to proceed:</p>
+      <button type="button" id="run-thin">Run with these comps (thin set)</button>
+      <button type="button" id="run-autofill">Auto-fill to 8 with tool-selected comps</button>
+      <p class="src" id="autofill-unavailable" hidden>Auto-fill isn't available for this asset class
+        (no auto-selection engine); you can still run the thin set.</p>
+    </div>
+
+    <!-- >=8: shown by JS -->
+    <div id="ready" class="ready" hidden>
+      <button type="button" id="run-full">Generate analysis</button>
+    </div>
+  </section>
+  <script src="/static/custom.js?v={{ asset_version }}"></script>
+  {% endif %}
+
+  <p class="disclaimer">{{ disclaimer }}</p>
+</body>
+</html>

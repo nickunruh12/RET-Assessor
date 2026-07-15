@@ -106,3 +106,38 @@ def test_refuses_below_two_valid_comps(client, office_comps):
     assert r["status"] == "refused" and r["reason"] == "insufficient_valid_comps"
     # even on refusal the validation report is present so the UI can explain
     assert r["comp_source"]["valid_count"] == 1
+
+
+# --- Custom-comps UI flow (wizard routing + shared components) -------------------------------
+def test_wizard_resolves_subject_via_shared_partial(client):
+    r = client.get("/custom", params={"bbl": SUBJECT}).text
+    assert "Confirm this is the right parcel" in r
+    # the shared subject-facts partial rendered (same fields as the auto path)
+    assert "Estimated Market Value According to DOF" in r and "<dt>BBL</dt>" in r
+    assert 'id="comp-entry"' in r and 'data-autofill-available="true"' in r   # office -> autofill ok
+
+
+def test_wizard_refuses_non_class4_subject(client):
+    r = client.get("/custom", params={"bbl": NON_CLASS4}).text
+    assert "not tax class 4" in r and 'id="comp-entry"' not in r
+
+
+def test_validate_comp_endpoint(client):
+    def v(bbl):
+        return client.post("/api/v1/custom_validate_comp",
+                           json={"subject_bbl": SUBJECT, "comp_bbls": [bbl]}).json()
+    assert v(NON_CLASS4)["status"] == "excluded" and "not tax class 4" in v(NON_CLASS4)["reason"]
+    xt = v(RETAIL_COMP)
+    assert xt["status"] == "valid" and xt["cross_type"] is True
+
+
+def test_custom_result_renders_full_output_plus_layers(client, office_comps):
+    comps = ",".join(office_comps[:5])
+    out = client.get("/custom_result",
+                     params={"subject": SUBJECT, "comps": comps, "fill": "autofill"}).text
+    # full auto output reused
+    assert 'class="comp-table"' in out and 'id="chart-assessed_value_market"' in out
+    # custom layers added
+    assert "not screened by the tool's selection logic" in out          # not-vetted stamp
+    assert "<th>Origin</th>" in out                                      # origin column
+    assert "tool-selected to reach the 8-comp minimum" in out           # mix disclosure

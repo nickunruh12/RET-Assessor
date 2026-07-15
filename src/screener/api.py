@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from . import config
 from .bootstrap import ensure_db_present
-from .custom_comps import build_custom_screen_view
+from .custom_comps import build_custom_screen_view, resolve_subject, validate_comp
 from .comps import select_comps
 from .expense_ratio import run_expense_ratio
 from .geocode import GeoclientConfigError, ResolveResult, _validate_bbl, resolve_address
@@ -202,7 +202,7 @@ def _build_form(con, effective_bbl, typed: dict) -> dict:
 # as a branch in the screen handlers (see the marked fork), NOT a restructure. Property type is
 # ALWAYS measured from the parcel, never user-selected (hard architectural boundary — no type
 # dropdown, ever).
-SCREEN_MODES = ("auto_generate",)          # add "custom_comps" here when that mode ships
+SCREEN_MODES = ("auto_generate", "custom_comps")   # custom_comps has its own /custom flow
 
 
 def _resolve_mode(mode: str) -> str:
@@ -317,6 +317,54 @@ def api_custom_screen(req: CustomScreenRequest):
             con, CRITERIA, JURIS, subject_bbl=req.subject_bbl.strip(),
             comp_bbls=req.comp_bbls, fill=(req.fill or "none").strip().lower())
     return JSONResponse(result)
+
+
+@app.get("/custom", response_class=HTMLResponse)
+def custom(request: Request, bbl: str = "", house_number: str = "", street: str = "",
+           borough: str = "", zip: str = ""):
+    """Custom-comps wizard (step 2/3). Resolves the subject with the SAME resolver the auto path
+    uses, then renders the shared subject-facts partial for confirmation + the comp-entry step."""
+    typed = {"bbl": bbl, "house_number": house_number, "street": street, "borough": borough, "zip": zip}
+    ctx = {"disclaimer": DISCLAIMER, "asset_version": ASSET_VERSION, "typed": typed,
+           "subject": None, "subject_bbl": None, "refusal": None,
+           "asset_type": None, "autofill_available": False}
+    if bbl or house_number or street:
+        with _con() as con:
+            rr = _resolve_input(con, bbl=bbl, house_number=house_number, street=street,
+                                borough=borough, zip_code=zip)
+            resolved = rr.bbl if rr is not None else None
+            if not resolved:
+                ctx["refusal"] = "Could not resolve that input to a parcel. Check the address or BBL."
+            else:
+                r = resolve_subject(con, CRITERIA, JURIS, resolved)
+                if r["status"] == "ok":
+                    ctx.update(subject=r["subject"], subject_bbl=resolved,
+                               asset_type=r["asset_type"], autofill_available=r["autofill_available"])
+                else:
+                    ctx["refusal"] = r["message"]
+    return templates.TemplateResponse(request, "custom.html", ctx)
+
+
+@app.post("/api/v1/custom_validate_comp")
+def api_custom_validate_comp(req: CustomScreenRequest):
+    """Per-comp validation for the wizard: resolve + classify ONE comp (reuses comp_bbls[0])."""
+    comp = (req.comp_bbls[0].strip() if req.comp_bbls else "")
+    with _con() as con:
+        return JSONResponse(validate_comp(con, CRITERIA, JURIS, req.subject_bbl.strip(), comp))
+
+
+@app.get("/custom_result", response_class=HTMLResponse)
+def custom_result(request: Request, subject: str = "", comps: str = "", fill: str = "none"):
+    """Render the custom-comps screen through the SHARED output template (page.html). The custom
+    layers (not-vetted stamp, origin column, mix) are gated in the template on product=custom_comps."""
+    comp_bbls = [b.strip() for b in comps.split(",") if b.strip()]
+    with _con() as con:
+        result = build_custom_screen_view(con, CRITERIA, JURIS, subject_bbl=subject.strip(),
+                                          comp_bbls=comp_bbls, fill=(fill or "none").strip().lower())
+    return templates.TemplateResponse(request, "page.html", {
+        "result": result, "disclaimer": DISCLAIMER, "form": {"bbl": subject}, "mode": "custom_comps",
+        "result_json": json.dumps(result, default=str), "asset_version": ASSET_VERSION,
+    })
 
 
 @app.post("/api/rung3")

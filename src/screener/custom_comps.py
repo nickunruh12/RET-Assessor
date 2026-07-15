@@ -325,6 +325,53 @@ def _validation_report(meta: CustomMeta) -> dict:
     }
 
 
+def resolve_subject(con, criteria: CompCriteria, juris: Jurisdiction, subject_bbl: str) -> dict:
+    """Step 2 (confirmation): resolve a class-4 subject and return the SAME subject-panel DATA the
+    auto path renders (serialize._subject_panel) — the single source, so the two paths can't drift."""
+    from .serialize import _subject_panel
+    subj = _pull_parcel(con, subject_bbl)
+    if subj is None:
+        not4 = _in_table(con, "pluto_lots", "bbl_int", subject_bbl, cast_int=True)
+        return {"status": "refused", "reason": "not_class_4" if not4 else "subject_not_found",
+                "message": ("This parcel is not tax class 4 (the tool screens class 4 only)."
+                            if not4 else "No parcel found for that BBL.")}
+    if not (subj.get("curmkttot") and subj["curmkttot"] > 0):
+        return {"status": "refused", "reason": "subject_tax_exempt",
+                "message": "This parcel is tax-exempt (no positive market value); nothing to compare."}
+    if subj.get("pluto_latitude") is None or subj.get("pluto_longitude") is None:
+        return {"status": "refused", "reason": "subject_no_coordinates",
+                "message": "This parcel has no coordinates on record."}
+    summary = _subject_summary(con, juris, criteria, subj)
+    return {"status": "ok", "asset_type": _asset_type(subj.get("bldg_class")),
+            "autofill_available": _asset_type(subj.get("bldg_class")) in ("office", "retail", "industrial"),
+            "subject": _subject_panel(summary, None, criteria.class4_tax_rate)}
+
+
+def validate_comp(con, criteria: CompCriteria, juris: Jurisdiction,
+                  subject_bbl: str, comp_bbl: str) -> dict:
+    """Step 3 (per-comp): resolve + classify ONE comp, returning its status + what it is, so the
+    UI can show the result immediately. Reuses _classify_comp (same rules as the screen)."""
+    v = _classify_comp(con, comp_bbl, subject_bbl)
+    out = {"bbl": comp_bbl, "status": v.status, "reason": v.reason, "valid": v.status == "valid"}
+    if v.status == "valid":
+        c = v.row
+        subj = _pull_parcel(con, subject_bbl)
+        cov = coverage_ratio(c.get("pluto_bldgarea"), c.get("pluto_lotarea"))
+        addr = (c.get("pluto_address")
+                or " ".join(x for x in (c.get("house_number"), c.get("street_name")) if x).strip()
+                or None)
+        atype = _asset_type(c.get("bldg_class"))
+        out.update({
+            "address": addr,
+            "bldg_class": c.get("bldg_class"),
+            "sf": c.get("sf"),
+            "asset_type": atype,
+            "cross_type": bool(subj and atype != _asset_type(subj.get("bldg_class"))),
+            "land_dominant": bool(cov is not None and cov < LAND_DOMINANT_THR),
+        })
+    return out
+
+
 def build_custom_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *,
                              subject_bbl: str, comp_bbls: list[str], fill: str = "none") -> dict:
     """Assemble the custom-comps screen: build a CompSet from the user's BBLs, run the SHARED
@@ -396,7 +443,7 @@ def build_custom_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *
             "thin_run": {
                 "available": True,
                 "description": (f"Screen the {meta.valid_count} user-supplied comps as-is "
-                                f"(flagged as a thin set; percentiles less reliable)."),
+                                f"(labeled a thin set; percentiles less reliable)."),
             },
             "autofill": {
                 "available": meta.autofill_available,

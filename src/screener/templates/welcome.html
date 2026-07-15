@@ -25,14 +25,18 @@
     </p>
 
     <div class="welcome-actions">
-      {# Enter the screening tool in a NAMED MODE (auto_generate). The mode carries through so a
-         future "custom_comps" mode slots in as a branch, not a rewrite (see api._resolve_mode). #}
-      <a class="btn-primary" href="/screen?mode=auto_generate">Get Started</a>
+      {# Two NAMED MODES (api._resolve_mode). auto_generate: the tool selects comps by measured
+         type/size/location. custom_comps: the user supplies their own comps (not vetted by the
+         selection logic). Property type is ALWAYS measured — no type dropdown, either way. #}
+      <a class="btn-primary" href="/screen?mode=auto_generate">Auto-generate comps</a>
+      <a class="btn-secondary" href="/custom">Use my own comps</a>
     </div>
 
-    <p class="welcome-coming-soon">
-      Custom comp list <span class="soon-tag">coming soon</span> — a future mode where you supply
-      your own comparables instead of auto-generating them.
+    <p class="welcome-modes">
+      <strong>Auto-generate</strong> selects comparable properties deterministically by measured
+      type, size, and location. <strong>Use my own comps</strong> runs the same distribution and
+      provenance analysis on a comp list you supply — clearly labeled as not screened by the tool's
+      selection logic.
     </p>
 
     <p class="disclaimer">{{ disclaimer }}</p>

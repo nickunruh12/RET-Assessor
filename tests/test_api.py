@@ -27,14 +27,15 @@ def test_home_renders_disclaimer(client):
     assert "not a verdict, not tax advice, not an appraisal" in r.text
 
 
-def test_welcome_page_has_blurb_coming_soon_and_get_started(client):
+def test_welcome_page_offers_both_modes(client):
     raw = client.get("/").text
     html = " ".join(raw.split())                                          # normalize line-wraps
     assert "screens a New York City commercial property" in html         # blurb
     assert "no invented numbers and no verdicts" in html
-    assert "Custom comp list" in html and "coming soon" in html          # secondary note
-    assert 'href="/screen?mode=auto_generate"' in raw                    # Get Started -> named mode
-    assert "Get Started" in html
+    # both named modes are live front-door options (custom comps is no longer "coming soon")
+    assert 'href="/screen?mode=auto_generate"' in raw                    # auto-generate mode link
+    assert 'href="/custom"' in raw                                       # custom-comps flow link
+    assert "Auto-generate comps" in html and "Use my own comps" in html
     # welcome is the front door, NOT the screening form (no lookup fields / no property-type select)
     assert 'name="bbl"' not in raw and 'name="borough"' not in raw
 
