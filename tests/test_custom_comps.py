@@ -141,3 +141,32 @@ def test_custom_result_renders_full_output_plus_layers(client, office_comps):
     assert "not screened by the tool's selection logic" in out          # not-vetted stamp
     assert "<th>Origin</th>" in out                                      # origin column
     assert "tool-selected to reach the 8-comp minimum" in out           # mix disclosure
+
+
+# --- Out-of-scope subject (custom-mode escape hatch, disclosed) ------------------------------
+HOTEL = "1008680036"           # HB hotel — class 4, but not O/K/F (outside auto-screen scope)
+
+
+def test_out_of_scope_subject_flag_notice_and_enforcement(client, office_comps):
+    # API carries the flag + notice; auto-fill is enforced OFF; thin-run still works.
+    r = client.post("/api/v1/custom_screen",
+                    json={"subject_bbl": HOTEL, "comp_bbls": office_comps[:5], "fill": "autofill"}).json()
+    assert r["status"] == "ok"
+    assert r["subject_out_of_scope_for_auto"] is True
+    assert r["scope_notice"] and "screens automatically" in r["scope_notice"]
+    assert r["comp_source"]["tool_selected_count"] == 0                # autofill ignored/enforced off
+    assert r["options"]["choices"]["autofill"]["available"] is False
+    assert r["options"]["choices"]["thin_run"]["available"] is True
+
+
+def test_in_scope_subject_has_no_scope_notice(client, office_comps):
+    r = client.post("/api/v1/custom_screen",
+                    json={"subject_bbl": SUBJECT, "comp_bbls": office_comps[:5], "fill": "none"}).json()
+    assert r["subject_out_of_scope_for_auto"] is False and r["scope_notice"] is None
+    assert r["options"]["choices"]["autofill"]["available"] is True    # both options still offered
+
+
+def test_wizard_shows_scope_notice_for_out_of_scope_subject(client):
+    r = client.get("/custom", params={"bbl": HOTEL}).text
+    assert 'class="scope-notice"' in r and "outside the asset types this version" in r
+    assert 'data-autofill-available="false"' in r and 'id="comp-entry"' in r   # can still proceed

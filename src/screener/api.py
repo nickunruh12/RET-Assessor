@@ -327,7 +327,8 @@ def custom(request: Request, bbl: str = "", house_number: str = "", street: str 
     typed = {"bbl": bbl, "house_number": house_number, "street": street, "borough": borough, "zip": zip}
     ctx = {"disclaimer": DISCLAIMER, "asset_version": ASSET_VERSION, "typed": typed,
            "subject": None, "subject_bbl": None, "refusal": None,
-           "asset_type": None, "autofill_available": False}
+           "asset_type": None, "autofill_available": False,
+           "out_of_scope_for_auto": False, "scope_notice": None}
     if bbl or house_number or street:
         with _con() as con:
             rr = _resolve_input(con, bbl=bbl, house_number=house_number, street=street,
@@ -339,7 +340,9 @@ def custom(request: Request, bbl: str = "", house_number: str = "", street: str 
                 r = resolve_subject(con, CRITERIA, JURIS, resolved)
                 if r["status"] == "ok":
                     ctx.update(subject=r["subject"], subject_bbl=resolved,
-                               asset_type=r["asset_type"], autofill_available=r["autofill_available"])
+                               asset_type=r["asset_type"], autofill_available=r["autofill_available"],
+                               out_of_scope_for_auto=r["out_of_scope_for_auto"],
+                               scope_notice=r["scope_notice"])
                 else:
                     ctx["refusal"] = r["message"]
     return templates.TemplateResponse(request, "custom.html", ctx)

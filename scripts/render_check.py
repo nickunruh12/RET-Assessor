@@ -139,6 +139,41 @@ def main():
                 if m:
                     print(f"      hit {m.group(0)!r}: …{html[max(0,m.start()-40):m.end()+30]}…")
 
+    # ---- CUSTOM-COMPS SURFACES -------------------------------------------------------------
+    # The custom flow adds its own static JS + two rendered routes. Guard them with the SAME
+    # word/color/chart lists as the auto path, so a banned word can never slip in un-caught.
+    print("\n" + "=" * 78)
+    print("CUSTOM-COMPS SURFACE SCAN (custom.js + rendered /custom + /custom_result)")
+    js2 = strip_js((STATIC / "custom.js").read_text())
+    c_color = scan(js2, BANNED_COLOR)
+    c_chart = scan(js2, BANNED_CHART)
+    print(f"  custom.js alert/good-bad colors: {c_color or 'NONE ✓'}")
+    print(f"  custom.js threshold/zone/annotation: {c_chart or 'NONE ✓'}")
+    ok = ok and not c_color and not c_chart
+
+    # Render the custom pages against real parcels: an in-scope office subject (with comps) and an
+    # out-of-scope (hotel) subject so the scope-notice wording is scanned too.
+    csubj = "1000090001"
+    auto = client.get("/api/screen", params={"bbl": csubj}).json()
+    ccomps = ",".join(p["bbl"] for p in auto["signals"][0]["comp_points"][:5])
+    custom_pages = {
+        "/custom (in-scope)": client.get("/custom", params={"bbl": csubj}).text,
+        "/custom (out-of-scope hotel)": client.get("/custom", params={"bbl": "1008680036"}).text,
+        "/custom_result": client.get(
+            "/custom_result", params={"subject": csubj, "comps": ccomps, "fill": "autofill"}).text,
+    }
+    for name, raw in custom_pages.items():
+        (OUT / ("custom_" + re.sub(r"\W+", "_", name).strip("_") + ".html")).write_text(raw)
+        html = strip_html_comments(raw)
+        hits = scan(html, BANNED_WORDS)
+        print(f"  [{name}] banned characterizing words: {hits or 'NONE ✓'}")
+        ok = ok and not hits
+        if hits:
+            for p in BANNED_WORDS:
+                m = re.search(p, html, re.I)
+                if m:
+                    print(f"      hit {m.group(0)!r}: …{html[max(0,m.start()-40):m.end()+30]}…")
+
     print("\n" + "=" * 78)
     print(f"RENDER CHECK: {'ALL CLEAN ✓' if ok else 'FAILURES ABOVE ✗'}")
     print(f"Full pages written to {OUT}/")

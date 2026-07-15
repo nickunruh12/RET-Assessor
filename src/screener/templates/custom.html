@@ -52,6 +52,11 @@
 {% include "partials/subject_facts.html" %}
       {% if s.reconciliation_note %}<p class="reconcile-note">{{ s.reconciliation_note }}</p>{% endif %}
     </div>
+    {# Out-of-scope escape hatch — rendered from DATA (out_of_scope_for_auto / scope_notice), not
+       from template-side type logic. Shown BEFORE the user builds a comp list. #}
+    {% if out_of_scope_for_auto and scope_notice %}
+    <p class="scope-notice">{{ scope_notice }}</p>
+    {% endif %}
     {% endif %}
   </section>
 

@@ -325,6 +325,27 @@ def _validation_report(meta: CustomMeta) -> dict:
     }
 
 
+IN_SCOPE_TYPES = ("office", "retail", "industrial")
+
+
+def _scope_notice(bldg_class: str | None, asset_type: str) -> str | None:
+    """Explicit, disclosed escape-hatch notice when a custom-mode subject is outside the asset
+    types the auto engine screens (not O/K/F). States: outside auto-scope, may proceed with own
+    comps, auto-fill unavailable, and WHICH calibrated thresholds are borrowed (so it's accurate).
+    No verdict / banned language."""
+    if asset_type in IN_SCOPE_TYPES:
+        return None
+    return (f"This parcel's building class ({bldg_class}) is outside the asset types this version "
+            f"screens automatically (office, retail, and industrial). You can still proceed by "
+            f"supplying your own comparables. Auto-fill to 8 is unavailable for this type — the tool "
+            f"has no comp-selection logic for it — so only the run-as-is (thin-set) path is offered. "
+            f"One data-quality threshold is still borrowed as-is: the land-dominant coverage cutoff "
+            f"(building under 30% of lot, calibrated on NYC industrial parcels) is applied to the "
+            f"subject and comps regardless of asset type. The per-SF size band is NOT size-restricting "
+            f"the percentile here. Read the per-SF and coverage disclosures as directional for this "
+            f"property type.")
+
+
 def resolve_subject(con, criteria: CompCriteria, juris: Jurisdiction, subject_bbl: str) -> dict:
     """Step 2 (confirmation): resolve a class-4 subject and return the SAME subject-panel DATA the
     auto path renders (serialize._subject_panel) — the single source, so the two paths can't drift."""
@@ -342,8 +363,11 @@ def resolve_subject(con, criteria: CompCriteria, juris: Jurisdiction, subject_bb
         return {"status": "refused", "reason": "subject_no_coordinates",
                 "message": "This parcel has no coordinates on record."}
     summary = _subject_summary(con, juris, criteria, subj)
-    return {"status": "ok", "asset_type": _asset_type(subj.get("bldg_class")),
-            "autofill_available": _asset_type(subj.get("bldg_class")) in ("office", "retail", "industrial"),
+    atype = _asset_type(subj.get("bldg_class"))
+    return {"status": "ok", "asset_type": atype,
+            "autofill_available": atype in IN_SCOPE_TYPES,
+            "out_of_scope_for_auto": atype not in IN_SCOPE_TYPES,
+            "scope_notice": _scope_notice(subj.get("bldg_class"), atype),
             "subject": _subject_panel(summary, None, criteria.class4_tax_rate)}
 
 
@@ -411,6 +435,9 @@ def build_custom_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *
     base["contract_version"] = CONTRACT_VERSION
     base["user_comps_not_vetted"] = True
     base["selection_safeguards_applied"] = False
+    # Out-of-scope escape hatch, disclosed as DATA (frontend renders from these, not template logic).
+    base["subject_out_of_scope_for_auto"] = subject_type not in IN_SCOPE_TYPES
+    base["scope_notice"] = _scope_notice(cs.subject.get("bldg_class"), subject_type)
 
     # --- comp_source block (validation report + safeguards flag + stamp) ---
     comp_mix = None
