@@ -170,3 +170,73 @@ def test_wizard_shows_scope_notice_for_out_of_scope_subject(client):
     r = client.get("/custom", params={"bbl": HOTEL}).text
     assert 'class="scope-notice"' in r and "outside the asset types this version" in r
     assert 'data-autofill-available="false"' in r and 'id="comp-entry"' in r   # can still proceed
+
+
+# --- Size-dissimilar MARKING (no suppression), per subject-type band ------------------------
+def _sf(bbl):
+    import duckdb
+    con = duckdb.connect(str(config.DB_PATH), read_only=True)
+    try:
+        return con.execute("SELECT sf FROM parcels WHERE parcel_id=?", [bbl]).fetchone()[0]
+    finally:
+        con.close()
+
+
+def _dissimilar_bbl(subject, mult):
+    import duckdb
+    con = duckdb.connect(str(config.DB_PATH), read_only=True)
+    try:
+        tgt = _sf(subject) * mult
+        row = con.execute(
+            "SELECT parcel_id FROM parcels WHERE curmkttot>0 AND sf BETWEEN ? AND ? AND parcel_id<>? "
+            "ORDER BY abs(sf-?) LIMIT 1", [tgt * 0.9, tgt * 1.1, subject, tgt]).fetchone()
+        return row[0] if row else None
+    finally:
+        con.close()
+
+
+def _psf(r):
+    return next(s for s in r["signals"] if s["key"] == "mv_per_gross_sf")
+
+
+def test_size_dissimilar_marked_not_suppressed(client, office_comps):
+    big = _dissimilar_bbl(SUBJECT, 2.5)
+    r = _screen(client, office_comps[:5] + [big])
+    row = next(row for v in r["variance"]["views"] for row in v["rows"] if row["parcel_id"] == big)
+    p = _psf(r)
+    assert row["size_dissimilar"] is True and r["per_sf_size_flag"] is True      # marked
+    assert "±50%" in p["size_flag_note"] and "no size restriction" in p["size_flag_note"]
+    assert p["subject_percentile"] is not None and p["percentile_n"] is None      # NOT suppressed
+
+
+def test_clean_set_has_no_marks_or_note(client, office_comps):
+    r = _screen(client, office_comps[:5])           # auto comps are size-similar
+    assert not any(row.get("size_dissimilar") for v in r["variance"]["views"] for row in v["rows"])
+    assert r.get("per_sf_size_flag") is False and _psf(r).get("size_flag_note") is None
+
+
+def test_band_is_50_for_office_75_for_industrial(client):
+    off = _dissimilar_bbl(SUBJECT, 2.5)
+    ro = _screen(client, [c for c in _auto_comps(client, SUBJECT)[:4]] + [off])
+    assert "±50%" in _psf(ro)["size_flag_note"]
+    IND = "3000320029"
+    indf = _dissimilar_bbl(IND, 3.0)
+    ri = _screen_for(client, IND, [c for c in _auto_comps(client, IND)[:4]] + [indf])
+    assert "±75%" in _psf(ri)["size_flag_note"]
+
+
+def test_out_of_scope_marks_at_50_and_notice_names_borrowed_band(client, office_comps):
+    HOTEL = "1008680036"
+    r = _screen_for(client, HOTEL, office_comps[:5] + [_dissimilar_bbl(HOTEL, 2.5)])
+    assert "±50%" in _psf(r)["size_flag_note"]
+    assert "size-dissimilar marking uses a ±50%" in r["scope_notice"]
+
+
+def _auto_comps(client, bbl):
+    j = client.get("/api/screen", params={"bbl": bbl}).json()
+    return [p["bbl"] for p in j["signals"][0]["comp_points"]]
+
+
+def _screen_for(client, subject, comps, fill="none"):
+    return client.post("/api/v1/custom_screen",
+                       json={"subject_bbl": subject, "comp_bbls": comps, "fill": fill}).json()

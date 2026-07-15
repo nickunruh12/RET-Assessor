@@ -339,11 +339,13 @@ def _scope_notice(bldg_class: str | None, asset_type: str) -> str | None:
             f"screens automatically (office, retail, and industrial). You can still proceed by "
             f"supplying your own comparables. Auto-fill to 8 is unavailable for this type — the tool "
             f"has no comp-selection logic for it — so only the run-as-is (thin-set) path is offered. "
-            f"One data-quality threshold is still borrowed as-is: the land-dominant coverage cutoff "
-            f"(building under 30% of lot, calibrated on NYC industrial parcels) is applied to the "
-            f"subject and comps regardless of asset type. The per-SF size band is NOT size-restricting "
-            f"the percentile here. Read the per-SF and coverage disclosures as directional for this "
-            f"property type.")
+            f"Two data-quality thresholds are borrowed as-is, calibrated on the types the tool does "
+            f"screen: the land-dominant coverage cutoff (building under 30% of lot, from NYC industrial "
+            f"parcels) is applied to the subject and comps regardless of asset type; and the "
+            f"size-dissimilar marking uses a ±50% gross-SF band (from office and retail) — comps "
+            f"outside it are marked, but the per-SF percentile is still computed on ALL supplied comps "
+            f"with no size restriction. Read the per-SF and coverage disclosures as directional for "
+            f"this property type.")
 
 
 def resolve_subject(con, criteria: CompCriteria, juris: Jurisdiction, subject_bbl: str) -> dict:
@@ -506,6 +508,40 @@ def build_custom_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *
         "distance_miles": c.distance_miles,
         "vetted_by_selection_logic": origins.get(c.citation.parcel_id) == TOOL,
     } for c in cs.comps]
+
+    # --- size-dissimilar MARKING (no suppression): reuse the auto path's size-flag machinery
+    # (r.size_dissimilar / comp_point.size_dissimilar / per_sf_size_flag / size_flag_note) but with
+    # the SUBJECT-type band (office/retail ±50%, industrial ±75%; out-of-scope borrows ±50%, named
+    # in the scope notice). The per-SF percentile is NOT touched — it stays computed on all comps. #
+    subj_sf = cs.subject.get("sf")
+    size_band = ((criteria.industrial_config or {}).get("sf_band", 0.75)
+                 if subject_type == "industrial" else criteria.sf_band)
+    dissimilar = {c.citation.parcel_id for c in cs.comps
+                  if subj_sf and c.sf is not None
+                  and (c.sf < (1 - size_band) * subj_sf or c.sf > (1 + size_band) * subj_sf)}
+    for view in base.get("variance", {}).get("views", []):
+        for r in view.get("rows", []):
+            r["size_dissimilar"] = r.get("parcel_id") in dissimilar
+    for r in base.get("variance", {}).get("all_diffs", []):
+        r["size_dissimilar"] = r.get("parcel_id") in dissimilar
+    for sig in base.get("signals", []):
+        if sig.get("key") == "mv_per_gross_sf":
+            for p in (sig.get("comp_points") or []):
+                p["size_dissimilar"] = p.get("bbl") in dissimilar
+    base["per_sf_size_flag"] = bool(dissimilar)       # enables the size-flag column + chart marks
+    if dissimilar:
+        n = len(dissimilar)
+        band_pct = f"{size_band * 100:g}"
+        borrowed = " (band borrowed from other asset types)" if base["subject_out_of_scope_for_auto"] else ""
+        for sig in base.get("signals", []):
+            if sig.get("key") == "mv_per_gross_sf":
+                sig["size_flag_note"] = (
+                    f"{n} comp{'s' if n != 1 else ''} {'fall' if n != 1 else 'falls'} outside the "
+                    f"±{band_pct}% gross-SF size band relative to the subject{borrowed} and "
+                    f"{'are' if n != 1 else 'is'} marked below. The per-SF percentile is computed on "
+                    f"all supplied comps regardless — no size restriction is applied.")
+        base["size_flag_title"] = (f"BldgArea outside ±{band_pct}% of the subject; user-supplied comp, "
+                                   f"percentile not size-restricted")
 
     # --- comp_meta: mark the basis so no selection chrome is inferred ---
     if isinstance(base.get("comp_meta"), dict):
