@@ -16,9 +16,11 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from . import config
 from .bootstrap import ensure_db_present
+from .custom_comps import build_custom_screen_view
 from .comps import select_comps
 from .expense_ratio import run_expense_ratio
 from .geocode import GeoclientConfigError, ResolveResult, _validate_bbl, resolve_address
@@ -298,6 +300,23 @@ def api_screen(bbl: str = "", house_number: str = "", street: str = "",
         result, _ = _screen_view(con, bbl=bbl, house_number=house_number, street=street,
                                  borough=borough, zip_code=zip, radius=radius)
     return JSONResponse(result or {"status": "no_input"})
+
+
+class CustomScreenRequest(BaseModel):
+    subject_bbl: str
+    comp_bbls: list[str] = []
+    fill: str = "none"                 # "none" (thin/expose options) | "autofill" (fill to 8)
+
+
+@app.post("/api/v1/custom_screen")
+def api_custom_screen(req: CustomScreenRequest):
+    """Manual-override lane: screen a user-supplied comp set (NOT auto-selected). New path — it
+    does not touch _screen_view or the auto-selectors, so /api/screen stays byte-identical."""
+    with _con() as con:
+        result = build_custom_screen_view(
+            con, CRITERIA, JURIS, subject_bbl=req.subject_bbl.strip(),
+            comp_bbls=req.comp_bbls, fill=(req.fill or "none").strip().lower())
+    return JSONResponse(result)
 
 
 @app.post("/api/rung3")
