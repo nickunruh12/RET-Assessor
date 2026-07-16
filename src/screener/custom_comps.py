@@ -635,7 +635,7 @@ def build_custom_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *
     for r in base.get("variance", {}).get("all_diffs", []):
         r["size_dissimilar"] = r.get("parcel_id") in dissimilar
     for sig in base.get("signals", []):
-        if sig.get("key") == "mv_per_gross_sf":
+        if sig.get("key") in ("mv_per_gross_sf", "tax_per_gross_sf"):   # both per-GBA twins
             for p in (sig.get("comp_points") or []):
                 p["size_dissimilar"] = p.get("bbl") in dissimilar
     base["per_sf_size_flag"] = bool(dissimilar)       # enables the size-flag column + chart marks
@@ -644,7 +644,7 @@ def build_custom_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *
         band_pct = f"{size_band * 100:g}"
         borrowed = " (band borrowed from other asset types)" if base["subject_out_of_scope_for_auto"] else ""
         for sig in base.get("signals", []):
-            if sig.get("key") == "mv_per_gross_sf":
+            if sig.get("key") in ("mv_per_gross_sf", "tax_per_gross_sf"):   # both per-GBA twins
                 sig["size_flag_note"] = (
                     f"{n} comp{'s' if n != 1 else ''} {'fall' if n != 1 else 'falls'} outside the "
                     f"±{band_pct}% gross-SF size band relative to the subject{borrowed} and "
