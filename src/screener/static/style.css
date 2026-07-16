@@ -305,6 +305,11 @@ dl dd { margin: 0; color: var(--ink); font-weight: 550; }
 .comp-table:has(th.origin-col), #comp-build-table { table-layout: auto; }
 .comp-table:has(th.origin-col) th, .comp-table:has(th.origin-col) td,
 #comp-build-table th, #comp-build-table td { word-break: normal; overflow-wrap: normal; }
+/* …and the CONTAINER accommodates that natural width: the wrap scrolls horizontally instead of
+   clipping the rightmost column (Phase-In header/values were being cut). Fix the container,
+   never the cell content — digits stay unbroken. Custom-scoped; auto-path .table-wrap keeps
+   overflow:hidden and is untouched. */
+.table-wrap:has(th.origin-col), .table-wrap:has(#comp-build-table) { overflow-x: auto; }
 .origin-usersupplied { color: var(--accent-ink); background: var(--accent-tint); border-color: #cddbf5; }
 .origin-toolselected { color: var(--muted); background: var(--surface); }
 .welcome-coming-soon { font-size: .86rem; color: var(--faint); margin: 0 0 2.5rem;

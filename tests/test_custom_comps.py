@@ -345,3 +345,33 @@ def test_cross_type_composition_note_fires_only_when_present(client, office_comp
         "subject": SUBJECT, "comps": ",".join(office_comps[:4] + [RETAIL_COMP]),
         "fill": "none"}).text
     assert "4 office, 1 cross-type." in out
+
+
+def test_cross_type_three_disclosures_agree_on_mixed_autofilled_set(client, office_comps):
+    """GUARD against vocabulary-mismatch miscounts: the composition note, the per-row
+    comps[].cross_type flags, and the on-entry validate_comp flags must all count the SAME fact,
+    on a set that mixes user-supplied comps (custom vocabulary) with tool-selected fills (auto
+    engine CompRows) — the exact mix that produced '1 office, 7 cross-type' for 7 O4s + 1 hotel."""
+    r = client.post("/api/v1/custom_screen",
+                    json={"subject_bbl": SUBJECT,
+                          "comp_bbls": [office_comps[0], HOTEL], "fill": "autofill"}).json()
+    assert r["comp_source"]["tool_selected_count"] > 0            # precondition: fills present
+    # basis 1: per-row flags in comps[]
+    row_flags = {c["bbl"]: c["cross_type"] for c in r["comps"]}
+    # basis 2: on-entry validate flags, same BBLs
+    entry_flags = {}
+    for bbl in row_flags:
+        v = client.post("/api/v1/custom_validate_comp",
+                        json={"subject_bbl": SUBJECT, "bbl": bbl}).json()
+        entry_flags[bbl] = v["cross_type"] if v.get("valid") else None
+    validated = {b: f for b, f in entry_flags.items() if f is not None}
+    assert all(row_flags[b] == f for b, f in validated.items()), (row_flags, entry_flags)
+    # basis 3: the note's count == the per-row count
+    cross_n = sum(1 for f in row_flags.values() if f)
+    note = r["comp_source"]["cross_type_note"]
+    assert cross_n == 1                                            # only the hotel is cross-type
+    assert note == f"{len(row_flags)} comps: {len(row_flags) - cross_n} office, {cross_n} cross-type."
+    # tool-selected office fills are never cross-type, and asset_type speaks class-words
+    for c in r["comps"]:
+        if c["origin"] == "tool-selected":
+            assert c["cross_type"] is False and c["asset_type"] == "office"

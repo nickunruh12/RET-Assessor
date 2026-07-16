@@ -558,7 +558,8 @@ def build_custom_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *
     # count must not be silent about the mix. Always state composition when ANY cross-type comp
     # is present ("8 comps: 6 office, 2 cross-type."); say nothing when there is none. NO share
     # threshold: the count is a fact, a cutoff would be an unmeasured judgment.
-    cross_n = sum(1 for c in cs.comps if c.bucket != subject_type)
+    # Count by BUILDING CLASS (never c.bucket — mixed vocabularies by origin; see comps[] note).
+    cross_n = sum(1 for c in cs.comps if _asset_type(c.bldg_class) != subject_type)
     if cross_n:
         same_n = cs.count - cross_n
         parts = ([f"{same_n} {subject_type}"] if same_n else []) + [f"{cross_n} cross-type"]
@@ -603,12 +604,17 @@ def build_custom_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *
             p["origin"] = origins.get(p.get("bbl"))
 
     # --- top-level comps[] summary carrying the integrity tags ---
+    # asset_type/cross_type are derived from the BUILDING CLASS, never from c.bucket: bucket
+    # carries different vocabularies by origin (custom rows: 'office'; tool-selected rows reuse
+    # the auto engine's CompRows whose bucket is a product-bucket KEY like 'O4'/'O5_O6'), and
+    # comparing those labels miscounted every tool-selected fill as cross-type. Compare the
+    # underlying fact — the same basis the on-entry validate_comp flag uses.
     base["comps"] = [{
         "bbl": c.citation.parcel_id,
         "origin": origins.get(c.citation.parcel_id),
         "bldg_class": c.bldg_class,
-        "asset_type": c.bucket,
-        "cross_type": c.bucket != subject_type,
+        "asset_type": _asset_type(c.bldg_class),
+        "cross_type": _asset_type(c.bldg_class) != subject_type,
         "land_dominant": c.land_dominant,
         "distance_miles": c.distance_miles,
         "vetted_by_selection_logic": origins.get(c.citation.parcel_id) == TOOL,
