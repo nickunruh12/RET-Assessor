@@ -338,6 +338,11 @@ def custom(request: Request, bbl: str = "", house_number: str = "", street: str 
         if not (house_number.strip() or street.strip()):
             ctx["entry_error"] = "Enter an address"
             return templates.TemplateResponse(request, "custom.html", ctx)
+        # Borough is REQUIRED for address resolution (the ZIP alternative was removed from the
+        # UI) — name the missing field instead of falling through to a generic refusal.
+        if not borough.strip():
+            ctx["entry_error"] = "Select a borough"
+            return templates.TemplateResponse(request, "custom.html", ctx)
     elif via == "bbl":
         house_number = street = borough = zip = ""      # the click disambiguates: BBL only
         if not bbl.strip():

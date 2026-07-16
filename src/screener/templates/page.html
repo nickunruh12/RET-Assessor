@@ -62,14 +62,16 @@
         <legend>Look up by address</legend>
         <input type="text" name="house_number" placeholder="house no." value="{{ form.house_number or '' }}">
         <input type="text" name="street" placeholder="street" value="{{ form.street or '' }}">
-        <select name="borough" aria-label="borough">
+        {# Borough is REQUIRED; the ZIP input was removed — the geocoder only ever used ZIP as a
+           borough substitute (ignored outright when borough was present), so it added no
+           precision and allowed a silent borough/ZIP contradiction. Backend still accepts zip. #}
+        <select name="borough" aria-label="borough" required>
           {% set sel = form.borough or '' %}
-          <option value=""{% if not sel %} selected{% endif %}>borough (optional)</option>
+          <option value=""{% if not sel %} selected{% endif %}>borough</option>
           {% for b in ["Manhattan", "Bronx", "Brooklyn", "Queens", "Staten Island"] %}
           <option value="{{ b }}"{% if sel == b %} selected{% endif %}>{{ b }}</option>
           {% endfor %}
         </select>
-        <input type="text" name="zip" placeholder="or ZIP" value="{{ form.zip or '' }}">
         <button type="submit">Screen address</button>
       </fieldset>
     </form>
