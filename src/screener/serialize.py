@@ -335,6 +335,9 @@ def _signal_distributions(cs: CompSet, rate: float) -> dict[str, list[float]]:
         "tax_bill": [c.curtxbtot * rate for c in cs.comps if c.curtxbtot is not None],
         "mv_per_gross_sf": [c.curmkttot / c.sf for c in cs.comps
                             if c.sf and c.curmkttot is not None and not c.land_dominant],
+        # tax twin of mv_per_gross_sf — same land-dominant exclusion, tax numerator.
+        "tax_per_gross_sf": [c.curtxbtot * rate / c.sf for c in cs.comps
+                             if c.sf and c.curtxbtot is not None and not c.land_dominant],
     }
 
 
@@ -368,6 +371,13 @@ def _signal_comp_points(cs: CompSet, rate: float, *, flag_size_outliers: bool = 
                             None if subj.get("subject_land_dominant") else
                             ((subj.get("curmkttot") / subj.get("sf"))
                              if (subj.get("sf") and subj.get("curmkttot") is not None) else None), "gross_sf"),
+        # tax twin — identical guards (land-dominant comps excluded; subject point withheld when
+        # subject land-dominant), numerator = curtxbtot × rate (the same derived tax figure).
+        "tax_per_gross_sf": (lambda c: (c.curtxbtot * rate / c.sf) if (c.sf and c.curtxbtot is not None) else None,
+                             lambda c: bool(c.sf) and c.curtxbtot is not None and not c.land_dominant,
+                             None if subj.get("subject_land_dominant") else
+                             ((subj.get("curtxbtot") * rate / subj.get("sf"))
+                              if (subj.get("sf") and subj.get("curtxbtot") is not None) else None), "gross_sf"),
     }
     out = {}
     for key, (metric, keep, subj_metric, unit) in specs.items():
@@ -381,7 +391,7 @@ def _signal_comp_points(cs: CompSet, rate: float, *, flag_size_outliers: bool = 
                   "bbl": c.citation.parcel_id, "address": addr or "n/a",
                   "distance": f"{c.distance_miles:.2f} mi",
                   "gap": _phase_in_bucket(c.curacttot, c.curtrntot) or "n/a"}
-            if key == "mv_per_gross_sf" and flag_size_outliers and subj_sf and c.sf is not None:
+            if key in ("mv_per_gross_sf", "tax_per_gross_sf") and flag_size_outliers and subj_sf and c.sf is not None:
                 pt["size_dissimilar"] = c.sf < 0.5 * subj_sf or c.sf > 1.5 * subj_sf
             pts.append(pt)
         out[key] = {
@@ -692,23 +702,27 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
 
     shared = {"radius_used_miles": cs.radius_used_miles, "comp_count": cs.count}
     signals = []
-    for key in ("assessed_value_market", "tax_bill", "mv_per_gross_sf"):
+    # Order pairs each ABSOLUTE chart with its per-GBA (gross building area) twin:
+    # value, value/GBA, tax, tax/GBA. Both per-GBA keys get the identical extras (SF-source
+    # citation, size-dissimilar note, land-dominant disclosure); both tax keys carry the
+    # phase-in caveat (the numerator is the same derived curtxbtot × rate figure).
+    for key in ("assessed_value_market", "mv_per_gross_sf", "tax_bill", "tax_per_gross_sf"):
         extra = dict(shared)
-        if key == "mv_per_gross_sf":
+        if key in ("mv_per_gross_sf", "tax_per_gross_sf"):
             extra["sf_source_label"] = _SF_SOURCE_LABEL.get(cs.subject.get("sf_source"),
                                                             "Based on gross building area")
             if per_sf_size_flag:
                 extra["size_flag_note"] = SIZE_DISSIMILAR_NOTE
             # Land-dominant exclusion disclosure (industrial): fires when 1+ comp was dropped
             # from the per-SF calc. 0 for office/retail -> not added -> byte-identical.
-            n_ld = stats.signals["mv_per_gross_sf"].land_dominant_excluded
+            n_ld = stats.signals[key].land_dominant_excluded
             if n_ld:
                 thr = (criteria.industrial_config or {}).get("coverage_exclusion_threshold", 0.30)
                 extra["land_dominant_note"] = (
                     f"{n_ld} comp{'s' if n_ld != 1 else ''} excluded from per-SF as land-dominant "
                     f"(building covers under {thr:.0%} of lot); still shown in the value "
                     f"distribution and comp table.")
-        if key == "tax_bill":
+        if key in ("tax_bill", "tax_per_gross_sf"):
             extra["caveat"] = TAX_BILL_CAVEAT          # item 4
         extra["comp_points"] = cpoints[key]["comps"]
         extra["subject_point"] = cpoints[key]["subject"]

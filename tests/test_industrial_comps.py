@@ -36,7 +36,7 @@ def _persf(j):
 def test_core_industrial_full_screen_same_subcode(client):
     j = client.get("/api/industrial_screen", params={"bbl": CORE}).json()
     assert j["status"] == "ok"
-    assert [s["key"] for s in j["signals"]] == ["assessed_value_market", "tax_bill", "mv_per_gross_sf"]
+    assert [s["key"] for s in j["signals"]] == ["assessed_value_market", "mv_per_gross_sf", "tax_bill", "tax_per_gross_sf"]
     assert j["subject"]["bucket_label"].startswith("Industrial — F")
     assert j["comp_meta"]["comp_count"] >= 8
     assert j["comp_meta"]["composition"]["exact_count"] >= 1        # same-subcode comps present

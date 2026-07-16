@@ -27,14 +27,15 @@ def test_home_renders_disclaimer(client):
     assert "not a verdict, not tax advice, not an appraisal" in r.text
 
 
-def test_welcome_page_has_blurb_coming_soon_and_get_started(client):
+def test_welcome_page_offers_both_modes(client):
     raw = client.get("/").text
     html = " ".join(raw.split())                                          # normalize line-wraps
     assert "screens a New York City commercial property" in html         # blurb
     assert "no invented numbers and no verdicts" in html
-    assert "Custom comp list" in html and "coming soon" in html          # secondary note
-    assert 'href="/screen?mode=auto_generate"' in raw                    # Get Started -> named mode
-    assert "Get Started" in html
+    # both named modes are live front-door options (custom comps is no longer "coming soon")
+    assert 'href="/screen?mode=auto_generate"' in raw                    # auto-generate mode link
+    assert 'href="/custom"' in raw                                       # custom-comps flow link
+    assert "Auto-generate comps" in html and "Use my own comps" in html
     # welcome is the front door, NOT the screening form (no lookup fields / no property-type select)
     assert 'name="bbl"' not in raw and 'name="borough"' not in raw
 
@@ -90,7 +91,7 @@ def test_dense_subject_full_view(client):
     j = client.get("/api/screen", params={"bbl": "1000090001"}).json()
     assert j["status"] == "ok"
     assert [s["key"] for s in j["signals"]] == \
-        ["assessed_value_market", "tax_bill", "mv_per_gross_sf"]
+        ["assessed_value_market", "mv_per_gross_sf", "tax_bill", "tax_per_gross_sf"]
     assert j["rung3"]["enabled"] is False
     assert j["provenance"]["source_dataset"] == "8y4t-faws"
 
@@ -383,3 +384,26 @@ def test_re_taxes_matches_tax_bill_subject_value(client):
     re_taxes = j["subject"]["real_estate_taxes"]
     tax_sig = next(s for s in j["signals"] if s["key"] == "tax_bill")
     assert abs(re_taxes - tax_sig["subject_value"]) < 1.0
+
+
+def test_tax_per_gba_twin_mirrors_mv_per_gba(client):
+    # The tax-per-GBA chart mirrors the EMV-per-GBA chart exactly: same population filter,
+    # same PLUTO GBA citation, same refusal + land-dominant guards. Labeled GBA, never GLA.
+    j = client.get("/api/screen", params={"bbl": "1000090001"}).json()
+    by = {s["key"]: s for s in j["signals"]}
+    tx, mv = by["tax_per_gross_sf"], by["mv_per_gross_sf"]
+    assert tx["n"] == mv["n"]                                       # same comp filter
+    assert tx["sf_source_label"] == mv["sf_source_label"]           # PLUTO GBA citation
+    assert "Gross Building Area" in tx["label"] and "GLA" not in tx["label"]
+    assert j["provenance"]["signal_fields"]["Tax Bill Per Gross Building Area"].startswith("curtxbtot")
+    # no-SF subject: BOTH twins refuse, same reason
+    n = client.get("/api/screen", params={"bbl": "3053480042"}).json()
+    byn = {s["key"]: s for s in n["signals"]}
+    assert byn["tax_per_gross_sf"]["refused"] and byn["mv_per_gross_sf"]["refused"]
+    assert byn["tax_per_gross_sf"]["refusal_reason"] == byn["mv_per_gross_sf"]["refusal_reason"]
+    # industrial land-dominant comp: both twins exclude it and disclose
+    i = client.get("/api/screen", params={"bbl": "4000690001"}).json()
+    byi = {s["key"]: s for s in i["signals"]}
+    assert (byi["tax_per_gross_sf"]["land_dominant_excluded"]
+            == byi["mv_per_gross_sf"]["land_dominant_excluded"] == 1)
+    assert "land-dominant" in byi["tax_per_gross_sf"]["land_dominant_note"]

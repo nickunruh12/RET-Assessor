@@ -1,0 +1,21 @@
+#!/bin/sh
+# Block direct commits to main. The live site deploys from main, so main only moves via an
+# explicit `git merge dev` when a build-out is validated and ready to go live. Day-to-day work
+# happens on dev (or any feature branch) — this hook only ever fires on main.
+#
+# Installed via a tracked hooks/ dir (see hooks/README.md):  git config core.hooksPath hooks
+# Intentional main commit (rare): bypass with  git commit --no-verify
+
+branch=$(git rev-parse --abbrev-ref HEAD)
+if [ "$branch" = "main" ]; then
+  echo "-----------------------------------------------------------------------"
+  echo "  Direct commits to main are blocked. Work on dev and merge to go live."
+  echo ""
+  echo "    git checkout dev          # do your work here"
+  echo "    git merge --no-ff dev     # (on main) only when a build-out is ready"
+  echo ""
+  echo "  To override this once (not recommended): git commit --no-verify"
+  echo "-----------------------------------------------------------------------"
+  exit 1
+fi
+exit 0

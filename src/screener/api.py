@@ -16,9 +16,11 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from . import config
 from .bootstrap import ensure_db_present
+from .custom_comps import build_custom_screen_view, resolve_subject, validate_comp
 from .comps import select_comps
 from .expense_ratio import run_expense_ratio
 from .geocode import GeoclientConfigError, ResolveResult, _validate_bbl, resolve_address
@@ -200,7 +202,7 @@ def _build_form(con, effective_bbl, typed: dict) -> dict:
 # as a branch in the screen handlers (see the marked fork), NOT a restructure. Property type is
 # ALWAYS measured from the parcel, never user-selected (hard architectural boundary — no type
 # dropdown, ever).
-SCREEN_MODES = ("auto_generate",)          # add "custom_comps" here when that mode ships
+SCREEN_MODES = ("auto_generate", "custom_comps")   # custom_comps has its own /custom flow
 
 
 def _resolve_mode(mode: str) -> str:
@@ -298,6 +300,113 @@ def api_screen(bbl: str = "", house_number: str = "", street: str = "",
         result, _ = _screen_view(con, bbl=bbl, house_number=house_number, street=street,
                                  borough=borough, zip_code=zip, radius=radius)
     return JSONResponse(result or {"status": "no_input"})
+
+
+class CustomScreenRequest(BaseModel):
+    subject_bbl: str
+    comp_bbls: list[str] = []
+    fill: str = "none"                 # "none" (thin/expose options) | "autofill" (fill to 8)
+
+
+@app.post("/api/v1/custom_screen")
+def api_custom_screen(req: CustomScreenRequest):
+    """Manual-override lane: screen a user-supplied comp set (NOT auto-selected). New path — it
+    does not touch _screen_view or the auto-selectors, so /api/screen stays byte-identical."""
+    with _con() as con:
+        result = build_custom_screen_view(
+            con, CRITERIA, JURIS, subject_bbl=req.subject_bbl.strip(),
+            comp_bbls=req.comp_bbls, fill=(req.fill or "none").strip().lower())
+    return JSONResponse(result)
+
+
+@app.get("/custom", response_class=HTMLResponse)
+def custom(request: Request, bbl: str = "", house_number: str = "", street: str = "",
+           borough: str = "", zip: str = "", via: str = ""):
+    """Custom-comps wizard (step 2/3). Resolves the subject with the SAME resolver the auto path
+    uses, then renders the shared subject-facts partial for confirmation + the comp-entry step.
+
+    `via` names the CLICKED button ('address' | 'bbl'): the clicked side is the ONLY input used —
+    the other field is ignored, never a silent fallback. An empty clicked input gets an inline
+    error naming that input. No `via` (deep link / old URL) keeps the permissive behavior."""
+    typed = {"bbl": bbl, "house_number": house_number, "street": street, "borough": borough, "zip": zip}
+    ctx = {"disclaimer": DISCLAIMER, "asset_version": ASSET_VERSION, "typed": typed,
+           "subject": None, "subject_bbl": None, "refusal": None, "entry_error": None,
+           "asset_type": None, "autofill_available": False,
+           "out_of_scope_for_auto": False, "scope_notice": None}
+    if via == "address":
+        bbl = ""                                        # the click disambiguates: address only
+        if not (house_number.strip() or street.strip()):
+            ctx["entry_error"] = "Enter an address"
+            return templates.TemplateResponse(request, "custom.html", ctx)
+    elif via == "bbl":
+        house_number = street = borough = zip = ""      # the click disambiguates: BBL only
+        if not bbl.strip():
+            ctx["entry_error"] = "Enter a BBL"
+            return templates.TemplateResponse(request, "custom.html", ctx)
+    if bbl or house_number or street:
+        with _con() as con:
+            rr = _resolve_input(con, bbl=bbl, house_number=house_number, street=street,
+                                borough=borough, zip_code=zip)
+            resolved = rr.bbl if rr is not None else None
+            if not resolved:
+                ctx["refusal"] = "Could not resolve that input to a parcel. Check the address or BBL."
+            else:
+                r = resolve_subject(con, CRITERIA, JURIS, resolved)
+                if r["status"] == "ok":
+                    ctx.update(subject=r["subject"], subject_bbl=resolved,
+                               asset_type=r["asset_type"], autofill_available=r["autofill_available"],
+                               out_of_scope_for_auto=r["out_of_scope_for_auto"],
+                               scope_notice=r["scope_notice"])
+                else:
+                    ctx["refusal"] = r["message"]
+    return templates.TemplateResponse(request, "custom.html", ctx)
+
+
+class CustomValidateRequest(BaseModel):
+    subject_bbl: str
+    bbl: str = ""                      # comp by BBL …
+    house_number: str = ""             # … or by address (resolved with the same machinery the
+    street: str = ""                   #     auto path uses: _resolve_input -> resolve_address)
+    borough: str = ""
+    zip: str = ""
+    comp_bbls: list[str] = []          # back-compat: comp_bbls[0] honored when bbl/address absent
+
+
+@app.post("/api/v1/custom_validate_comp")
+def api_custom_validate_comp(req: CustomValidateRequest):
+    """Per-comp validation for the wizard: accepts a BBL OR an address; either way the SAME
+    per-comp validation fires on the resolved BBL."""
+    with _con() as con:
+        comp = (req.bbl or (req.comp_bbls[0] if req.comp_bbls else "")).strip()
+        if not comp and (req.house_number.strip() or req.street.strip()):
+            try:
+                rr = _resolve_input(con, bbl="", house_number=req.house_number, street=req.street,
+                                    borough=req.borough, zip_code=req.zip)
+            except GeoclientConfigError as e:
+                return JSONResponse({"bbl": None, "status": "not_found", "valid": False,
+                                     "reason": str(e)})
+            comp = (rr.bbl if rr is not None and rr.bbl else "")
+            if not comp:
+                return JSONResponse({"bbl": None, "status": "not_found", "valid": False,
+                                     "reason": "address not found; no BBL could be resolved"})
+        if not comp:
+            return JSONResponse({"bbl": None, "status": "not_found", "valid": False,
+                                 "reason": "enter a BBL or an address"})
+        return JSONResponse(validate_comp(con, CRITERIA, JURIS, req.subject_bbl.strip(), comp))
+
+
+@app.get("/custom_result", response_class=HTMLResponse)
+def custom_result(request: Request, subject: str = "", comps: str = "", fill: str = "none"):
+    """Render the custom-comps screen through the SHARED output template (page.html). The custom
+    layers (not-vetted stamp, origin column, mix) are gated in the template on product=custom_comps."""
+    comp_bbls = [b.strip() for b in comps.split(",") if b.strip()]
+    with _con() as con:
+        result = build_custom_screen_view(con, CRITERIA, JURIS, subject_bbl=subject.strip(),
+                                          comp_bbls=comp_bbls, fill=(fill or "none").strip().lower())
+    return templates.TemplateResponse(request, "page.html", {
+        "result": result, "disclaimer": DISCLAIMER, "form": {"bbl": subject}, "mode": "custom_comps",
+        "result_json": json.dumps(result, default=str), "asset_version": ASSET_VERSION,
+    })
 
 
 @app.post("/api/rung3")

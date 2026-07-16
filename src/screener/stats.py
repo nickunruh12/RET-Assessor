@@ -165,6 +165,7 @@ def compute_stats(cs: CompSet, criteria: CompCriteria, *, suppress_per_sf: bool 
             "Tax Bill (10.848% Class-4 Rate)": "curtxbtot x 0.10848",
             "Real Estate Taxes (subject)": "curtxbtot x 0.10848",
             "DOF Market Value Per Gross Building Area": "curmkttot / gross building area",
+            "Tax Bill Per Gross Building Area": "curtxbtot x 0.10848 / gross building area",
             "Phase-in gap": "(curacttot - curtrntot) / curacttot",
         },
     }
@@ -185,28 +186,34 @@ def compute_stats(cs: CompSet, criteria: CompCriteria, *, suppress_per_sf: bool 
         subj.get("curtxbtot") * rate if subj.get("curtxbtot") is not None else None,
     )
 
-    # 3. Market value per gross building area — comps with usable gross SF only.
-    #    Per-signal REFUSAL when the SUBJECT has no gross SF (locked $/SF contract).
-    if not subj.get("sf") or suppress_per_sf:
-        if suppress_per_sf and subj.get("sf"):
-            reason = "per_sf_suppressed_mixed_use"
-            note = per_sf_note or ("Per-SF not shown: building's floor area blends retail with "
-                                   "other uses. Assessed-value and tax-bill distributions are "
-                                   "unaffected.")
-        else:
-            reason = "subject_no_gross_building_area"
-            note = ("Market-value-per-SF unavailable, gross building area missing for this "
-                    "parcel. Assessed-value and tax-bill distributions are unaffected.")
-        signals["mv_per_gross_sf"] = SignalStats(
-            key="mv_per_gross_sf",
-            label="Market value per gross building area (curmkttot / gross SF)",
-            unit="$/gross_sf", population="comps with usable gross building area",
-            n=0, excluded_blank=sum(1 for c in comps if not c.sf or c.curmkttot is None),
-            mean=None, median=None, minimum=None, maximum=None, stddev=None,
-            subject_value=None, subject_percentile=None,
-            refused=True, refusal_reason=reason, notes=[note],
-        )
-    else:
+    # 3 + 4. Per-GROSS-BUILDING-AREA twins: market value / GBA and tax bill / GBA. ONE shared
+    #    implementation — the guards (per-signal refusal when the subject has no gross SF or is
+    #    mixed-use, land-dominant comp exclusion + floor guard, subject-land-dominant withholding,
+    #    size-comparable in-band percentile) can never drift between the two. The tax twin simply
+    #    swaps the numerator (curtxbtot × rate, the SAME derived figure as the Tax Bill chart);
+    #    the denominator is PLUTO gross building area for both.
+    def _per_gba_signal(key: str, shown_label: str, refused_label: str,
+                        numerator, subj_num, unavailable_name: str) -> SignalStats:
+        # Per-signal REFUSAL when the SUBJECT has no gross SF (locked $/SF contract).
+        if not subj.get("sf") or suppress_per_sf:
+            if suppress_per_sf and subj.get("sf"):
+                reason = "per_sf_suppressed_mixed_use"
+                note = per_sf_note or ("Per-SF not shown: building's floor area blends retail with "
+                                       "other uses. Assessed-value and tax-bill distributions are "
+                                       "unaffected.")
+            else:
+                reason = "subject_no_gross_building_area"
+                note = (f"{unavailable_name} unavailable, gross building area missing for this "
+                        "parcel. Assessed-value and tax-bill distributions are unaffected.")
+            return SignalStats(
+                key=key,
+                label=refused_label,
+                unit="$/gross_sf", population="comps with usable gross building area",
+                n=0, excluded_blank=sum(1 for c in comps if not c.sf or numerator(c) is None),
+                mean=None, median=None, minimum=None, maximum=None, stddev=None,
+                subject_value=None, subject_percentile=None,
+                refused=True, refusal_reason=reason, notes=[note],
+            )
         # LAND-DOMINANT EXCLUSION (industrial): a comp whose building covers < the exclusion
         # threshold of its lot has a land-driven value, so its per-SF is not comparable — drop
         # it from the per-SF calc ONLY (it stays in the value distribution + comp table). The
@@ -215,7 +222,7 @@ def compute_stats(cs: CompSet, criteria: CompCriteria, *, suppress_per_sf: bool 
         psf_comps = [c for c in comps if not c.land_dominant]
         land_dominant_n = len(comps) - len(psf_comps)
         comp_psf = [
-            (c.curmkttot / c.sf) if (c.sf and c.curmkttot is not None) else None
+            (numerator(c) / c.sf) if (c.sf and numerator(c) is not None) else None
             for c in psf_comps
         ]
         present_n = sum(1 for v in comp_psf if v is not None)
@@ -225,18 +232,18 @@ def compute_stats(cs: CompSet, criteria: CompCriteria, *, suppress_per_sf: bool 
         # in industrial_comps); absent on office/retail subjects -> those never withhold.
         subject_land_dominant = bool(subj.get("subject_land_dominant"))
         subj_psf = (None if subject_land_dominant
-                    else (subj["curmkttot"] / subj["sf"] if subj.get("curmkttot") is not None else None))
+                    else (subj_num / subj["sf"] if subj_num is not None else None))
 
         # FLOOR GUARD (dead code at 0.30 per measurement — insurance for future thresholds):
         # if the exclusion leaves < 5 usable per-SF comps, suppress the per-SF stat via the same
         # per-signal refusal path used for the no-SF case. Gated on an exclusion having occurred,
         # so office/retail (land_dominant_n == 0) can never trip it -> byte-identical.
         if land_dominant_n and present_n < MIN_INBAND_FOR_PER_SF_PERCENTILE:
-            signals["mv_per_gross_sf"] = SignalStats(
-                key="mv_per_gross_sf",
-                label="Market value per gross building area (curmkttot / gross SF)",
+            return SignalStats(
+                key=key,
+                label=refused_label,
                 unit="$/gross_sf", population="comps with usable gross building area",
-                n=0, excluded_blank=sum(1 for c in comps if not c.sf or c.curmkttot is None),
+                n=0, excluded_blank=sum(1 for c in comps if not c.sf or numerator(c) is None),
                 mean=None, median=None, minimum=None, maximum=None, stddev=None,
                 subject_value=None, subject_percentile=None,
                 refused=True, refusal_reason="insufficient_per_sf_after_land_dominant_exclusion",
@@ -244,70 +251,80 @@ def compute_stats(cs: CompSet, criteria: CompCriteria, *, suppress_per_sf: bool 
                        "parcels. Assessed-value and tax-bill distributions are unaffected."],
                 land_dominant_excluded=land_dominant_n,
             )
-        else:
-            sig = _signal_from_pairs(
-                "mv_per_gross_sf", "DOF Market Value Per Gross Building Area",
-                "$/gross_sf", "comps with usable gross building area", comp_psf, subj_psf,
-            )
-            sig.land_dominant_excluded = land_dominant_n
-            sig.notes.append(f"denominator = gross building area; comp SF sources: "
-                             f"{sorted({c.sf_source for c in psf_comps})}")
-            # FIX 1/2 — the per-SF PERCENTILE is computed on SIZE-COMPARABLE comps only (BldgArea
-            # within ±band of the subject) WHEN the band was relaxed — a relaxed pool can pack in
-            # tiny, high-per-SF retail that mechanically drags an honest-looking rank. The
-            # distribution/chart/marking above are unchanged; only this rank number changes. Value
-            # and tax percentiles are untouched (size doesn't corrupt them). Precedence (FIX 3):
-            # this runs only when per-SF is SHOWN — a mixed-use subject is already fully refused
-            # above with its own reason, so the size reason never double-prints.
-            #
-            # Filters STACK: the percentile pool is (in-band, if band-relaxed) AND (not
-            # land-dominant, via psf_comps) — a comp that is in-band but land-dominant is out.
-            # The restriction fires ONLY for K3 (always) or a band-RELAXED set. A band-held set is
-            # already all-in-band, so it keeps its full-pool percentile. Big-box (retail K8 AND
-            # industrial) sets sf_band_relaxed=True — its citywide pool spans a wide size range,
-            # so it DOES get the in-band restriction (a size-dispersed pool suppresses the rank).
-            # Office never relaxes the band, so this whole block is skipped for it (byte-identical).
-            is_k3 = subj.get("retail_category") == "K3_department"
-            if subject_land_dominant:
-                # Subject per-SF already withheld (subj_psf None -> value/percentile None); state
-                # why in the same note slot the percentile uses. No in-band ranking is computed.
-                thr = (criteria.industrial_config or {}).get("coverage_ratio_threshold", 0.30)
-                sig.percentile_note = (f"Subject per-SF withheld: land-dominant (building covers "
-                                       f"under {thr:.0%} of lot).")
-            elif is_k3 or cs.sf_band_relaxed:
-                band = criteria.sf_band
-                subj_sf = subj.get("sf")
-                inband_psf = [
-                    c.curmkttot / c.sf for c in psf_comps
-                    if c.sf and c.curmkttot is not None
-                    and subj_sf * (1 - band) <= c.sf <= subj_sf * (1 + band)
-                ]
-                pct_basis = f"within ±{band * 100:g}% of subject gross building area"
-                if is_k3:
-                    # FIX 2 — a department store's per-SF reads at an extreme against cross-format
-                    # retail; suppressed regardless of in-band count (confirmed NOT subsumed by the
-                    # ≥5 rule — many K3 have ample in-band comps). Chart + distribution stay shown.
-                    sig.subject_percentile = None
-                    sig.percentile_n = len(inband_psf)
-                    sig.percentile_note = ("Percentile not shown: a department store's per-SF sits "
-                                           "at an extreme against cross-format retail, with no true "
-                                           "size-and-format peers. The distribution is shown for "
-                                           "context only.")
-                elif len(inband_psf) >= MIN_INBAND_FOR_PER_SF_PERCENTILE:
-                    sig.subject_percentile = _percentile_rank(inband_psf, subj_psf)
-                    sig.percentile_n = len(inband_psf)
-                    if len(inband_psf) != sig.n:   # disclose only when it differs from the chart n
-                        sig.percentile_note = (f"Percentile computed on {len(inband_psf)} "
-                                               f"size-comparable comps ({pct_basis}); the chart "
-                                               f"shows all {sig.n}.")
-                else:
-                    sig.subject_percentile = None
-                    sig.percentile_n = len(inband_psf)
-                    sig.percentile_note = (f"Percentile not shown: fewer than "
-                                           f"{MIN_INBAND_FOR_PER_SF_PERCENTILE} size-comparable "
-                                           f"comps (only {len(inband_psf)} {pct_basis}). The "
-                                           f"distribution is shown for context only.")
-            signals["mv_per_gross_sf"] = sig
+        sig = _signal_from_pairs(
+            key, shown_label,
+            "$/gross_sf", "comps with usable gross building area", comp_psf, subj_psf,
+        )
+        sig.land_dominant_excluded = land_dominant_n
+        sig.notes.append(f"denominator = gross building area; comp SF sources: "
+                         f"{sorted({c.sf_source for c in psf_comps})}")
+        # FIX 1/2 — the per-SF PERCENTILE is computed on SIZE-COMPARABLE comps only (BldgArea
+        # within ±band of the subject) WHEN the band was relaxed — a relaxed pool can pack in
+        # tiny, high-per-SF retail that mechanically drags an honest-looking rank. The
+        # distribution/chart/marking above are unchanged; only this rank number changes. Value
+        # and tax percentiles are untouched (size doesn't corrupt them). Precedence (FIX 3):
+        # this runs only when per-SF is SHOWN — a mixed-use subject is already fully refused
+        # above with its own reason, so the size reason never double-prints.
+        #
+        # Filters STACK: the percentile pool is (in-band, if band-relaxed) AND (not
+        # land-dominant, via psf_comps) — a comp that is in-band but land-dominant is out.
+        # The restriction fires ONLY for K3 (always) or a band-RELAXED set. A band-held set is
+        # already all-in-band, so it keeps its full-pool percentile. Big-box (retail K8 AND
+        # industrial) sets sf_band_relaxed=True — its citywide pool spans a wide size range,
+        # so it DOES get the in-band restriction (a size-dispersed pool suppresses the rank).
+        # Office never relaxes the band, so this whole block is skipped for it (byte-identical).
+        is_k3 = subj.get("retail_category") == "K3_department"
+        if subject_land_dominant:
+            # Subject per-SF already withheld (subj_psf None -> value/percentile None); state
+            # why in the same note slot the percentile uses. No in-band ranking is computed.
+            thr = (criteria.industrial_config or {}).get("coverage_ratio_threshold", 0.30)
+            sig.percentile_note = (f"Subject per-SF withheld: land-dominant (building covers "
+                                   f"under {thr:.0%} of lot).")
+        elif is_k3 or cs.sf_band_relaxed:
+            band = criteria.sf_band
+            subj_sf = subj.get("sf")
+            inband_psf = [
+                numerator(c) / c.sf for c in psf_comps
+                if c.sf and numerator(c) is not None
+                and subj_sf * (1 - band) <= c.sf <= subj_sf * (1 + band)
+            ]
+            pct_basis = f"within ±{band * 100:g}% of subject gross building area"
+            if is_k3:
+                # FIX 2 — a department store's per-SF reads at an extreme against cross-format
+                # retail; suppressed regardless of in-band count (confirmed NOT subsumed by the
+                # ≥5 rule — many K3 have ample in-band comps). Chart + distribution stay shown.
+                sig.subject_percentile = None
+                sig.percentile_n = len(inband_psf)
+                sig.percentile_note = ("Percentile not shown: a department store's per-SF sits "
+                                       "at an extreme against cross-format retail, with no true "
+                                       "size-and-format peers. The distribution is shown for "
+                                       "context only.")
+            elif len(inband_psf) >= MIN_INBAND_FOR_PER_SF_PERCENTILE:
+                sig.subject_percentile = _percentile_rank(inband_psf, subj_psf)
+                sig.percentile_n = len(inband_psf)
+                if len(inband_psf) != sig.n:   # disclose only when it differs from the chart n
+                    sig.percentile_note = (f"Percentile computed on {len(inband_psf)} "
+                                           f"size-comparable comps ({pct_basis}); the chart "
+                                           f"shows all {sig.n}.")
+            else:
+                sig.subject_percentile = None
+                sig.percentile_n = len(inband_psf)
+                sig.percentile_note = (f"Percentile not shown: fewer than "
+                                       f"{MIN_INBAND_FOR_PER_SF_PERCENTILE} size-comparable "
+                                       f"comps (only {len(inband_psf)} {pct_basis}). The "
+                                       f"distribution is shown for context only.")
+        return sig
+
+    signals["mv_per_gross_sf"] = _per_gba_signal(
+        "mv_per_gross_sf", "DOF Market Value Per Gross Building Area",
+        "Market value per gross building area (curmkttot / gross SF)",
+        lambda c: c.curmkttot, subj.get("curmkttot"), "Market-value-per-SF")
+    signals["tax_per_gross_sf"] = _per_gba_signal(
+        "tax_per_gross_sf", "Tax Bill Per Gross Building Area",
+        "Tax bill per gross building area (curtxbtot × rate / gross SF)",
+        lambda c: (c.curtxbtot * rate) if c.curtxbtot is not None else None,
+        (subj["curtxbtot"] * rate) if subj.get("curtxbtot") is not None else None,
+        "Tax-per-SF")
 
     # 4. Phase-in gap — descriptive: share of actual assessed not yet phased in.
     def gap(act, trn):

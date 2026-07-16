@@ -1,0 +1,13 @@
+      <dl>
+        {% if s.address %}<dt>Address</dt><dd>{{ s.address }}</dd>{% endif %}
+        <dt>BBL</dt><dd>{{ s.bbl }}</dd>
+        <dt>Building Class</dt><dd>{{ s.bldg_class }} ({{ s.bucket_label }})</dd>
+        <dt>Borough / ZIP</dt><dd>{{ s.borough }} · {{ s.zip_code }}</dd>
+        <dt>Gross Building Area</dt>
+        <dd>{% if s.gross_sf %}{{ "{:,.0f}".format(s.gross_sf) }} SF <span class="src">({{ s.sf_source }})</span>{% else %}not reported{% endif %}</dd>
+        <dt>Year Built According to DOF</dt><dd>{% if s.year_built_missing %}not reported{% else %}{{ s.year_built }}{% endif %}</dd>
+        <dt>Estimated Market Value According to DOF</dt><dd>{{ "${:,.0f}".format(s.assessed_market_value) }}</dd>
+        {% if s.real_estate_taxes is not none %}
+        <dt>Real Estate Taxes (Est. From DOF Taxable Value × Rate)</dt><dd>{{ "${:,.0f}".format(s.real_estate_taxes) }}</dd>
+        {% endif %}
+      </dl>

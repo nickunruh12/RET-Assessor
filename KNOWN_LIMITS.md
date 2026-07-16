@@ -163,3 +163,25 @@ cleanly carry per-BBL **vacancy status** and **business activity**. That could p
 **vacancy-status disclosure flag** on retail screens — a disclosure feature, not a comp signal,
 and explicitly **not built in v1**. Recorded so the distinction (disclosure ≠ comparability) is
 not lost.
+
+## Custom comps: parcels without PLUTO coordinates cannot be user comps (measured 2026-07-07)
+
+The per-comp validator requires PLUTO coordinates (distance is measured from the subject), so a
+class-4 parcel with no PLUTO lat/lon is excluded with "no coordinates on record" at entry.
+Measured against the loaded FY2027 class-4 roll + PLUTO 26v1, among otherwise-eligible comps
+(non-condo-rule, positive market value):
+
+- **O/K/F (the screenable types): 8 of 29,055 parcels (~0.03%)** — office 6/7,158 (0.08%,
+  Manhattan office 3/2,477), retail 1/18,652, industrial 1/3,245. A footnote, not a coverage gap.
+- **Other classes: 11,688 of 54,122 (~21.6%)** — dominated by **U-class utility parcels (10,172;
+  rail corridors, transmission)** plus Z-misc (1,361), which PLUTO does not carry as mapped
+  building lots. These are rarely sensible comps for anything.
+
+**No UI disclosure needed**: the per-comp validation surfaces the exclusion on the specific comp
+the moment it is entered — the disclosure is inherent to the flow. Recorded here so the ~20%
+"other" number is never misread as an O/K/F coverage problem.
+
+Related, fixed the same day: non-R-class parcels with lot >= 1001 (air-rights and other
+conventionally high-numbered lots, e.g. 200 Park Ave = 1012809010 at lot 9010 — 62 O/K/F parcels
+citywide) are excluded from comps by the same lot-range rule the auto engine uses, but are NOT
+condo units — their exclusion reason names the lot-range rule, never asserts "condominium."

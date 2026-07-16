@@ -1,0 +1,661 @@
+"""Custom-comps screening — the manual-override lane (contract: docs/api_contracts/custom_comps.md).
+
+The user supplies a subject BBL and their OWN list of comparable BBLs; the tool runs its existing
+stats / variance / provenance machinery on that exact set instead of auto-selecting. It does NOT
+vet the user's comp selection — that is the whole point, and it is disclosed as an explicit field.
+
+NEW PATH. It reuses the engine wholesale (CompRow / CompSet, compute_stats, compute_variance,
+build_screen_view, citations, land-dominant + per-SF suppression) but BYPASSES select_comps. The
+auto-selection engine is untouched: office / retail / industrial `/api/screen` output is
+byte-identical. The one genuinely new mechanism is `select_from_bbls` — building a CompSet directly
+from user-given BBLs, per-comp validation, per-comp origin tagging, and optional hybrid auto-fill.
+"""
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+from datetime import date
+
+from .abatements import icap_bbls
+from .comps import (
+    EARTH_RADIUS_MI,
+    CompRow,
+    CompSet,
+    _rows_to_dicts,
+    select_comps,
+)
+from .industrial_comps import coverage_ratio, select_industrial_comps
+from .jurisdiction import CompCriteria, Jurisdiction
+from .retail_comps import select_retail_comps
+from .schema import Citation
+from .taxable_series import taxable_series
+
+CONTRACT_VERSION = "1.0.0"
+MIN_VALID_COMPS = 2                 # below this we refuse (a distribution needs >= 2 points)
+MIN_COMP_COUNT = 8                  # the auto-engine's minimum; below it we flag / offer auto-fill
+LAND_DOMINANT_THR = 0.30           # matches industrial coverage_exclusion_threshold
+
+NOT_VETTED_STAMP = (
+    "Comparables are user-provided and were NOT screened by the tool's selection logic: no size "
+    "band, distance cap, building-class match, or minimum-count enforcement was applied. The "
+    "statistics describe this exact set as given.")
+RELIABILITY_NOTE = "Distribution statistics are less reliable below the 8-comp minimum."
+
+# Origin tags — the core per-comp integrity field.
+USER = "user-supplied"
+TOOL = "tool-selected"
+
+ORIGIN_STAMP = {
+    USER: "User-supplied comp; not vetted by the tool's selection safeguards.",
+    TOOL: "Tool-selected to reach the 8-comp minimum, matched to the subject.",
+}
+
+
+# --------------------------------------------------------------------------- #
+def _asset_type(bldg_class: str | None) -> str:
+    c = bldg_class or ""
+    if c.startswith("O"):
+        return "office"
+    if c.startswith("K"):
+        return "retail"
+    if c.startswith("F"):
+        return "industrial"
+    return "other"
+
+
+# Plain-English label for a building-class letter — the subject panel's Building Class row must
+# describe what the PARCEL is (e.g. "O4 (Office)", "HB (Hotel)"), never the screening mode.
+_CLASS_LABELS = {
+    "O": "Office", "K": "Retail", "F": "Industrial", "H": "Hotel",
+    "G": "Garage / gas station", "E": "Warehouse", "I": "Health facility", "J": "Theatre",
+    "L": "Loft", "M": "Religious", "N": "Asylum / home", "P": "Public assembly",
+    "Q": "Outdoor recreation", "R": "Condominium", "S": "Mixed residence / store",
+    "T": "Transportation", "U": "Utility", "V": "Vacant land", "W": "Educational",
+    "Y": "Government", "Z": "Miscellaneous",
+}
+
+
+def _class_label(bldg_class: str | None) -> str:
+    return _CLASS_LABELS.get((bldg_class or "")[:1], "Class 4")
+
+
+def _haversine(lat1, lon1, lat2, lon2) -> float:
+    rlat1, rlat2 = math.radians(lat1), math.radians(lat2)
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlon / 2) ** 2
+    return EARTH_RADIUS_MI * 2 * math.asin(math.sqrt(a))
+
+
+def _pull_parcel(con, bbl: str, comp_table: str = "parcels") -> dict | None:
+    rows = _rows_to_dicts(con.execute(f"SELECT * FROM {comp_table} WHERE parcel_id = ?", [bbl]))
+    return rows[0] if rows else None
+
+
+def _in_table(con, table: str, col: str, bbl: str, cast_int: bool = False) -> bool:
+    val = f"TRY_CAST(? AS BIGINT)" if cast_int else "?"
+    return con.execute(f"SELECT 1 FROM {table} WHERE {col} = {val} LIMIT 1", [bbl]).fetchone() is not None
+
+
+# --------------------------------------------------------------------------- #
+@dataclass
+class CompValidation:
+    """Per-comp resolution result — never silent."""
+    bbl: str
+    status: str            # "valid" | "excluded" | "not_found"
+    reason: str | None     # human-readable reason for exclusion / not-found
+    row: dict | None = None
+
+
+CONDO_BILLING_LOT_MIN = 7501       # NYC convention: condo billing shells live at lot 7501+
+CONDO_UNIT_REASON = ("excluded: condominium unit lot — NYC assesses condo value at the unit "
+                     "level on a different basis; not usable as a comp (matches the auto "
+                     "screen's condo exclusion)")
+CONDO_BILLING_REASON = ("excluded: condominium billing lot — the building's value is assessed "
+                        "on its unit lots")
+# Non-R-class parcels with lot >= condo_unit_lot_min (air-rights and other conventionally
+# high-numbered lots, e.g. 200 Park at lot 9010) are NOT condo units — the exclusion still
+# mirrors the auto engine's lot-range comp rule, but the reason must state only what is true.
+HIGH_LOT_RANGE_REASON = ("excluded: lot number in the condominium/air-rights lot range (1001+) — "
+                         "excluded from comps to match the auto screen's comp rules")
+
+
+def _lot_number(bbl: str) -> int | None:
+    try:
+        return int(bbl[6:10])
+    except (ValueError, IndexError):
+        return None
+
+
+def _condo_or_highlot_reason(bldg_class: str | None, lot: int | None,
+                             criteria: CompCriteria) -> str | None:
+    """Split of the auto engine's condo_clause definition (R-class OR lot >= unit-lot min) into
+    TRUTHFUL per-case reasons: R-class IS a condo unit lot; a non-R lot in the 1001+ range is
+    excluded for the lot-range rule, never asserted to be a condo. None = neither applies."""
+    if (bldg_class or "").startswith("R"):
+        return CONDO_UNIT_REASON
+    if lot is not None and lot >= criteria.condo_unit_lot_min:
+        return HIGH_LOT_RANGE_REASON
+    return None
+
+
+def _classify_comp(con, bbl: str, subject_bbl: str, criteria: CompCriteria) -> CompValidation:
+    """Resolve and classify ONE supplied comp BBL. class-4 universe = parcels ∪ parcels_no_sf;
+    all NYC lots = pluto_lots. That lets us honestly distinguish 'not class 4' from 'not found'
+    without a network call (the loaded roll is class-4 only). Condo-rule lots get per-case
+    reasons: R-class unit lots and non-R lot-range lots are both deliberately excluded (mirrors
+    the auto engine's condo_clause) but each message states only what its data supports; a
+    billing shell (lot 7501+) is named as such."""
+    if bbl == subject_bbl:
+        return CompValidation(bbl, "excluded", "excluded: same BBL as the subject")
+    lot = _lot_number(bbl)
+    row = _pull_parcel(con, bbl)
+    if row is not None:
+        # DELIBERATE condo-rule branch: these lots exist in `parcels`, but the auto engine never
+        # uses them as comps (condo_clause) — custom mirrors that, with a truthful reason.
+        reason = _condo_or_highlot_reason(row.get("bldg_class"), lot, criteria)
+        if reason:
+            return CompValidation(bbl, "excluded", reason)
+        if not (row.get("curmkttot") and row["curmkttot"] > 0):
+            return CompValidation(bbl, "excluded", "excluded: non-positive market value (tax-exempt)")
+        if row.get("pluto_latitude") is None or row.get("pluto_longitude") is None:
+            return CompValidation(bbl, "excluded", "excluded: no coordinates on record")
+        return CompValidation(bbl, "valid", None, row)
+    # Not in the usable class-4 table. Distinguish the absent cases locally.
+    if lot is not None and lot >= CONDO_BILLING_LOT_MIN:
+        return CompValidation(bbl, "excluded", CONDO_BILLING_REASON)
+    ns = con.execute("SELECT bldg_class FROM parcels_no_sf WHERE parcel_id = ? LIMIT 1", [bbl]).fetchone()
+    if ns is not None:
+        reason = _condo_or_highlot_reason(ns[0], lot, criteria)
+        if reason:
+            return CompValidation(bbl, "excluded", reason)
+        return CompValidation(bbl, "excluded", "excluded: class 4 but no gross building area on record")
+    prow = con.execute("SELECT pluto_bldgclass FROM pluto_lots WHERE bbl_int = TRY_CAST(? AS BIGINT) LIMIT 1",
+                       [bbl]).fetchone()
+    if prow is not None:
+        # Only claim "condominium" when PLUTO actually says R-class; a non-R lot in the 1001+
+        # range that isn't class 4 keeps the plain (always-true) message.
+        if (prow[0] or "").startswith("R"):
+            return CompValidation(bbl, "excluded", "excluded: condominium lot — not tax class 4")
+        return CompValidation(bbl, "excluded", "excluded: not tax class 4")
+    return CompValidation(bbl, "not_found", "not found in the roll")
+
+
+# --------------------------------------------------------------------------- #
+def _subject_summary(con, juris: Jurisdiction, criteria: CompCriteria, subj: dict) -> dict:
+    """Same shape select_comps builds, so build_screen_view consumes it unchanged. Plus the
+    subject-side land-dominant flag (reused from the industrial path) so a land-dominant subject's
+    own per-SF is withheld."""
+    bbl = subj["parcel_id"]
+    subj_cov = coverage_ratio(subj.get("pluto_bldgarea"), subj.get("pluto_lotarea"))
+    return {
+        "parcel_id": bbl,
+        "bldg_class": subj.get("bldg_class"),
+        "bucket": _asset_type(subj.get("bldg_class")),
+        # Data field: what the building IS ("Office", "Hotel"), never the flow/mode — the page
+        # header already says "Custom comps"; a mode name in a data field would be wrong.
+        "bucket_label": _class_label(subj.get("bldg_class")),
+        "borough": juris.borough_of(bbl),
+        "zip_code": subj.get("zip_code"),
+        "sf": subj.get("sf"),
+        "sf_source": subj.get("sf_source"),
+        "year_built": subj.get("year_built"),
+        "house_number": subj.get("house_number"),
+        "street_name": subj.get("street_name"),
+        "pluto_address": subj.get("pluto_address"),
+        "stories": subj.get("pluto_numfloors"),
+        "latitude": subj.get("pluto_latitude"),
+        "longitude": subj.get("pluto_longitude"),
+        "curmkttot": subj.get("curmkttot"),
+        "curtxbtot": subj.get("curtxbtot"),
+        "curtrntot": subj.get("curtrntot"),
+        "curacttot": subj.get("curacttot"),
+        "pytrntot": subj.get("pytrntot"),
+        "roll_year": subj.get("roll_year"),
+        "has_icap": bool(icap_bbls(con, [bbl])),
+        "taxable_series": taxable_series(con, bbl),
+        "subject_land_dominant": bool(subj_cov is not None and subj_cov < LAND_DOMINANT_THR),
+    }
+
+
+def _comprow_from_parcel(c: dict, subj: dict, subject_class: str | None) -> CompRow:
+    """Build a CompRow from a class-4 parcel row, distance measured from the subject. land_dominant
+    reuses the industrial coverage rule so the shared per-SF exclusion fires automatically."""
+    rd = c["retrieval_date"]
+    cov = coverage_ratio(c.get("pluto_bldgarea"), c.get("pluto_lotarea"))
+    citation = Citation(
+        source_dataset=c["source_dataset"], dataset_version=c["dataset_version"],
+        roll_year=c["roll_year"],
+        retrieval_date=rd if isinstance(rd, date) else date.fromisoformat(str(rd)),
+        parcel_id=c["parcel_id"],
+    )
+    return CompRow(
+        citation=citation,
+        bldg_class=c.get("bldg_class"),
+        bucket=_asset_type(c.get("bldg_class")),
+        # 'exact' means shares the subject's building class; 'adjacent' otherwise. For custom comps
+        # this is informational only (no selection safeguard rode on it).
+        match_type="exact" if c.get("bldg_class") == subject_class else "adjacent",
+        sf=c["sf"],
+        sf_source=c["sf_source"],
+        sf_dataset_version=c.get("pluto_dataset_version"),
+        year_built=c.get("year_built"),
+        house_number=c.get("house_number"),
+        street_name=c.get("street_name"),
+        pluto_address=c.get("pluto_address"),
+        stories=c.get("pluto_numfloors"),
+        distance_miles=round(_haversine(subj["pluto_latitude"], subj["pluto_longitude"],
+                                        c["pluto_latitude"], c["pluto_longitude"]), 4),
+        latitude=c["pluto_latitude"],
+        longitude=c["pluto_longitude"],
+        curmkttot=c.get("curmkttot"),
+        curtxbtot=c.get("curtxbtot"),
+        curtrntot=c.get("curtrntot"),
+        curacttot=c.get("curacttot"),
+        land_dominant=bool(cov is not None and cov < LAND_DOMINANT_THR),
+    )
+
+
+def _autofill_comps(con, criteria, juris, subject_bbl, subject_class, have: set, need: int) -> list[CompRow]:
+    """Fill up to `need` slots with the tool's NORMAL subject-based selection for the subject's
+    asset type. Matches the SUBJECT, never the user's picks. Reuses the auto-selectors' own
+    CompRows (already distance/land-dominant computed vs the subject)."""
+    atype = _asset_type(subject_class)
+    if atype == "office":
+        cs_auto = select_comps(con, subject_bbl, juris, criteria)
+    elif atype == "retail":
+        cs_auto, _ = select_retail_comps(con, subject_bbl, juris, criteria)
+    elif atype == "industrial":
+        cs_auto, _ = select_industrial_comps(con, subject_bbl, juris, criteria)
+    else:
+        return []                       # no auto engine for this asset class
+    if cs_auto.refused:
+        return []
+    picks: list[CompRow] = []
+    for c in cs_auto.comps:
+        pid = c.citation.parcel_id
+        if pid in have or pid == subject_bbl:
+            continue
+        picks.append(c)
+        if len(picks) >= need:
+            break
+    return picks
+
+
+# --------------------------------------------------------------------------- #
+@dataclass
+class CustomMeta:
+    entered_count: int
+    valid_count: int
+    validation: list[CompValidation]
+    origins: dict = field(default_factory=dict)     # parcel_id -> USER | TOOL
+    autofilled: int = 0
+    autofill_available: bool = False
+    fill_mode: str = "none"                          # "none" | "autofill"
+    refused: bool = False
+    refuse_reason: str | None = None
+    refuse_message: str | None = None
+    subject: dict | None = None
+
+
+def select_from_bbls(con, subject_bbl: str, comp_bbls: list[str], criteria: CompCriteria,
+                     juris: Jurisdiction, *, fill: str = "none") -> tuple[CompSet, CustomMeta]:
+    """Build a CompSet from user-given BBLs (no auto-selection), with per-comp validation, origin
+    tagging, and optional hybrid auto-fill to the 8-comp minimum."""
+    # --- subject validation ---
+    subj = _pull_parcel(con, subject_bbl)
+    if subj is None:
+        reason = ("not_class_4" if _in_table(con, "pluto_lots", "bbl_int", subject_bbl, cast_int=True)
+                  else "subject_not_found")
+        msg = ("Subject is not tax class 4 (this tool screens class 4 only)."
+               if reason == "not_class_4" else "No parcel found for the subject BBL.")
+        return (CompSet(subject_bbl, None, [], 0, None, True, {}, note=reason),
+                CustomMeta(0, 0, [], refused=True, refuse_reason=reason, refuse_message=msg))
+    if not (subj.get("curmkttot") and subj["curmkttot"] > 0):
+        return (CompSet(subject_bbl, None, [], 0, None, True, {}, note="subject_tax_exempt"),
+                CustomMeta(0, 0, [], refused=True, refuse_reason="subject_tax_exempt",
+                           refuse_message="Subject is tax-exempt (no positive market value); nothing to compare."))
+    if subj.get("pluto_latitude") is None or subj.get("pluto_longitude") is None:
+        return (CompSet(subject_bbl, None, [], 0, None, True, {}, note="subject_no_coordinates"),
+                CustomMeta(0, 0, [], refused=True, refuse_reason="subject_no_coordinates",
+                           refuse_message="Subject has no coordinates on record; distances can't be computed."))
+
+    subject_class = subj.get("bldg_class")
+    subject_summary = _subject_summary(con, juris, criteria, subj)
+
+    # --- per-comp validation (dedup, drop the subject) ---
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for b in comp_bbls:
+        b = (b or "").strip()
+        if b and b not in seen:
+            seen.add(b)
+            ordered.append(b)
+    validation = [_classify_comp(con, b, subject_bbl, criteria) for b in ordered]
+    valid = [v for v in validation if v.status == "valid"]
+    valid_count = len(valid)
+
+    atype = _asset_type(subject_class)
+    autofill_available = atype in ("office", "retail", "industrial")
+
+    # --- refuse only on the true floor (never on the 8-count) ---
+    if valid_count < MIN_VALID_COMPS:
+        return (CompSet(subject_bbl, subject_summary, [], 0, None, True, {}, note="insufficient_valid_comps"),
+                CustomMeta(len(ordered), valid_count, validation, autofill_available=autofill_available,
+                           fill_mode=fill, refused=True, refuse_reason="insufficient_valid_comps",
+                           refuse_message=(f"Only {valid_count} valid class-4 comp(s) after validation; "
+                                           f"at least {MIN_VALID_COMPS} are needed to form a distribution."),
+                           subject=subject_summary))
+
+    # --- build user comps ---
+    user_rows = [_comprow_from_parcel(v.row, subj, subject_class) for v in valid]
+    origins = {r.citation.parcel_id: USER for r in user_rows}
+    comps = list(user_rows)
+
+    # --- optional hybrid auto-fill to the 8-comp minimum (subject-matched, tagged tool-selected) ---
+    autofilled = 0
+    if fill == "autofill" and valid_count < MIN_COMP_COUNT and autofill_available:
+        have = set(origins)
+        picks = _autofill_comps(con, criteria, juris, subject_bbl, subject_class,
+                                have, MIN_COMP_COUNT - valid_count)
+        for c in picks:
+            origins[c.citation.parcel_id] = TOOL
+        comps += picks
+        autofilled = len(picks)
+
+    # ICAP disclosure tag (one lookup for the set) — same as the auto path.
+    icap = icap_bbls(con, [c.citation.parcel_id for c in comps])
+    for c in comps:
+        c.has_icap = c.citation.parcel_id in icap
+
+    radius_used = round(max((c.distance_miles for c in comps), default=0.0), 4)
+    cs = CompSet(
+        subject_bbl, subject_summary, comps, len(comps), radius_used, False,
+        criteria={"basis": "user_provided", "selection_safeguards_applied": False},
+        candidates_within_cap=len(comps),
+        sf_band_applied=False, sf_band_relaxed=False, fallback_triggered=False,
+        exact_count=sum(1 for c in comps if c.match_type == "exact"),
+        adjacent_count=sum(1 for c in comps if c.match_type == "adjacent"),
+    )
+    meta = CustomMeta(len(ordered), valid_count, validation, origins=origins,
+                      autofilled=autofilled, autofill_available=autofill_available,
+                      fill_mode=fill, subject=subject_summary)
+    return cs, meta
+
+
+# --------------------------------------------------------------------------- #
+def _validation_report(meta: CustomMeta) -> dict:
+    """The per-comp resolution report — every entered BBL accounted for, never silent."""
+    return {
+        "entered_count": meta.entered_count,
+        "valid_count": meta.valid_count,
+        "excluded": [{"bbl": v.bbl, "reason": v.reason}
+                     for v in meta.validation if v.status == "excluded"],
+        "not_found": [{"bbl": v.bbl, "reason": v.reason}
+                      for v in meta.validation if v.status == "not_found"],
+    }
+
+
+IN_SCOPE_TYPES = ("office", "retail", "industrial")
+
+
+def _scope_notice(bldg_class: str | None, asset_type: str) -> str | None:
+    """Explicit, disclosed escape-hatch notice when a custom-mode subject is outside the asset
+    types the auto engine screens (not O/K/F). States: outside auto-scope, may proceed with own
+    comps, auto-fill unavailable, and WHICH calibrated thresholds are borrowed (so it's accurate).
+    No verdict / banned language."""
+    if asset_type in IN_SCOPE_TYPES:
+        return None
+    return (f"This parcel's building class ({bldg_class}) is outside the asset types this version "
+            f"screens automatically (office, retail, and industrial). You can still proceed by "
+            f"supplying your own comparables. Auto-fill to 8 is unavailable for this type — the tool "
+            f"has no comp-selection logic for it — so only the run-as-is path is offered. "
+            f"Two data-quality thresholds are borrowed as-is, calibrated on the types the tool does "
+            f"screen: the land-dominant coverage cutoff (building under 30% of lot, from NYC industrial "
+            f"parcels) is applied to the subject and comps regardless of asset type; and the "
+            f"size-dissimilar marking uses a ±50% gross-SF band (from office and retail) — comps "
+            f"outside it are marked, but the per-SF percentile is still computed on ALL supplied comps "
+            f"with no size restriction. Read the per-SF and coverage disclosures as directional for "
+            f"this property type.")
+
+
+def resolve_subject(con, criteria: CompCriteria, juris: Jurisdiction, subject_bbl: str) -> dict:
+    """Step 2 (confirmation): resolve a class-4 subject and return the SAME subject-panel DATA the
+    auto path renders (serialize._subject_panel) — the single source, so the two paths can't drift."""
+    from .serialize import _subject_panel
+    subj = _pull_parcel(con, subject_bbl)
+    if subj is None:
+        not4 = _in_table(con, "pluto_lots", "bbl_int", subject_bbl, cast_int=True)
+        return {"status": "refused", "reason": "not_class_4" if not4 else "subject_not_found",
+                "message": ("This parcel is not tax class 4 (the tool screens class 4 only)."
+                            if not4 else "No parcel found for that BBL.")}
+    if not (subj.get("curmkttot") and subj["curmkttot"] > 0):
+        return {"status": "refused", "reason": "subject_tax_exempt",
+                "message": "This parcel is tax-exempt (no positive market value); nothing to compare."}
+    if subj.get("pluto_latitude") is None or subj.get("pluto_longitude") is None:
+        return {"status": "refused", "reason": "subject_no_coordinates",
+                "message": "This parcel has no coordinates on record."}
+    summary = _subject_summary(con, juris, criteria, subj)
+    atype = _asset_type(subj.get("bldg_class"))
+    return {"status": "ok", "asset_type": atype,
+            "autofill_available": atype in IN_SCOPE_TYPES,
+            "out_of_scope_for_auto": atype not in IN_SCOPE_TYPES,
+            "scope_notice": _scope_notice(subj.get("bldg_class"), atype),
+            "subject": _subject_panel(summary, None, criteria.class4_tax_rate)}
+
+
+def _size_band_for(subject_class: str | None, criteria: CompCriteria) -> float:
+    """Size-dissimilar marking band by SUBJECT asset type — the single source used by BOTH the
+    per-comp validate endpoint (marks on entry) and the screen post-processing, so the two can
+    never disagree. Office/retail ±50%; industrial ±75%; out-of-scope borrows ±50% (disclosed)."""
+    if _asset_type(subject_class) == "industrial":
+        return (criteria.industrial_config or {}).get("sf_band", 0.75)
+    return criteria.sf_band
+
+
+def validate_comp(con, criteria: CompCriteria, juris: Jurisdiction,
+                  subject_bbl: str, comp_bbl: str) -> dict:
+    """Step 3 (per-comp): resolve + classify ONE comp, returning its status + what it is, so the
+    UI can show the result immediately — including size-dissimilar ON ENTRY (same per-subject-type
+    band the screen uses). Reuses _classify_comp (same rules as the screen)."""
+    v = _classify_comp(con, comp_bbl, subject_bbl, criteria)
+    out = {"bbl": comp_bbl, "status": v.status, "reason": v.reason, "valid": v.status == "valid"}
+    if v.status == "valid":
+        c = v.row
+        subj = _pull_parcel(con, subject_bbl)
+        cov = coverage_ratio(c.get("pluto_bldgarea"), c.get("pluto_lotarea"))
+        addr = (c.get("pluto_address")
+                or " ".join(x for x in (c.get("house_number"), c.get("street_name")) if x).strip()
+                or None)
+        atype = _asset_type(c.get("bldg_class"))
+        subj_sf = subj.get("sf") if subj else None
+        band = _size_band_for(subj.get("bldg_class") if subj else None, criteria)
+        dist = None
+        if subj and subj.get("pluto_latitude") is not None and c.get("pluto_latitude") is not None:
+            dist = round(_haversine(subj["pluto_latitude"], subj["pluto_longitude"],
+                                    c["pluto_latitude"], c["pluto_longitude"]), 2)
+        out.update({
+            "address": addr,
+            "bldg_class": c.get("bldg_class"),
+            "sf": c.get("sf"),
+            "year_built": c.get("year_built"),
+            "distance_miles": dist,
+            "asset_type": atype,
+            "cross_type": bool(subj and atype != _asset_type(subj.get("bldg_class"))),
+            "land_dominant": bool(cov is not None and cov < LAND_DOMINANT_THR),
+            # size-dissimilar ON ENTRY — same band the screen's marking uses (see _size_band_for)
+            "size_dissimilar": bool(subj_sf and c.get("sf") is not None
+                                    and (c["sf"] < (1 - band) * subj_sf or c["sf"] > (1 + band) * subj_sf)),
+            "size_band_pct": f"{band * 100:g}",
+        })
+    return out
+
+
+def build_custom_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *,
+                             subject_bbl: str, comp_bbls: list[str], fill: str = "none") -> dict:
+    """Assemble the custom-comps screen: build a CompSet from the user's BBLs, run the SHARED
+    stats/variance/serialize machinery on it, then stamp origin + the not-vetted flag + options.
+    Reuses build_screen_view wholesale; adds only custom-specific fields."""
+    from .serialize import DISCLAIMER, build_screen_view   # local import avoids a cycle
+
+    cs, meta = select_from_bbls(con, subject_bbl, comp_bbls, criteria, juris, fill=fill)
+
+    # --- refusal: still return the validation report + the not-vetted flag ---
+    if cs.refused:
+        subj = meta.subject
+        return {
+            "status": "refused",
+            "product": "custom_comps",
+            "contract_version": CONTRACT_VERSION,
+            "reason": meta.refuse_reason,
+            "message": meta.refuse_message,
+            "disclaimer": DISCLAIMER,
+            "subject": ({"bbl": subj["parcel_id"], "bldg_class": subj.get("bldg_class"),
+                         "borough": subj.get("borough")} if subj else {"bbl": subject_bbl}),
+            "user_comps_not_vetted": True,
+            "comp_source": {"type": "user_provided", "selection_safeguards_applied": False,
+                            **_validation_report(meta)},
+        }
+
+    # --- reuse the full auto-screen assembly (stats / variance / signals / provenance) ---
+    base = build_screen_view(con, criteria, juris, bbl=subject_bbl, comp_set=cs,
+                             suppress_per_sf=not cs.subject.get("sf"))
+
+    origins = meta.origins
+    subject_type = _asset_type(cs.subject.get("bldg_class"))
+    below_min = meta.valid_count < MIN_COMP_COUNT
+
+    # --- top-level product identity + the unmissable not-vetted flag ---
+    base["product"] = "custom_comps"
+    base["contract_version"] = CONTRACT_VERSION
+    base["user_comps_not_vetted"] = True
+    base["selection_safeguards_applied"] = False
+    # Out-of-scope escape hatch, disclosed as DATA (frontend renders from these, not template logic).
+    base["subject_out_of_scope_for_auto"] = subject_type not in IN_SCOPE_TYPES
+    base["scope_notice"] = _scope_notice(cs.subject.get("bldg_class"), subject_type)
+
+    # --- comp_source block (validation report + safeguards flag + stamp) ---
+    comp_mix = None
+    if meta.autofilled:
+        comp_mix = (f"{cs.count} comps: {meta.valid_count} user-supplied (not vetted by selection "
+                    f"logic), {meta.autofilled} tool-selected to reach the {MIN_COMP_COUNT}-comp minimum.")
+    elif below_min:
+        comp_mix = (f"{meta.valid_count} user-supplied comps (not vetted by selection logic); "
+                    f"below the {MIN_COMP_COUNT}-comp minimum — {RELIABILITY_NOTE.lower()}")
+    base["comp_source"] = {
+        "type": "user_provided",
+        "selection_safeguards_applied": False,
+        "stamp": NOT_VETTED_STAMP,
+        **_validation_report(meta),
+        "user_supplied_count": meta.valid_count,
+        "tool_selected_count": meta.autofilled,
+        "screened_count": cs.count,
+        "distance_miles_max": cs.radius_used_miles,     # FYI only — NOT a cap, NOT a filter
+        "comp_mix": comp_mix,
+    }
+    # Cross-type composition (DECISIONS 2026-07-07): cross-type comps COUNT toward the minimum —
+    # custom means the user selects and the tool discloses, never overrides — but the headline
+    # count must not be silent about the mix. Always state composition when ANY cross-type comp
+    # is present ("8 comps: 6 office, 2 cross-type."); say nothing when there is none. NO share
+    # threshold: the count is a fact, a cutoff would be an unmeasured judgment.
+    # Count by BUILDING CLASS (never c.bucket — mixed vocabularies by origin; see comps[] note).
+    cross_n = sum(1 for c in cs.comps if _asset_type(c.bldg_class) != subject_type)
+    if cross_n:
+        same_n = cs.count - cross_n
+        parts = ([f"{same_n} {subject_type}"] if same_n else []) + [f"{cross_n} cross-type"]
+        base["comp_source"]["cross_type_note"] = f"{cs.count} comps: {', '.join(parts)}."
+    else:
+        base["comp_source"]["cross_type_note"] = None
+    base["thin_set"] = bool(below_min and not meta.autofilled)
+
+    # --- options block: expose BOTH choices when below the 8-comp minimum ---
+    base["options"] = (None if not below_min else {
+        "valid_comp_count": meta.valid_count,
+        "below_min": True,
+        "min_comp_count": MIN_COMP_COUNT,
+        "reliability_note": RELIABILITY_NOTE,
+        "choices": {
+            "thin_run": {
+                "available": True,
+                "description": (f"Screen the {meta.valid_count} user-supplied comps as-is "
+                                f"(labeled a thin set; percentiles less reliable)."),
+            },
+            "autofill": {
+                "available": meta.autofill_available,
+                "description": (f"Auto-fill {MIN_COMP_COUNT - meta.valid_count} tool-selected comps, "
+                                f"matched to the subject (same asset type, size band, and distance "
+                                f"criteria the auto-engine uses), to reach {MIN_COMP_COUNT}."),
+                "unavailable_reason": (None if meta.autofill_available
+                                       else "no auto-selection engine for this asset class"),
+            },
+        },
+    })
+
+    # --- per-comp origin: inject onto every comp the response exposes ---
+    for view in base.get("variance", {}).get("views", []):
+        for r in view.get("rows", []):
+            o = origins.get(r.get("parcel_id"))
+            r["origin"] = o
+            r["origin_note"] = ORIGIN_STAMP.get(o)
+    for r in base.get("variance", {}).get("all_diffs", []):
+        r["origin"] = origins.get(r.get("parcel_id"))
+    for sig in base.get("signals", []):
+        for p in (sig.get("comp_points") or []):
+            p["origin"] = origins.get(p.get("bbl"))
+
+    # --- top-level comps[] summary carrying the integrity tags ---
+    # asset_type/cross_type are derived from the BUILDING CLASS, never from c.bucket: bucket
+    # carries different vocabularies by origin (custom rows: 'office'; tool-selected rows reuse
+    # the auto engine's CompRows whose bucket is a product-bucket KEY like 'O4'/'O5_O6'), and
+    # comparing those labels miscounted every tool-selected fill as cross-type. Compare the
+    # underlying fact — the same basis the on-entry validate_comp flag uses.
+    base["comps"] = [{
+        "bbl": c.citation.parcel_id,
+        "origin": origins.get(c.citation.parcel_id),
+        "bldg_class": c.bldg_class,
+        "asset_type": _asset_type(c.bldg_class),
+        "cross_type": _asset_type(c.bldg_class) != subject_type,
+        "land_dominant": c.land_dominant,
+        "distance_miles": c.distance_miles,
+        "vetted_by_selection_logic": origins.get(c.citation.parcel_id) == TOOL,
+    } for c in cs.comps]
+
+    # --- size-dissimilar MARKING (no suppression): reuse the auto path's size-flag machinery
+    # (r.size_dissimilar / comp_point.size_dissimilar / per_sf_size_flag / size_flag_note) but with
+    # the SUBJECT-type band (office/retail ±50%, industrial ±75%; out-of-scope borrows ±50%, named
+    # in the scope notice). The per-SF percentile is NOT touched — it stays computed on all comps. #
+    subj_sf = cs.subject.get("sf")
+    size_band = _size_band_for(cs.subject.get("bldg_class"), criteria)
+    dissimilar = {c.citation.parcel_id for c in cs.comps
+                  if subj_sf and c.sf is not None
+                  and (c.sf < (1 - size_band) * subj_sf or c.sf > (1 + size_band) * subj_sf)}
+    for view in base.get("variance", {}).get("views", []):
+        for r in view.get("rows", []):
+            r["size_dissimilar"] = r.get("parcel_id") in dissimilar
+    for r in base.get("variance", {}).get("all_diffs", []):
+        r["size_dissimilar"] = r.get("parcel_id") in dissimilar
+    for sig in base.get("signals", []):
+        if sig.get("key") in ("mv_per_gross_sf", "tax_per_gross_sf"):   # both per-GBA twins
+            for p in (sig.get("comp_points") or []):
+                p["size_dissimilar"] = p.get("bbl") in dissimilar
+    base["per_sf_size_flag"] = bool(dissimilar)       # enables the size-flag column + chart marks
+    if dissimilar:
+        n = len(dissimilar)
+        band_pct = f"{size_band * 100:g}"
+        borrowed = " (band borrowed from other asset types)" if base["subject_out_of_scope_for_auto"] else ""
+        for sig in base.get("signals", []):
+            if sig.get("key") in ("mv_per_gross_sf", "tax_per_gross_sf"):   # both per-GBA twins
+                sig["size_flag_note"] = (
+                    f"{n} comp{'s' if n != 1 else ''} {'fall' if n != 1 else 'falls'} outside the "
+                    f"±{band_pct}% gross-SF size band relative to the subject{borrowed} and "
+                    f"{'are' if n != 1 else 'is'} marked below. The per-SF percentile is computed on "
+                    f"all supplied comps regardless — no size restriction is applied.")
+        base["size_flag_title"] = (f"BldgArea outside ±{band_pct}% of the subject; user-supplied comp, "
+                                   f"percentile not size-restricted")
+
+    # --- comp_meta: mark the basis so no selection chrome is inferred ---
+    if isinstance(base.get("comp_meta"), dict):
+        base["comp_meta"]["basis"] = "user_provided"
+        base["comp_meta"]["selection_safeguards_applied"] = False
+
+    return base
