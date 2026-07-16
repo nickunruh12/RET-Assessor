@@ -97,6 +97,11 @@ CONDO_UNIT_REASON = ("excluded: condominium unit lot — NYC assesses condo valu
                      "screen's condo exclusion)")
 CONDO_BILLING_REASON = ("excluded: condominium billing lot — the building's value is assessed "
                         "on its unit lots")
+# Non-R-class parcels with lot >= condo_unit_lot_min (air-rights and other conventionally
+# high-numbered lots, e.g. 200 Park at lot 9010) are NOT condo units — the exclusion still
+# mirrors the auto engine's lot-range comp rule, but the reason must state only what is true.
+HIGH_LOT_RANGE_REASON = ("excluded: lot number in the condominium/air-rights lot range (1001+) — "
+                         "excluded from comps to match the auto screen's comp rules")
 
 
 def _lot_number(bbl: str) -> int | None:
@@ -106,27 +111,35 @@ def _lot_number(bbl: str) -> int | None:
         return None
 
 
-def _is_condo_lot(bldg_class: str | None, lot: int | None, criteria: CompCriteria) -> bool:
-    """Same condo definition the auto engine's condo_clause uses: R-class OR lot >= unit-lot min."""
-    return bool((bldg_class or "").startswith("R")
-                or (lot is not None and lot >= criteria.condo_unit_lot_min))
+def _condo_or_highlot_reason(bldg_class: str | None, lot: int | None,
+                             criteria: CompCriteria) -> str | None:
+    """Split of the auto engine's condo_clause definition (R-class OR lot >= unit-lot min) into
+    TRUTHFUL per-case reasons: R-class IS a condo unit lot; a non-R lot in the 1001+ range is
+    excluded for the lot-range rule, never asserted to be a condo. None = neither applies."""
+    if (bldg_class or "").startswith("R"):
+        return CONDO_UNIT_REASON
+    if lot is not None and lot >= criteria.condo_unit_lot_min:
+        return HIGH_LOT_RANGE_REASON
+    return None
 
 
 def _classify_comp(con, bbl: str, subject_bbl: str, criteria: CompCriteria) -> CompValidation:
     """Resolve and classify ONE supplied comp BBL. class-4 universe = parcels ∪ parcels_no_sf;
     all NYC lots = pluto_lots. That lets us honestly distinguish 'not class 4' from 'not found'
-    without a network call (the loaded roll is class-4 only). Condo lots get their own reasons:
-    a class-4 condo UNIT lot is deliberately excluded (mirrors the auto engine's condo_clause,
-    never incidental), and a billing shell (lot 7501+) is named as such."""
+    without a network call (the loaded roll is class-4 only). Condo-rule lots get per-case
+    reasons: R-class unit lots and non-R lot-range lots are both deliberately excluded (mirrors
+    the auto engine's condo_clause) but each message states only what its data supports; a
+    billing shell (lot 7501+) is named as such."""
     if bbl == subject_bbl:
         return CompValidation(bbl, "excluded", "excluded: same BBL as the subject")
     lot = _lot_number(bbl)
     row = _pull_parcel(con, bbl)
     if row is not None:
-        # DELIBERATE condo branch: class-4 condo unit lots exist in `parcels`, but the auto engine
-        # never uses them as comps (condo_clause) — custom mirrors that, with the reason stated.
-        if _is_condo_lot(row.get("bldg_class"), lot, criteria):
-            return CompValidation(bbl, "excluded", CONDO_UNIT_REASON)
+        # DELIBERATE condo-rule branch: these lots exist in `parcels`, but the auto engine never
+        # uses them as comps (condo_clause) — custom mirrors that, with a truthful reason.
+        reason = _condo_or_highlot_reason(row.get("bldg_class"), lot, criteria)
+        if reason:
+            return CompValidation(bbl, "excluded", reason)
         if not (row.get("curmkttot") and row["curmkttot"] > 0):
             return CompValidation(bbl, "excluded", "excluded: non-positive market value (tax-exempt)")
         if row.get("pluto_latitude") is None or row.get("pluto_longitude") is None:
@@ -137,13 +150,16 @@ def _classify_comp(con, bbl: str, subject_bbl: str, criteria: CompCriteria) -> C
         return CompValidation(bbl, "excluded", CONDO_BILLING_REASON)
     ns = con.execute("SELECT bldg_class FROM parcels_no_sf WHERE parcel_id = ? LIMIT 1", [bbl]).fetchone()
     if ns is not None:
-        if _is_condo_lot(ns[0], lot, criteria):
-            return CompValidation(bbl, "excluded", CONDO_UNIT_REASON)
+        reason = _condo_or_highlot_reason(ns[0], lot, criteria)
+        if reason:
+            return CompValidation(bbl, "excluded", reason)
         return CompValidation(bbl, "excluded", "excluded: class 4 but no gross building area on record")
     prow = con.execute("SELECT pluto_bldgclass FROM pluto_lots WHERE bbl_int = TRY_CAST(? AS BIGINT) LIMIT 1",
                        [bbl]).fetchone()
     if prow is not None:
-        if (prow[0] or "").startswith("R") or _is_condo_lot(None, lot, criteria):
+        # Only claim "condominium" when PLUTO actually says R-class; a non-R lot in the 1001+
+        # range that isn't class 4 keeps the plain (always-true) message.
+        if (prow[0] or "").startswith("R"):
             return CompValidation(bbl, "excluded", "excluded: condominium lot — not tax class 4")
         return CompValidation(bbl, "excluded", "excluded: not tax class 4")
     return CompValidation(bbl, "not_found", "not found in the roll")

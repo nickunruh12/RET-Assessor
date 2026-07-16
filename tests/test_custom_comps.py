@@ -301,3 +301,15 @@ def test_condo_unit_lot_deliberate_branch(client):
 def test_plain_non_class4_keeps_generic_message(client):
     v = _validate(client, bbl=NON_CLASS4)
     assert v["reason"] == "excluded: not tax class 4"
+
+
+def test_non_r_highlot_gets_lot_range_reason_not_condo_label(client):
+    # 200 Park (1012809010): non-R class, lot 9010 — excluded by the auto engine's lot-range
+    # rule, but it is NOT a condo unit, and the reason must not claim it is.
+    v = _validate(client, bbl="1012809010")
+    assert v["status"] == "excluded"
+    assert "condominium unit lot" not in v["reason"]
+    assert "lot range (1001+)" in v["reason"] and "auto screen's comp rules" in v["reason"]
+    # while the R-class unit lot keeps the true condo-unit message
+    u = _validate(client, bbl="1012801001")
+    assert "condominium unit lot" in u["reason"]
