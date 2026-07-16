@@ -109,6 +109,7 @@
       <p class="not-vetted-stamp"><strong>User-provided comparables — not screened by the tool's selection logic.</strong>
         {{ result.comp_source.stamp }}</p>
       {% if result.comp_source.comp_mix %}<p class="comp-mix">{{ result.comp_source.comp_mix }}</p>{% endif %}
+      {% if result.comp_source.cross_type_note %}<p class="comp-mix">{{ result.comp_source.cross_type_note }}</p>{% endif %}
     </section>
     {%- endif %}
     <!-- 2. Subject parcel -->

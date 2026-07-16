@@ -321,14 +321,28 @@ def api_custom_screen(req: CustomScreenRequest):
 
 @app.get("/custom", response_class=HTMLResponse)
 def custom(request: Request, bbl: str = "", house_number: str = "", street: str = "",
-           borough: str = "", zip: str = ""):
+           borough: str = "", zip: str = "", via: str = ""):
     """Custom-comps wizard (step 2/3). Resolves the subject with the SAME resolver the auto path
-    uses, then renders the shared subject-facts partial for confirmation + the comp-entry step."""
+    uses, then renders the shared subject-facts partial for confirmation + the comp-entry step.
+
+    `via` names the CLICKED button ('address' | 'bbl'): the clicked side is the ONLY input used —
+    the other field is ignored, never a silent fallback. An empty clicked input gets an inline
+    error naming that input. No `via` (deep link / old URL) keeps the permissive behavior."""
     typed = {"bbl": bbl, "house_number": house_number, "street": street, "borough": borough, "zip": zip}
     ctx = {"disclaimer": DISCLAIMER, "asset_version": ASSET_VERSION, "typed": typed,
-           "subject": None, "subject_bbl": None, "refusal": None,
+           "subject": None, "subject_bbl": None, "refusal": None, "entry_error": None,
            "asset_type": None, "autofill_available": False,
            "out_of_scope_for_auto": False, "scope_notice": None}
+    if via == "address":
+        bbl = ""                                        # the click disambiguates: address only
+        if not (house_number.strip() or street.strip()):
+            ctx["entry_error"] = "Enter an address"
+            return templates.TemplateResponse(request, "custom.html", ctx)
+    elif via == "bbl":
+        house_number = street = borough = zip = ""      # the click disambiguates: BBL only
+        if not bbl.strip():
+            ctx["entry_error"] = "Enter a BBL"
+            return templates.TemplateResponse(request, "custom.html", ctx)
     if bbl or house_number or street:
         with _con() as con:
             rr = _resolve_input(con, bbl=bbl, house_number=house_number, street=street,

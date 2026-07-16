@@ -91,16 +91,27 @@
     }
   }
 
-  async function addComp() {
-    const body = {
-      subject_bbl: subjectBbl,
-      bbl: (bblInput.value || "").trim(),
-      house_number: (houseInput.value || "").trim(),
-      street: (streetInput.value || "").trim(),
-      borough: boroSelect.value || "",
-    };
-    if (!body.bbl && !(body.house_number || body.street)) return;
-    if (body.bbl && entered.has(body.bbl)) { bblInput.value = ""; return; }
+  const errEl = document.getElementById("comp-entry-error");
+  function showError(msg) { errEl.textContent = msg; errEl.hidden = false; }
+  function clearError() { errEl.textContent = ""; errEl.hidden = true; }
+
+  // The CLICKED button determines the input source: 'address' sends ONLY the address fields,
+  // 'bbl' sends ONLY the BBL — the other side is ignored, never a silent fallback. An empty
+  // clicked input gets an inline error naming that input.
+  async function addComp(source) {
+    clearError();
+    const body = { subject_bbl: subjectBbl };
+    if (source === "address") {
+      const house = (houseInput.value || "").trim();
+      const street = (streetInput.value || "").trim();
+      if (!house && !street) { showError("Enter an address"); return; }
+      body.house_number = house; body.street = street; body.borough = boroSelect.value || "";
+    } else {
+      const bbl = (bblInput.value || "").trim();
+      if (!bbl) { showError("Enter a BBL"); return; }
+      if (entered.has(bbl)) { bblInput.value = ""; return; }
+      body.bbl = bbl;
+    }
     setAddDisabled(true);
     try {
       const r = await fetch("/api/v1/custom_validate_comp", {
@@ -113,6 +124,9 @@
       renderRow(v);
       if (v.valid) valid.push(v.bbl);
       refreshControls();
+      // success: clear ONLY the inputs that were used; the other side keeps whatever was typed
+      if (source === "address") { houseInput.value = ""; streetInput.value = ""; }
+      else { bblInput.value = ""; }
     } catch (e) {
       const tr = document.createElement("tr");
       tr.className = "comp-row-rejected";
@@ -120,8 +134,7 @@
       listEl.appendChild(tr);
     } finally {
       setAddDisabled(false);
-      bblInput.value = ""; houseInput.value = ""; streetInput.value = "";
-      bblInput.focus();
+      (source === "address" ? houseInput : bblInput).focus();
     }
   }
 
@@ -130,9 +143,10 @@
     window.location = "/custom_result?" + params.toString();
   }
 
-  addBtns.forEach(b => b.addEventListener("click", addComp));
-  [bblInput, houseInput, streetInput].forEach(el =>
-    el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addComp(); } }));
+  addBtns.forEach(b => b.addEventListener("click", () => addComp(b.dataset.source || "bbl")));
+  bblInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addComp("bbl"); } });
+  [houseInput, streetInput].forEach(el =>
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addComp("address"); } }));
   document.getElementById("run-thin").addEventListener("click", () => go("none"));
   autofillBtn.addEventListener("click", () => go("autofill"));
   document.getElementById("run-full").addEventListener("click", () => go("none"));

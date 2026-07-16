@@ -407,3 +407,16 @@ Verified: condo (RG 3024131120), vacant (V1), garage (G7), utility (U0) all stil
 retail (1000650004) byte-identical. Core/big-box/Manhattan/F8 F-codes render the full industrial
 screen on public /screen. `/api/screen` == `/api/industrial_screen` byte-for-byte for 3000320029
 (locked by test). Public v1 scope is now office + retail + industrial.
+
+## 2026-07-07 — LOCKED: custom-comps cross-type composition is stated, never thresholded
+
+Cross-type comps (a comp whose asset type differs from the subject's) COUNT toward the 8-comp
+minimum in custom mode — custom means the user selects and the tool discloses, it never
+overrides. But the headline count must not be silent about the mix: whenever ANY cross-type
+comp is present, the result states the set-level composition as a fact
+("8 comps: 6 office, 2 cross-type."); when none is present, nothing is shown.
+
+Deliberately NO share threshold and NO warning tier: nothing measurable says at what share a
+cross-type mix becomes misleading, so stating the count is a fact while a cutoff would be an
+unmeasured judgment. Rendered in the custom banner and carried in the API as
+comp_source.cross_type_note (null when no cross-type comp).

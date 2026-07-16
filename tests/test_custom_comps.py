@@ -313,3 +313,35 @@ def test_non_r_highlot_gets_lot_range_reason_not_condo_label(client):
     # while the R-class unit lot keeps the true condo-unit message
     u = _validate(client, bbl="1012801001")
     assert "condominium unit lot" in u["reason"]
+
+
+# --- Clicked button determines input source; cross-type composition note ---------------------
+def test_subject_via_bbl_ignores_address_fields(client):
+    # both sides filled: via=bbl resolves ONLY the BBL (address fields ignored, not a fallback)
+    both = {"house_number": "245", "street": "Park Avenue", "borough": "Manhattan",
+            "bbl": HOTEL, "via": "bbl"}
+    h = client.get("/custom", params=both).text
+    assert f"<dt>BBL</dt><dd>{HOTEL}</dd>" in h
+
+
+def test_empty_clicked_input_gives_inline_error_no_fallback(client):
+    # via=bbl with an empty BBL: inline error naming the input, and the filled address is NOT used
+    h = client.get("/custom", params={"house_number": "245", "street": "Park Avenue",
+                                      "borough": "Manhattan", "bbl": "", "via": "bbl"}).text
+    assert ">Enter a BBL<" in h and "<dt>BBL</dt>" not in h
+    # via=address with empty address: inline error, and the filled BBL is NOT used
+    h2 = client.get("/custom", params={"house_number": "", "street": "", "bbl": HOTEL,
+                                       "via": "address"}).text
+    assert ">Enter an address<" in h2 and "<dt>BBL</dt>" not in h2
+
+
+def test_cross_type_composition_note_fires_only_when_present(client, office_comps):
+    mixed = _screen(client, office_comps[:4] + [RETAIL_COMP])
+    clean = _screen(client, office_comps[:5])
+    assert mixed["comp_source"]["cross_type_note"] == "5 comps: 4 office, 1 cross-type."
+    assert clean["comp_source"]["cross_type_note"] is None
+    # and it renders in the output HTML for the mixed set only
+    out = client.get("/custom_result", params={
+        "subject": SUBJECT, "comps": ",".join(office_comps[:4] + [RETAIL_COMP]),
+        "fill": "none"}).text
+    assert "4 office, 1 cross-type." in out

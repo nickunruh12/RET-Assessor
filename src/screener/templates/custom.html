@@ -21,6 +21,9 @@
   <!-- STEP 2 — subject entry + confirmation -->
   <section class="custom-step">
     <h2>1 · Subject parcel</h2>
+    {# The CLICKED button determines the input source (via=address | via=bbl): the address button
+       resolves ONLY the address fields, the BBL button ONLY the BBL — no precedence rule, no
+       field-clearing. An empty clicked input gets an inline error naming that input. #}
     <form class="lookup" method="get" action="/custom">
       <fieldset>
         <legend>Look up the subject by address</legend>
@@ -33,15 +36,18 @@
           <option value="{{ b }}"{% if sel == b %} selected{% endif %}>{{ b }}</option>
           {% endfor %}
         </select>
-        <button type="submit">Resolve subject</button>
+        <button type="submit" name="via" value="address">Resolve subject</button>
       </fieldset>
       <fieldset>
         <legend>or by BBL</legend>
         <input type="text" name="bbl" placeholder="10-digit BBL" value="{{ typed.bbl or '' }}">
-        <button type="submit">Resolve subject</button>
+        <button type="submit" name="via" value="bbl">Resolve subject</button>
       </fieldset>
     </form>
 
+    {% if entry_error %}
+    <p class="entry-error">{{ entry_error }}</p>
+    {% endif %}
     {% if refusal %}
     <p class="refusal-msg">{{ refusal }}</p>
     {% endif %}
@@ -82,14 +88,15 @@
           <option value="{{ b }}">{{ b }}</option>
           {% endfor %}
         </select>
-        <button type="submit" class="comp-add-btn">Add comp</button>
+        <button type="submit" class="comp-add-btn" data-source="address">Add comp</button>
       </fieldset>
       <fieldset>
         <legend>or by BBL</legend>
         <input type="text" id="comp-bbl" placeholder="10-digit BBL">
-        <button type="submit" id="comp-add" class="comp-add-btn">Add comp</button>
+        <button type="submit" id="comp-add" class="comp-add-btn" data-source="bbl">Add comp</button>
       </fieldset>
     </form>
+    <p id="comp-entry-error" class="entry-error" hidden></p>
 
     <div id="comp-list-wrap">
       <p class="comp-count-line">Valid comps: <strong id="valid-count">0</strong>

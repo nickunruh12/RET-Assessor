@@ -553,6 +553,18 @@ def build_custom_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *
         "distance_miles_max": cs.radius_used_miles,     # FYI only — NOT a cap, NOT a filter
         "comp_mix": comp_mix,
     }
+    # Cross-type composition (DECISIONS 2026-07-07): cross-type comps COUNT toward the minimum —
+    # custom means the user selects and the tool discloses, never overrides — but the headline
+    # count must not be silent about the mix. Always state composition when ANY cross-type comp
+    # is present ("8 comps: 6 office, 2 cross-type."); say nothing when there is none. NO share
+    # threshold: the count is a fact, a cutoff would be an unmeasured judgment.
+    cross_n = sum(1 for c in cs.comps if c.bucket != subject_type)
+    if cross_n:
+        same_n = cs.count - cross_n
+        parts = ([f"{same_n} {subject_type}"] if same_n else []) + [f"{cross_n} cross-type"]
+        base["comp_source"]["cross_type_note"] = f"{cs.count} comps: {', '.join(parts)}."
+    else:
+        base["comp_source"]["cross_type_note"] = None
     base["thin_set"] = bool(below_min and not meta.autofilled)
 
     # --- options block: expose BOTH choices when below the 8-comp minimum ---
