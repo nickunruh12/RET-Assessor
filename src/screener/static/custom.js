@@ -105,6 +105,9 @@
       const house = (houseInput.value || "").trim();
       const street = (streetInput.value || "").trim();
       if (!house && !street) { showError("Enter an address"); return; }
+      // Borough is REQUIRED for address resolution (no ZIP alternative in the UI) — name the
+      // missing field instead of letting the resolver return a vague not-found.
+      if (!boroSelect.value) { showError("Select a borough"); return; }
       body.house_number = house; body.street = street; body.borough = boroSelect.value || "";
     } else {
       const bbl = (bblInput.value || "").trim();

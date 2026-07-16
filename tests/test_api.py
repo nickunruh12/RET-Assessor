@@ -183,7 +183,9 @@ def test_form_populates_address_for_bbl_entered(client):
     assert _field(html, "house_number") == "230"
     assert _field(html, "street") == "PARK AVENUE"
     assert _field(html, "borough") == "Manhattan"
-    assert _field(html, "zip") == "10169"
+    # ZIP input deliberately removed (geocoder only ever used it as a borough substitute,
+    # ignored when borough was present); borough is now the single, required disambiguator.
+    assert _field(html, "zip") is None
 
 
 def test_form_persists_address_on_radius_rerun_bbl_only(client):

@@ -29,9 +29,11 @@
         <legend>Look up the subject by address</legend>
         <input type="text" name="house_number" placeholder="house no." value="{{ typed.house_number or '' }}">
         <input type="text" name="street" placeholder="street" value="{{ typed.street or '' }}">
-        <select name="borough" aria-label="borough">
+        {# Borough is REQUIRED (no ZIP alternative here, and the old "(optional)" label was false:
+           a blank borough refused with missing_inputs). Enforced in the /custom handler too. #}
+        <select name="borough" aria-label="borough" required>
           {% set sel = typed.borough or '' %}
-          <option value=""{% if not sel %} selected{% endif %}>borough (optional)</option>
+          <option value=""{% if not sel %} selected{% endif %}>borough</option>
           {% for b in ["Manhattan","Bronx","Brooklyn","Queens","Staten Island"] %}
           <option value="{{ b }}"{% if sel == b %} selected{% endif %}>{{ b }}</option>
           {% endfor %}
@@ -83,7 +85,7 @@
         <input type="text" id="comp-house" placeholder="house no.">
         <input type="text" id="comp-street" placeholder="street">
         <select id="comp-borough" aria-label="comp borough">
-          <option value="" selected>borough (optional)</option>
+          <option value="" selected>borough</option>
           {% for b in ["Manhattan","Bronx","Brooklyn","Queens","Staten Island"] %}
           <option value="{{ b }}">{{ b }}</option>
           {% endfor %}
