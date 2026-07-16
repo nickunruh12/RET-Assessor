@@ -91,23 +91,60 @@ class CompValidation:
     row: dict | None = None
 
 
-def _classify_comp(con, bbl: str, subject_bbl: str) -> CompValidation:
+CONDO_BILLING_LOT_MIN = 7501       # NYC convention: condo billing shells live at lot 7501+
+CONDO_UNIT_REASON = ("excluded: condominium unit lot — NYC assesses condo value at the unit "
+                     "level on a different basis; not usable as a comp (matches the auto "
+                     "screen's condo exclusion)")
+CONDO_BILLING_REASON = ("excluded: condominium billing lot — the building's value is assessed "
+                        "on its unit lots")
+
+
+def _lot_number(bbl: str) -> int | None:
+    try:
+        return int(bbl[6:10])
+    except (ValueError, IndexError):
+        return None
+
+
+def _is_condo_lot(bldg_class: str | None, lot: int | None, criteria: CompCriteria) -> bool:
+    """Same condo definition the auto engine's condo_clause uses: R-class OR lot >= unit-lot min."""
+    return bool((bldg_class or "").startswith("R")
+                or (lot is not None and lot >= criteria.condo_unit_lot_min))
+
+
+def _classify_comp(con, bbl: str, subject_bbl: str, criteria: CompCriteria) -> CompValidation:
     """Resolve and classify ONE supplied comp BBL. class-4 universe = parcels ∪ parcels_no_sf;
     all NYC lots = pluto_lots. That lets us honestly distinguish 'not class 4' from 'not found'
-    without a network call (the loaded roll is class-4 only)."""
+    without a network call (the loaded roll is class-4 only). Condo lots get their own reasons:
+    a class-4 condo UNIT lot is deliberately excluded (mirrors the auto engine's condo_clause,
+    never incidental), and a billing shell (lot 7501+) is named as such."""
     if bbl == subject_bbl:
         return CompValidation(bbl, "excluded", "excluded: same BBL as the subject")
+    lot = _lot_number(bbl)
     row = _pull_parcel(con, bbl)
     if row is not None:
+        # DELIBERATE condo branch: class-4 condo unit lots exist in `parcels`, but the auto engine
+        # never uses them as comps (condo_clause) — custom mirrors that, with the reason stated.
+        if _is_condo_lot(row.get("bldg_class"), lot, criteria):
+            return CompValidation(bbl, "excluded", CONDO_UNIT_REASON)
         if not (row.get("curmkttot") and row["curmkttot"] > 0):
             return CompValidation(bbl, "excluded", "excluded: non-positive market value (tax-exempt)")
         if row.get("pluto_latitude") is None or row.get("pluto_longitude") is None:
             return CompValidation(bbl, "excluded", "excluded: no coordinates on record")
         return CompValidation(bbl, "valid", None, row)
-    # Not in the usable class-4 table. Distinguish the three absent cases locally.
-    if _in_table(con, "parcels_no_sf", "parcel_id", bbl):
+    # Not in the usable class-4 table. Distinguish the absent cases locally.
+    if lot is not None and lot >= CONDO_BILLING_LOT_MIN:
+        return CompValidation(bbl, "excluded", CONDO_BILLING_REASON)
+    ns = con.execute("SELECT bldg_class FROM parcels_no_sf WHERE parcel_id = ? LIMIT 1", [bbl]).fetchone()
+    if ns is not None:
+        if _is_condo_lot(ns[0], lot, criteria):
+            return CompValidation(bbl, "excluded", CONDO_UNIT_REASON)
         return CompValidation(bbl, "excluded", "excluded: class 4 but no gross building area on record")
-    if _in_table(con, "pluto_lots", "bbl_int", bbl, cast_int=True):
+    prow = con.execute("SELECT pluto_bldgclass FROM pluto_lots WHERE bbl_int = TRY_CAST(? AS BIGINT) LIMIT 1",
+                       [bbl]).fetchone()
+    if prow is not None:
+        if (prow[0] or "").startswith("R") or _is_condo_lot(None, lot, criteria):
+            return CompValidation(bbl, "excluded", "excluded: condominium lot — not tax class 4")
         return CompValidation(bbl, "excluded", "excluded: not tax class 4")
     return CompValidation(bbl, "not_found", "not found in the roll")
 
@@ -260,7 +297,7 @@ def select_from_bbls(con, subject_bbl: str, comp_bbls: list[str], criteria: Comp
         if b and b not in seen:
             seen.add(b)
             ordered.append(b)
-    validation = [_classify_comp(con, b, subject_bbl) for b in ordered]
+    validation = [_classify_comp(con, b, subject_bbl, criteria) for b in ordered]
     valid = [v for v in validation if v.status == "valid"]
     valid_count = len(valid)
 
@@ -373,11 +410,21 @@ def resolve_subject(con, criteria: CompCriteria, juris: Jurisdiction, subject_bb
             "subject": _subject_panel(summary, None, criteria.class4_tax_rate)}
 
 
+def _size_band_for(subject_class: str | None, criteria: CompCriteria) -> float:
+    """Size-dissimilar marking band by SUBJECT asset type — the single source used by BOTH the
+    per-comp validate endpoint (marks on entry) and the screen post-processing, so the two can
+    never disagree. Office/retail ±50%; industrial ±75%; out-of-scope borrows ±50% (disclosed)."""
+    if _asset_type(subject_class) == "industrial":
+        return (criteria.industrial_config or {}).get("sf_band", 0.75)
+    return criteria.sf_band
+
+
 def validate_comp(con, criteria: CompCriteria, juris: Jurisdiction,
                   subject_bbl: str, comp_bbl: str) -> dict:
     """Step 3 (per-comp): resolve + classify ONE comp, returning its status + what it is, so the
-    UI can show the result immediately. Reuses _classify_comp (same rules as the screen)."""
-    v = _classify_comp(con, comp_bbl, subject_bbl)
+    UI can show the result immediately — including size-dissimilar ON ENTRY (same per-subject-type
+    band the screen uses). Reuses _classify_comp (same rules as the screen)."""
+    v = _classify_comp(con, comp_bbl, subject_bbl, criteria)
     out = {"bbl": comp_bbl, "status": v.status, "reason": v.reason, "valid": v.status == "valid"}
     if v.status == "valid":
         c = v.row
@@ -387,13 +434,25 @@ def validate_comp(con, criteria: CompCriteria, juris: Jurisdiction,
                 or " ".join(x for x in (c.get("house_number"), c.get("street_name")) if x).strip()
                 or None)
         atype = _asset_type(c.get("bldg_class"))
+        subj_sf = subj.get("sf") if subj else None
+        band = _size_band_for(subj.get("bldg_class") if subj else None, criteria)
+        dist = None
+        if subj and subj.get("pluto_latitude") is not None and c.get("pluto_latitude") is not None:
+            dist = round(_haversine(subj["pluto_latitude"], subj["pluto_longitude"],
+                                    c["pluto_latitude"], c["pluto_longitude"]), 2)
         out.update({
             "address": addr,
             "bldg_class": c.get("bldg_class"),
             "sf": c.get("sf"),
+            "year_built": c.get("year_built"),
+            "distance_miles": dist,
             "asset_type": atype,
             "cross_type": bool(subj and atype != _asset_type(subj.get("bldg_class"))),
             "land_dominant": bool(cov is not None and cov < LAND_DOMINANT_THR),
+            # size-dissimilar ON ENTRY — same band the screen's marking uses (see _size_band_for)
+            "size_dissimilar": bool(subj_sf and c.get("sf") is not None
+                                    and (c["sf"] < (1 - band) * subj_sf or c["sf"] > (1 + band) * subj_sf)),
+            "size_band_pct": f"{band * 100:g}",
         })
     return out
 
@@ -514,8 +573,7 @@ def build_custom_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *
     # the SUBJECT-type band (office/retail ±50%, industrial ±75%; out-of-scope borrows ±50%, named
     # in the scope notice). The per-SF percentile is NOT touched — it stays computed on all comps. #
     subj_sf = cs.subject.get("sf")
-    size_band = ((criteria.industrial_config or {}).get("sf_band", 0.75)
-                 if subject_type == "industrial" else criteria.sf_band)
+    size_band = _size_band_for(cs.subject.get("bldg_class"), criteria)
     dissimilar = {c.citation.parcel_id for c in cs.comps
                   if subj_sf and c.sf is not None
                   and (c.sf < (1 - size_band) * subj_sf or c.sf > (1 + size_band) * subj_sf)}

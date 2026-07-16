@@ -348,11 +348,36 @@ def custom(request: Request, bbl: str = "", house_number: str = "", street: str 
     return templates.TemplateResponse(request, "custom.html", ctx)
 
 
+class CustomValidateRequest(BaseModel):
+    subject_bbl: str
+    bbl: str = ""                      # comp by BBL …
+    house_number: str = ""             # … or by address (resolved with the same machinery the
+    street: str = ""                   #     auto path uses: _resolve_input -> resolve_address)
+    borough: str = ""
+    zip: str = ""
+    comp_bbls: list[str] = []          # back-compat: comp_bbls[0] honored when bbl/address absent
+
+
 @app.post("/api/v1/custom_validate_comp")
-def api_custom_validate_comp(req: CustomScreenRequest):
-    """Per-comp validation for the wizard: resolve + classify ONE comp (reuses comp_bbls[0])."""
-    comp = (req.comp_bbls[0].strip() if req.comp_bbls else "")
+def api_custom_validate_comp(req: CustomValidateRequest):
+    """Per-comp validation for the wizard: accepts a BBL OR an address; either way the SAME
+    per-comp validation fires on the resolved BBL."""
     with _con() as con:
+        comp = (req.bbl or (req.comp_bbls[0] if req.comp_bbls else "")).strip()
+        if not comp and (req.house_number.strip() or req.street.strip()):
+            try:
+                rr = _resolve_input(con, bbl="", house_number=req.house_number, street=req.street,
+                                    borough=req.borough, zip_code=req.zip)
+            except GeoclientConfigError as e:
+                return JSONResponse({"bbl": None, "status": "not_found", "valid": False,
+                                     "reason": str(e)})
+            comp = (rr.bbl if rr is not None and rr.bbl else "")
+            if not comp:
+                return JSONResponse({"bbl": None, "status": "not_found", "valid": False,
+                                     "reason": "address not found; no BBL could be resolved"})
+        if not comp:
+            return JSONResponse({"bbl": None, "status": "not_found", "valid": False,
+                                 "reason": "enter a BBL or an address"})
         return JSONResponse(validate_comp(con, CRITERIA, JURIS, req.subject_bbl.strip(), comp))
 
 

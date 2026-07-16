@@ -240,3 +240,64 @@ def _auto_comps(client, bbl):
 def _screen_for(client, subject, comps, fill="none"):
     return client.post("/api/v1/custom_screen",
                        json={"subject_bbl": subject, "comp_bbls": comps, "fill": fill}).json()
+
+
+# --- Comp entry improvements: bbl field, size-dissimilar on entry, condo branches -------------
+def _validate(client, **payload):
+    return client.post("/api/v1/custom_validate_comp",
+                       json={"subject_bbl": SUBJECT, **payload}).json()
+
+
+def test_validate_accepts_bbl_field_and_back_compat(client, office_comps):
+    a = _validate(client, bbl=office_comps[0])
+    b = _validate(client, comp_bbls=[office_comps[0]])      # legacy shape still honored
+    assert a["status"] == "valid" and a == b
+
+
+def test_validate_returns_entry_time_facts(client, office_comps):
+    v = _validate(client, bbl=office_comps[0])
+    for k in ("address", "bldg_class", "sf", "year_built", "distance_miles",
+              "size_dissimilar", "size_band_pct"):
+        assert k in v
+
+
+def test_size_dissimilar_on_entry_uses_subject_type_band(client):
+    import duckdb
+    con = duckdb.connect(str(config.DB_PATH), read_only=True)
+    try:
+        def comp_near(subject, mult):
+            sf = con.execute("SELECT sf FROM parcels WHERE parcel_id=?", [subject]).fetchone()[0]
+            return con.execute(
+                "SELECT parcel_id FROM parcels WHERE curmkttot>0 AND bldg_class NOT LIKE 'R%' "
+                "AND TRY_CAST(substr(parcel_id,7,4) AS INT)<1001 AND sf BETWEEN ? AND ? LIMIT 1",
+                [sf * (mult - .05), sf * (mult + .05)]).fetchone()[0]
+        # office: 2.5x -> dissimilar at ±50%
+        v = _validate(client, bbl=comp_near(SUBJECT, 2.5))
+        assert v["size_dissimilar"] is True and v["size_band_pct"] == "50"
+        # industrial: 1.65x is INSIDE ±75%; 2.5x is outside
+        IND = "3000320029"
+        vm = client.post("/api/v1/custom_validate_comp",
+                         json={"subject_bbl": IND, "bbl": comp_near(IND, 1.65)}).json()
+        vb = client.post("/api/v1/custom_validate_comp",
+                         json={"subject_bbl": IND, "bbl": comp_near(IND, 2.5)}).json()
+        assert vm["size_dissimilar"] is False and vm["size_band_pct"] == "75"
+        assert vb["size_dissimilar"] is True and vb["size_band_pct"] == "75"
+    finally:
+        con.close()
+
+
+def test_condo_billing_lot_gets_specific_message(client):
+    v = _validate(client, bbl="1013027501")                  # 277 Park billing shell (lot 7501)
+    assert v["status"] == "excluded"
+    assert "condominium billing lot" in v["reason"] and "unit lots" in v["reason"]
+
+
+def test_condo_unit_lot_deliberate_branch(client):
+    v = _validate(client, bbl="1012801001")                  # class-4 RB unit, present in parcels
+    assert v["status"] == "excluded"
+    assert "condominium unit lot" in v["reason"]             # deliberate, not incidental no-coords
+
+
+def test_plain_non_class4_keeps_generic_message(client):
+    v = _validate(client, bbl=NON_CLASS4)
+    assert v["reason"] == "excluded: not tax class 4"

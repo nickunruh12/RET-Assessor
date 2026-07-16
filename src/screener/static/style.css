@@ -260,11 +260,16 @@ dl dd { margin: 0; color: var(--ink); font-weight: 550; }
 .confirm-panel { border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem; background: var(--surface); }
 .confirm-head { margin: 0 0 .4rem; color: var(--ink); }
 .comp-count-line { font-size: .95rem; margin: .8rem 0 .5rem; }
-#comp-list { list-style: none; padding: 0; margin: 0; }
-.comp-row { padding: .38rem .5rem; border-bottom: 1px solid var(--line-soft); font-size: .88rem; }
-.comp-valid .ok { color: var(--accent); font-weight: 700; }
-.comp-rejected { color: var(--muted); }
-.comp-rejected .no { color: #8a94a8; font-weight: 700; }
+/* build list reuses .table-wrap/.comp-table styling; these cover its wizard-only bits */
+#comp-build-table .ok { color: var(--accent); font-weight: 700; white-space: nowrap; }
+#comp-build-table .no { color: #8a94a8; font-weight: 700; }
+#comp-build-table .reject-reason { text-align: left; color: var(--muted); }
+.comp-row-rejected td { color: var(--muted); }
+.comp-remove { border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  border-radius: 5px; width: 1.5rem; height: 1.5rem; line-height: 1; font-size: .95rem;
+  font-weight: 700; cursor: pointer; }
+.comp-remove:hover { color: var(--accent-ink); border-color: #cddbf5; background: var(--accent-tint); }
+#comp-build-table .size-flag, #comp-build-table .flag { display: inline-block; margin: .1rem .1rem 0 0; }
 .flag { display: inline-block; font-size: .64rem; font-weight: 700; letter-spacing: .04em;
   text-transform: uppercase; padding: .1rem .34rem; border-radius: 4px; margin-left: .25rem;
   border: 1px solid var(--line); background: var(--surface); color: var(--muted); vertical-align: middle; }
@@ -282,8 +287,11 @@ dl dd { margin: 0; color: var(--ink); font-weight: 550; }
   padding: .75rem 1rem; margin: 0 0 1.2rem; }
 .not-vetted-stamp { margin: 0; font-size: .9rem; color: var(--ink); line-height: 1.5; }
 .comp-mix { margin: .45rem 0 0; font-size: .84rem; color: var(--muted); }
+/* origin tag lives in a fixed-layout table column — it must WRAP inside its cell, never bleed
+   into neighbors ("user-supplied" breaks at the hyphen). */
 .origin-tag { display: inline-block; font-size: .68rem; font-weight: 600; padding: .08rem .36rem;
-  border-radius: 4px; border: 1px solid var(--line); white-space: nowrap; }
+  border-radius: 4px; border: 1px solid var(--line); white-space: normal;
+  overflow-wrap: break-word; max-width: 100%; line-height: 1.35; }
 .origin-usersupplied { color: var(--accent-ink); background: var(--accent-tint); border-color: #cddbf5; }
 .origin-toolselected { color: var(--muted); background: var(--surface); }
 .welcome-coming-soon { font-size: .86rem; color: var(--faint); margin: 0 0 2.5rem;

@@ -72,7 +72,18 @@
 
     <form id="comp-add-form" class="lookup" onsubmit="return false;">
       <fieldset>
-        <legend>Comp by BBL</legend>
+        <legend>Comp by address</legend>
+        <input type="text" id="comp-house" placeholder="house no.">
+        <input type="text" id="comp-street" placeholder="street">
+        <select id="comp-borough" aria-label="comp borough">
+          <option value="" selected>borough (optional)</option>
+          {% for b in ["Manhattan","Bronx","Brooklyn","Queens","Staten Island"] %}
+          <option value="{{ b }}">{{ b }}</option>
+          {% endfor %}
+        </select>
+      </fieldset>
+      <fieldset>
+        <legend>or by BBL</legend>
         <input type="text" id="comp-bbl" placeholder="10-digit BBL">
         <button type="submit" id="comp-add">Add comp</button>
       </fieldset>
@@ -81,7 +92,17 @@
     <div id="comp-list-wrap">
       <p class="comp-count-line">Valid comps: <strong id="valid-count">0</strong>
         <span class="src">(need {{ 8 }} for a full screen)</span></p>
-      <ul id="comp-list"></ul>
+      {# Same table markup/styling as the output page's "View Full Comp List" (table-wrap +
+         comp-table classes), with entry-time columns + a per-row remove control. #}
+      <div class="table-wrap">
+        <table class="comp-table" id="comp-build-table">
+          <thead><tr>
+            <th>BBL</th><th>Address</th><th>Class</th><th>Comp SF</th><th>Year Built</th>
+            <th>Comp Distance From Subject (mi)</th><th>Status / Flags</th><th></th>
+          </tr></thead>
+          <tbody id="comp-list"></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- <8 options: shown by JS, keyed on VALID count -->
