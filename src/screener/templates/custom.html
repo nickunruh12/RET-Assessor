@@ -33,6 +33,7 @@
           <option value="{{ b }}"{% if sel == b %} selected{% endif %}>{{ b }}</option>
           {% endfor %}
         </select>
+        <button type="submit">Resolve subject</button>
       </fieldset>
       <fieldset>
         <legend>or by BBL</legend>
@@ -81,11 +82,12 @@
           <option value="{{ b }}">{{ b }}</option>
           {% endfor %}
         </select>
+        <button type="submit" class="comp-add-btn">Add comp</button>
       </fieldset>
       <fieldset>
         <legend>or by BBL</legend>
         <input type="text" id="comp-bbl" placeholder="10-digit BBL">
-        <button type="submit" id="comp-add">Add comp</button>
+        <button type="submit" id="comp-add" class="comp-add-btn">Add comp</button>
       </fieldset>
     </form>
 

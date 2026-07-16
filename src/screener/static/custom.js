@@ -21,7 +21,9 @@
   const houseInput = document.getElementById("comp-house");
   const streetInput = document.getElementById("comp-street");
   const boroSelect = document.getElementById("comp-borough");
-  const addBtn = document.getElementById("comp-add");
+  // BOTH input methods get an equally visible submit control (address fieldset + BBL fieldset).
+  const addBtns = Array.from(document.querySelectorAll(".comp-add-btn"));
+  function setAddDisabled(d) { addBtns.forEach(b => { b.disabled = d; }); }
 
   const entered = new Set();       // RESOLVED BBLs already in the list (dedup either input path)
   const valid = [];                // ordered valid comp BBLs
@@ -55,11 +57,13 @@
         `<td><span class="ok">✓ valid</span> ${flagSpans(v)}</td>` +
         `<td><button type="button" class="comp-remove" title="Remove this comp">−</button></td>`;
     } else {
+      // Rejected entries keep the table's column grid intact: dashes where data would be, and
+      // the exclusion reason lives in the STATUS/FLAGS column — never where an address belongs.
       tr.className = "comp-row-rejected";
       tr.innerHTML =
         `<td>${esc(v.bbl || "—")}</td>` +
-        `<td colspan="5" class="reject-reason">${esc(v.reason)}</td>` +
-        `<td><span class="no">✕</span></td>` +
+        `<td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>` +
+        `<td class="reject-reason"><span class="no">✕</span> ${esc(v.reason)}</td>` +
         `<td><button type="button" class="comp-remove" title="Remove this row">−</button></td>`;
     }
     tr.querySelector(".comp-remove").addEventListener("click", () => removeRow(tr, v));
@@ -97,7 +101,7 @@
     };
     if (!body.bbl && !(body.house_number || body.street)) return;
     if (body.bbl && entered.has(body.bbl)) { bblInput.value = ""; return; }
-    addBtn.disabled = true;
+    setAddDisabled(true);
     try {
       const r = await fetch("/api/v1/custom_validate_comp", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -115,7 +119,7 @@
       tr.innerHTML = '<td colspan="8" class="reject-reason">Could not reach the validator; try again.</td>';
       listEl.appendChild(tr);
     } finally {
-      addBtn.disabled = false;
+      setAddDisabled(false);
       bblInput.value = ""; houseInput.value = ""; streetInput.value = "";
       bblInput.focus();
     }
@@ -126,7 +130,7 @@
     window.location = "/custom_result?" + params.toString();
   }
 
-  addBtn.addEventListener("click", addComp);
+  addBtns.forEach(b => b.addEventListener("click", addComp));
   [bblInput, houseInput, streetInput].forEach(el =>
     el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addComp(); } }));
   document.getElementById("run-thin").addEventListener("click", () => go("none"));

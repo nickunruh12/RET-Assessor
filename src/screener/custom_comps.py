@@ -63,6 +63,22 @@ def _asset_type(bldg_class: str | None) -> str:
     return "other"
 
 
+# Plain-English label for a building-class letter — the subject panel's Building Class row must
+# describe what the PARCEL is (e.g. "O4 (Office)", "HB (Hotel)"), never the screening mode.
+_CLASS_LABELS = {
+    "O": "Office", "K": "Retail", "F": "Industrial", "H": "Hotel",
+    "G": "Garage / gas station", "E": "Warehouse", "I": "Health facility", "J": "Theatre",
+    "L": "Loft", "M": "Religious", "N": "Asylum / home", "P": "Public assembly",
+    "Q": "Outdoor recreation", "R": "Condominium", "S": "Mixed residence / store",
+    "T": "Transportation", "U": "Utility", "V": "Vacant land", "W": "Educational",
+    "Y": "Government", "Z": "Miscellaneous",
+}
+
+
+def _class_label(bldg_class: str | None) -> str:
+    return _CLASS_LABELS.get((bldg_class or "")[:1], "Class 4")
+
+
 def _haversine(lat1, lon1, lat2, lon2) -> float:
     rlat1, rlat2 = math.radians(lat1), math.radians(lat2)
     dlat = math.radians(lat2 - lat1)
@@ -176,7 +192,9 @@ def _subject_summary(con, juris: Jurisdiction, criteria: CompCriteria, subj: dic
         "parcel_id": bbl,
         "bldg_class": subj.get("bldg_class"),
         "bucket": _asset_type(subj.get("bldg_class")),
-        "bucket_label": f"Custom comps ({_asset_type(subj.get('bldg_class'))})",
+        # Data field: what the building IS ("Office", "Hotel"), never the flow/mode — the page
+        # header already says "Custom comps"; a mode name in a data field would be wrong.
+        "bucket_label": _class_label(subj.get("bldg_class")),
         "borough": juris.borough_of(bbl),
         "zip_code": subj.get("zip_code"),
         "sf": subj.get("sf"),
@@ -391,7 +409,7 @@ def _scope_notice(bldg_class: str | None, asset_type: str) -> str | None:
     return (f"This parcel's building class ({bldg_class}) is outside the asset types this version "
             f"screens automatically (office, retail, and industrial). You can still proceed by "
             f"supplying your own comparables. Auto-fill to 8 is unavailable for this type — the tool "
-            f"has no comp-selection logic for it — so only the run-as-is (thin-set) path is offered. "
+            f"has no comp-selection logic for it — so only the run-as-is path is offered. "
             f"Two data-quality thresholds are borrowed as-is, calibrated on the types the tool does "
             f"screen: the land-dominant coverage cutoff (building under 30% of lot, from NYC industrial "
             f"parcels) is applied to the subject and comps regardless of asset type; and the "

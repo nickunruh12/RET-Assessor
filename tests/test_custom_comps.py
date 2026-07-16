@@ -139,7 +139,7 @@ def test_custom_result_renders_full_output_plus_layers(client, office_comps):
     assert 'class="comp-table"' in out and 'id="chart-assessed_value_market"' in out
     # custom layers added
     assert "not screened by the tool's selection logic" in out          # not-vetted stamp
-    assert "<th>Origin</th>" in out                                      # origin column
+    assert '<th class="origin-col">Origin</th>' in out                   # origin column
     assert "tool-selected to reach the 8-comp minimum" in out           # mix disclosure
 
 
