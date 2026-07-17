@@ -420,3 +420,49 @@ Deliberately NO share threshold and NO warning tier: nothing measurable says at 
 cross-type mix becomes misleading, so stating the count is a fact while a cutoff would be an
 unmeasured judgment. Rendered in the custom banner and carried in the API as
 comp_source.cross_type_note (null when no cross-type comp).
+
+## 2026-07-16 — LOCKED: capped small-residential subclasses (2A/2B/2C) refuse entirely in any class-2 route
+
+Tax classes 2A/2B/2C (residential, 10 or fewer units; 78,952 parcels on the FY2027 final roll)
+will never screen — not tax charts, and not value charts either. Recorded now, ahead of any
+class-2 build, because the specific refusal is UNREACHABLE today: the DB is class-4-only and
+PLUTO carries no tax-class field, so a 2A/2B/2C BBL currently (and truthfully) refuses with the
+generic not-class-4 message on both the auto and custom paths (verified 2026-07-16 on
+1000070038 (2A), 1000110010 (2B), 1000071101 (2C)). The specific refusal ships as part of the
+class-2 route — no dead code lands now. Design: docs/api_contracts/class2_route.md.
+
+**Why tax charts are out** (measured on the FY2027 final roll, 8y4t-faws):
+- State law limits assessed-value increases on these subclasses (8%/yr, 30%/5yr — nyc.gov,
+  "Determining your assessed value"). The limit binds in `curtxbtot`: median billable is 31.2%
+  (2A) / 35.7% (2B) / 51.5% (2C) of the 45%-of-market target (`curacttot`); pooled, ~70% of
+  these parcels bill below HALF their target (2A 83% / 2B 66% / 2C 48%); billable/target IQR
+  spreads are 0.23–0.44. Class-4 contrast: O/K/F medians 0.94–0.96, IQR spreads 0.08–0.09,
+  and 0% bill below half. A tax-bill distribution across 2A/2B/2C therefore ranks each
+  building's accumulated shortfall history, not its assessment treatment.
+
+**Why value-only was considered and rejected** (three measured legs):
+1. The tax comparison IS the product for this tool's audience; a value-only screen is half a
+   tool, and half a tool is worse than an honest refusal.
+2. Little to rank: only ~1% of 2A subjects sit more than 2x from (or under half of) their
+   peer-set median EMV/SF, vs 8.4% class-4 office / 13.8% retail (same peer method: same
+   subclass+letter, ±50% SF, ≤1 mi, ≥8 peers). Typical comp-set relative IQR on 2A is 0.21 vs
+   0.42 office — the small-residential model floors and ceilings values into a band.
+3. The value figure itself is path-dependent: YoY `curmkttot` growth on 2A/2B/2C is clipped at
+   EXACTLY +20.0%/yr — p90 pinned at 20.0% in every subclass and every year-pair 2024→2027,
+   30–52% of parcels at precisely +20.0% each year, <2% ever above, declines passed through,
+   and 10–22% compounded at exactly 1.20^3 over the three years. Controls show the clip is
+   exclusive to these subclasses (plain-'2' C/D and class-4 K/F/O: 0.1–0.2% at +20%, free
+   tails). No published DOF methodology page discloses this practice — so a 2A/2B/2C value
+   chart would present a distribution whose generating rule cannot be cited, failing the
+   tool's own provenance standard.
+
+**Mechanism note for the message copy**: the shortfall reflects each building's value-growth
+history relative to the yearly limit. NYC's limits do NOT reset when a property is sold (that
+is California's system), so copy must not attribute the gap to "how long the owner has held
+it" — the accurate plain-language frame is the building's own value history.
+
+**Scope of the refusal**: subject entry (auto + custom) AND custom-comp entry — a 2A/2B/2C
+parcel entered as a user comp excludes with the same stated reason, once class-2 data makes
+the subclass identifiable. Plain-'2' C/D rentals (33,196 parcels) are unaffected and remain
+the buildable class-2 route: measured clean on every axis (billable/target median 0.956–0.966,
+class-4-like; no value clip; comp-set dispersion in the class-4 band).

@@ -185,3 +185,30 @@ Related, fixed the same day: non-R-class parcels with lot >= 1001 (air-rights an
 conventionally high-numbered lots, e.g. 200 Park Ave = 1012809010 at lot 9010 — 62 O/K/F parcels
 citywide) are excluded from comps by the same lot-range rule the auto engine uses, but are NOT
 condo units — their exclusion reason names the lot-range rule, never asserts "condominium."
+
+## Capped small-residential subclasses (2A/2B/2C) will not screen (decided 2026-07-16)
+
+Tax classes 2A/2B/2C — residential buildings with 10 or fewer units, 78,952 parcels on the
+FY2027 final roll — are permanently out of scope for screening, in any class-2 route. Both
+chart families fail there for measured reasons:
+
+- **Tax bills**: state law limits yearly assessed-value increases on these subclasses (8%/yr,
+  30%/5yr). The median 2A parcel is billed on 31% of its 45%-of-market target; ~70% of the
+  pooled subclasses bill below half their target, with billable/target IQR spreads of
+  0.23–0.44 (class-4 O/K/F: medians 0.94–0.96, spreads 0.08–0.09, none below half). A tax
+  distribution there ranks each building's accumulated shortfall history, not assessment
+  treatment.
+- **Market values**: YoY `curmkttot` growth on these subclasses is clipped at exactly
+  +20.0%/yr (p90 pinned at 20.0% in every subclass and year-pair 2024→2027; 30–52% of parcels
+  at precisely +20.0% each year; declines pass through). The clip appears in no published DOF
+  methodology page and does not exist on plain-'2' C/D or class 4 (0.1–0.2% at +20%, free
+  tails) — so the value distribution's generating rule cannot be cited, and printed values are
+  path-dependent for the 30–52% clipped in any year.
+- **Value-only was rejected**: the tax comparison is the product, and only ~1% of 2A subjects
+  sit more than 2x from (or under half of) their peer-set median EMV/SF vs 8.4% office /
+  13.8% retail — a value chart there has almost nothing to rank.
+
+Today these BBLs refuse with the generic not-class-4 message (the DB cannot identify the
+subclass without class-2 roll data). The specific plain-language refusal ships with the
+class-2 route: see docs/api_contracts/class2_route.md and the LOCKED entry in DECISIONS.md.
+Plain-'2' C/D rentals (33,196 parcels) measured clean on every axis and remain buildable.

@@ -9,8 +9,9 @@ implementation must match the contract here, or the contract is revised **and ve
 
 | Contract | Route (proposed) | Status | File |
 |---|---|---|---|
-| Custom comps | `POST /api/v1/custom_screen` | DRAFT v1 — not implemented | [custom_comps.md](custom_comps.md) |
+| Custom comps | `POST /api/v1/custom_screen` | v1 implemented (dev, 2026-07) | [custom_comps.md](custom_comps.md) |
 | Land valuation | auto-routed via `/api/screen` (class-V) | DRAFT v1 — blocked on a data kill-gate | [land_valuation.md](land_valuation.md) |
+| Class-2 route | auto-routed via `/api/screen` (plain-'2' C/D) | DESIGN — capped-subclass refusal LOCKED (DECISIONS.md 2026-07-16) | [class2_route.md](class2_route.md) |
 
 ## Versioning policy
 
