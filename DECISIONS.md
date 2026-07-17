@@ -466,3 +466,46 @@ parcel entered as a user comp excludes with the same stated reason, once class-2
 the subclass identifiable. Plain-'2' C/D rentals (33,196 parcels) are unaffected and remain
 the buildable class-2 route: measured clean on every axis (billable/target median 0.956–0.966,
 class-4-like; no value clip; comp-set dispersion in the class-4 band).
+
+## 2026-07-16 — LOCKED: benefit-program disclosure — class-4 exemption naming + subject benefit note (live), class-2 program design (recorded)
+
+**Live class-4 changes (shipped this date):**
+- The comp-basis caveat now names EXEMPTIONS beside abatements. Measured reason: the auto
+  engine excludes curmkttot <= 0, but a parcel can be fully exempt with positive market
+  value and enter a comp set — 10.8% of office comps carry some exemption and 5.8% are
+  fully exempt (K 4.2%/0.8%, F 7.2%/3.2%), so "may pay less" undersold comps that pay
+  nothing. The statutory-basis framing is unchanged: the plotted number stays pre-exemption
+  and pre-abatement, computed identically for every comp.
+- Per-comp "exempt N%" tag from the roll's own curtxbextot (new exemptions_class4 table,
+  loader `python -m screener.exemptions`; share = curtxbextot/curtxbtot). NO threshold —
+  any exempt comp is tagged with its share (a fact), consistent with the cross-type-note
+  precedent that cutoffs are unmeasured judgments. Display only; never filters a comp.
+- SUBJECT benefit-basis note (replaces the ICAP-only banner; one consolidated note, never
+  stacked banners): fires when the subject carries a current abatement (ICAP/J-51/MCI/GCCA
+  — abatement table widened to all four; table name `abatements_icap` kept so a deployed
+  ICAP-only DB degrades gracefully) or an exemption. States, verdict-free: the benefit
+  reduces what is paid; figures shown are statutory pre-benefit on the same basis for every
+  comp; a benefit applies to a bill the assessment produces, so the charts show how that
+  underlying assessment compares with similar buildings'. The affirmative case for the
+  pre-abatement convention: an abated owner's benefit is calculated against the assessment,
+  so the pre-benefit position is the number their credit rides on.
+- Reconciliation of the three disclosures (no restating): TAX_METHOD_NOTE defines the
+  plotted quantity; COMP_BASIS_CAVEAT covers comp-side uniformity + the marks; the subject
+  note carries the subject's own benefits + what the basis shows. The exempt-marks sentence
+  is appended to the caveat ONLY when the exemption table is loaded, so an older deployed
+  DB never promises marks it cannot render.
+- DEPLOYMENT NOTE: the new/widened tables live in screener.duckdb — the live host shows the
+  new caveat text immediately on code deploy, but tags + notes light up only with a new DB
+  Release + updated SCREENER_DB_SHA256. All helpers tolerate the old DB (no hard failure).
+
+**Class-2 route design (recorded now, ships with the route — docs/api_contracts/class2_route.md):**
+- Shelter-rent family (Article XI/420-c/HDFC/UDAAP/DAMP/HPD): disclose both sides — comp
+  badge + subject valuation-basis notice (measured: C at 0.75x unexempt-peer median, p25,
+  43% below peers' 20th). Not a refusal: the generating rule is citable statute (DOF's own
+  code table labels these "SHELTER RENT").
+- 421-a/485-x/467-m: badge only, both sides — measured abatement-shaped (1.62x peer median,
+  1.24x age-matched: new-construction effect, not assessment suppression).
+- NO segregation, NO program-weighting of comps: curtxbtot is pre-abatement and
+  pre-exemption by construction, so all comps already share the plotted basis; segregation
+  fixes nothing and starves the pool. Selection stays on measured value drivers.
+- The class-4 subject benefit note covers class-2 abated/exempt subjects when the route lands.

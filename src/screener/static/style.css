@@ -104,8 +104,8 @@ dl dd { margin: 0; color: var(--ink); font-weight: 550; }
 .reconcile-note { margin: .6rem 0 0; }
 .icap-banner { margin: 0 0 1rem; }
 .icap-banner .src { display: block; margin-top: .25rem; }
-/* small display-only tags: ICAP, size-dissimilar, land-dominant — one muted pill */
-.icap-tag, .size-flag {
+/* small display-only tags: ICAP, exempt, size-dissimilar, land-dominant — one muted pill */
+.icap-tag, .exempt-tag, .size-flag {
   display: inline-block; font-size: .58rem; font-weight: 700; letter-spacing: .05em;
   text-transform: uppercase; padding: .08rem .3rem; border: 1px solid var(--line);
   border-radius: 4px; color: var(--muted); background: var(--panel); vertical-align: middle;

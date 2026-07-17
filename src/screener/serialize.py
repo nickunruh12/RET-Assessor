@@ -16,7 +16,8 @@ from .comps import REFUSAL_MESSAGES, CompSet, refusal_message, select_comps
 from .geocode import RESOLVER_MESSAGES, ResolveResult
 from .jurisdiction import CompCriteria, Jurisdiction
 from .stats import compute_stats
-from .abatements import icap_vintage
+from .abatements import abatement_programs, icap_vintage
+from .exemptions import exempt_shares, exemptions_vintage
 from .variance import compute_variance
 
 DISCLAIMER = ("This is a descriptive screen of published assessment data — "
@@ -71,14 +72,24 @@ SIZE_DISSIMILAR_NOTE = ("Comp set includes size-dissimilar buildings (band relax
 # Item 1 — clarifying line under the tax-methodology derivation (static, no verdict).
 TAX_METHOD_NOTE = ("The tax is levied on the transitional (taxable) value, not on the 45% "
                    "actual assessed value. During a phase-in the two differ (see Phase-In "
-                   "Note). This bill is the statutory amount before any ICAP, J-51, or PILOT "
-                   "abatement.")
+                   "Note). This bill is the statutory amount before any exemption and before "
+                   "any ICAP, J-51, or PILOT abatement.")
 
 # Item 2 — comp statutory-basis caveat (static, always shown under the Tax Bill chart).
+# Names BOTH payment-side mechanisms: abatements (a credit against the tax) and exemptions
+# (part or all of the taxable value is not billed — measured: 10.8% of office comps carry
+# one, 5.8% are fully exempt). The plotted number stays pre-both, identically for all.
 COMP_BASIS_CAVEAT = ("Comp tax bills are the statutory amount (transitional taxable value × "
                      "rate) computed identically for every comp. Comps on an abatement may "
-                     "pay less than the figure shown. The uniform basis is intentional, so "
-                     "comps are compared on the same fully-taxed footing.")
+                     "pay less than the figure shown; comps with an exemption are billed on "
+                     "only the non-exempt part of their taxable value — a fully exempt comp "
+                     "pays none of it. The uniform basis is intentional, so comps are "
+                     "compared on the same fully-taxed footing.")
+
+# Appended to the caveat ONLY when the exemption table is loaded (an older deployed DB
+# without it shows no marks, and the caveat must not promise marks that are not there).
+EXEMPT_MARKS_SENTENCE = ("Exempt comps are marked in the comp table with the share of "
+                         "taxable value their exemption covers.")
 
 # Item 3 — PILOT caveat (static, ALWAYS shown; PILOT is not detectable from available data).
 PILOT_CAVEAT = ("Some major office properties (for example Hudson Yards, the World Trade "
@@ -86,11 +97,47 @@ PILOT_CAVEAT = ("Some major office properties (for example Hudson Yards, the Wor
                 "property tax. The tool cannot identify PILOT parcels, so a PILOT building's "
                 "plotted tax bill may not reflect what it actually pays.")
 
-# Item 5 — ICAP subject banner (conditional: only when the SUBJECT BBL has a current ICAP).
-ICAP_BANNER = ("This parcel carries an ICAP property tax abatement. The tax bill shown is "
-               "the statutory amount before that abatement; the owner's actual tax is lower "
-               "for the abatement term. ICAP is a credit against the tax, not a reduction of "
-               "assessed value.")
+# Subject benefit-basis note (conditional: only when the SUBJECT carries a current
+# abatement — ICAP/J-51/MCI/GCCA via rgyu-ii48 — and/or an exemption from the roll's
+# curtxbextot). REPLACES the former ICAP-only banner: one consolidated subject-side note
+# instead of stacked program banners. Sentence 1 names the subject's benefit(s); sentence 2
+# anchors the plotted basis; sentence 3 states what that basis shows. No verdict, no
+# implication that any action is warranted — the position speaks for itself.
+_PROGRAM_PHRASES = {
+    "ICAP": "an ICAP abatement",
+    "J51": "a J-51 abatement",
+    "MCI": "an MCI abatement",
+    "GCCA": "a Good Cause abatement",
+}
+
+
+def _subject_benefit_note(programs: list[str], exempt_share: float | None) -> str | None:
+    """Compose the subject-side benefit note, or None when the subject carries nothing."""
+    benefits = [_PROGRAM_PHRASES.get(p, f"a {p} abatement") for p in programs]
+    if exempt_share is not None:
+        benefits.append(f"an exemption covering {_exempt_share_display(exempt_share)} "
+                        "of its taxable value")
+    if not benefits:
+        return None
+    if len(benefits) == 1:
+        listed, verb, ref = benefits[0], "reduces", "that benefit"
+    else:
+        listed = ", ".join(benefits[:-1]) + " and " + benefits[-1]
+        verb, ref = "reduce", "those benefits"
+    return (f"This property carries {listed}, which {verb} what is actually paid. "
+            f"The tax figures shown are the statutory amounts before {ref}, computed on "
+            "the same basis for every comp. A benefit reduces what is owed on a bill the "
+            "assessment produces, so these charts show how that underlying assessment "
+            "compares with the assessments of similar buildings.")
+
+
+def _exempt_share_display(share: float) -> str:
+    """'34%' / '<1%' / '100%' — whole-percent display of the exempt share of taxable."""
+    if share >= 0.995:
+        return "100%"
+    if share < 0.01:
+        return "<1%"
+    return f"{share:.0%}"
 
 
 def _tax_methodology(subject: dict, rate: float) -> dict | None:
@@ -730,14 +777,37 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
 
     phase = stats.signals["phase_in_gap"]
 
-    # Provenance — fold the ICAP abatement vintage in beside the roll + PLUTO versions so
-    # all three source vintages are visible together.
+    # Provenance — fold the abatement + exemption vintages in beside the roll + PLUTO
+    # versions so every source vintage is visible together.
     abate_extractdt, abate_dataset = icap_vintage(con)
+    exempt_year, exempt_dataset = exemptions_vintage(con)
     provenance = dict(stats.provenance)
     provenance["abatement_dataset"] = abate_dataset
     provenance["abatement_extractdt"] = abate_extractdt
+    provenance["exemption_dataset"] = exempt_dataset
+    provenance["exemption_roll_year"] = exempt_year
 
-    subject_has_icap = bool(cs.subject.get("has_icap"))
+    # Subject-side benefit facts: current abatement programs (rgyu-ii48) + exemption share
+    # (roll curtxbextot). Both helpers tolerate a missing table (older deployed DB -> the
+    # note simply cannot fire). DISCLOSURE ONLY — nothing here alters a plotted figure.
+    subject_bbl_key = str(cs.subject.get("parcel_id") or "").strip()
+    subject_programs = abatement_programs(con, [subject_bbl_key]).get(subject_bbl_key, [])
+    subject_exempt_share = exempt_shares(con, [subject_bbl_key]).get(subject_bbl_key)
+    benefit_message = _subject_benefit_note(subject_programs, subject_exempt_share)
+    benefit_sources = []
+    if subject_programs and abate_dataset:
+        benefit_sources.append(f"{abate_dataset} · extract {abate_extractdt}")
+    if subject_exempt_share is not None and exempt_dataset:
+        benefit_sources.append(f"{exempt_dataset} · FY{exempt_year} roll (curtxbextot)")
+
+    # Comp-side exemption marks — one lookup for the whole set, stamped onto every
+    # variance/table row below. None when the comp carries no exemption (or table absent).
+    comp_exempt = exempt_shares(con, [c.citation.parcel_id for c in cs.comps])
+
+    # The marks sentence is appended ONLY when the exemption table is loaded, so the
+    # caveat never promises marks an older DB cannot render.
+    comp_basis_caveat = COMP_BASIS_CAVEAT + (
+        f" {EXEMPT_MARKS_SENTENCE}" if exempt_dataset else "")
 
     result = {
         "status": "ok",
@@ -745,11 +815,14 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         "subject": _subject_panel(cs.subject, resolve, criteria.class4_tax_rate),
         # Item 1 — tax-methodology derivation; Items 2/3 — static caveats under the chart.
         "tax_methodology": _tax_methodology(cs.subject, criteria.class4_tax_rate),
-        "comp_basis_caveat": COMP_BASIS_CAVEAT,
+        "comp_basis_caveat": comp_basis_caveat,
         "pilot_caveat": PILOT_CAVEAT,
-        # Item 5 — ICAP subject banner (conditional). Cited to the abatement dataset + vintage.
-        "icap_banner": ({"message": ICAP_BANNER, "dataset": abate_dataset,
-                         "extractdt": abate_extractdt} if subject_has_icap else None),
+        # Subject benefit-basis note (conditional; replaces the former ICAP-only banner).
+        # Cited to whichever source(s) the subject's benefits come from.
+        "subject_benefit_note": ({"message": benefit_message, "sources": benefit_sources,
+                                  "programs": subject_programs,
+                                  "exempt_share": subject_exempt_share}
+                                 if benefit_message else None),
         "comp_meta": {
             "comp_count": cs.count,
             "radius_used_miles": cs.radius_used_miles,
@@ -788,6 +861,17 @@ def build_screen_view(con: duckdb.DuckDBPyConnection, criteria: CompCriteria,
         "expense_ratio": _expense_section(juris, criteria, cs.subject),
         "radius_control": _radius_control(radius_selection, show=True, auto_label=radius_auto_label),
     }
+    # Stamp the exemption mark onto every comp row (all variance views + the full list).
+    # exempt_share is None for unexempt comps and for an older DB without the table —
+    # the keys are always present so the JSON shape is stable.
+    for _rows in ([v["rows"] for v in result["variance"]["views"]]
+                  + [result["variance"]["all_diffs"]]):
+        for _r in _rows:
+            _share = comp_exempt.get(_r["parcel_id"])
+            _r["exempt_share"] = _share
+            _r["exempt_share_display"] = (_exempt_share_display(_share)
+                                          if _share is not None else None)
+
     # Retail-only disclosures (Stage 1 code-vs-route / "could not be measured"; Stage 2
     # broader-retail fallback). Office leaves both None, so its result dict is unchanged.
     if classification_note:
