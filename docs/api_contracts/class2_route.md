@@ -27,7 +27,7 @@ is implemented.** The capped-subclass refusal below is a **LOCKED decision** (DE
   truthful generic not-class-4 message (verified 2026-07-16: 1000070038, 1000110010,
   1000071101). No refusal code ships before the data that makes it reachable.
 
-### Message copy — DRAFT, pending wording review (not final)
+### Message copy — FINAL (wording approved 2026-07-16)
 
 > Not supported: small residential buildings with 10 or fewer units (tax classes 2A, 2B, and
 > 2C). For these buildings, New York State law limits how much of a property's value can be
@@ -35,9 +35,10 @@ is implemented.** The capped-subclass refusal below is a **LOCKED decision** (DE
 > when the value rises faster. Once a building's value outruns that limit, the amount it is
 > billed on falls behind and can stay behind for many years. Most of these buildings are
 > billed on less than half of what the standard assessment formula would produce, and the size
-> of the gap depends on each building's own value history. Comparing tax bills across them
-> would measure that history, not how each property is assessed today, so this tool does not
-> run the comparison.
+> of the gap depends on each building's own value history. Two similar buildings on the same
+> block can carry very different tax bills simply because their values rose at different
+> speeds in years past. Comparing tax bills across them would rank that gap — and say nothing
+> about how each property is assessed today — so this tool does not run the comparison.
 
 Copy constraints (locked): plain language for a reader who does not know NYC tax law; the
 yearly limit is explained, never named bare ("capped") without its mechanism; no internal
