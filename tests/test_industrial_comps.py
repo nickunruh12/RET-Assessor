@@ -37,7 +37,7 @@ def test_core_industrial_full_screen_same_subcode(client):
     j = client.get("/api/industrial_screen", params={"bbl": CORE}).json()
     assert j["status"] == "ok"
     assert [s["key"] for s in j["signals"]] == ["assessed_value_market", "mv_per_gross_sf", "tax_bill", "tax_per_gross_sf"]
-    assert j["subject"]["bucket_label"].startswith("Industrial — F")
+    assert j["subject"]["bucket_label"].startswith("Industrial — ")   # e.g. "Industrial — Light Manufacturing"
     assert j["comp_meta"]["comp_count"] >= 8
     assert j["comp_meta"]["composition"]["exact_count"] >= 1        # same-subcode comps present
     assert j["comp_meta"]["radius_used_miles"] <= 1.75              # never past the cap
@@ -100,7 +100,7 @@ def test_industrial_now_live_on_public_screen_byte_identical_to_test_route(clien
     import json
     pub = client.get("/api/screen", params={"bbl": CORE}).json()
     test = client.get("/api/industrial_screen", params={"bbl": CORE}).json()
-    assert pub["status"] == "ok" and pub["subject"]["bucket_label"].startswith("Industrial — F")
+    assert pub["status"] == "ok" and pub["subject"]["bucket_label"].startswith("Industrial — ")
     assert json.dumps(pub, sort_keys=True, default=str) == json.dumps(test, sort_keys=True, default=str)
 
 
@@ -137,7 +137,7 @@ def test_e_codes_now_in_scope_and_route_to_industrial(client):
             j = client.get("/api/screen", params={"bbl": b}).json()
             assert j["status"] == "ok", (sub, j.get("reason"))
             assert j["product_label"] == "Industrial"
-            assert j["subject"]["bucket_label"].startswith(f"Industrial — {sub} (")
+            assert j["subject"]["bucket_label"].startswith("Industrial — ")   # CODE prepended by template, not the bucket_label
     finally:
         con.close()
 
@@ -158,7 +158,7 @@ def test_e7_self_storage_walled_same_subcode_only(client):
                 continue
             filled += 1
             assert j["product_label"] == "Self-Storage"
-            assert j["subject"]["bucket_label"].startswith("Self-Storage — E7 (")
+            assert j["subject"]["bucket_label"] == "Self-Storage"   # E7: route IS the clean name; template prepends "E7 ("
             comp_bbls = [r["parcel_id"] for v in j["variance"]["views"] for r in v["rows"]]
             ph = ",".join(["?"] * len(comp_bbls))
             classes = {x[0] for x in con.execute(

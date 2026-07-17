@@ -83,25 +83,44 @@ _DEFAULTS = {
 POOL_SUBCODES = ("E1", "E2", "E9", "F1", "F2", "F4", "F5", "F9")
 E7 = "E7"                                              # self-storage: same-subcode-only, walled
 
-# Cleaned market names, DOF subcode always shown so the mapping stays traceable to the roll.
+# Cleaned market names (BARE — no DOF code baked in; the code is prepended by callers so the
+# mapping stays traceable without double-wrapping). No em-dash inside these: they sit inside
+# parentheticals that already carry one.
 _SUBCODE_LABELS = {
-    "E1": "Warehouse", "E2": "Contractor's Warehouse", "E9": "Warehouse — Misc",
+    "E1": "Warehouse", "E2": "Contractor's Warehouse", "E9": "Misc Warehouse",
     "E7": "Self-Storage",
     "F1": "Heavy Manufacturing", "F2": "Special Construction", "F4": "Industrial",
-    "F5": "Light Manufacturing", "F8": "Tank Farm", "F9": "Industrial — Misc",
+    "F5": "Light Manufacturing", "F8": "Tank Farm", "F9": "Misc Industrial",
 }
 
 
+def _clean_name(subcode: str | None) -> str:
+    """'F5' -> 'Light Manufacturing' (bare market name, no code). Falls back to the code."""
+    sc = (subcode or "").strip()
+    return _SUBCODE_LABELS.get(sc, sc or "Industrial")
+
+
 def _label(subcode: str | None) -> str:
-    """'F5' -> 'F5 (Light Manufacturing)'. DOF code first so it stays traceable."""
+    """'F5' -> 'F5 Light Manufacturing' (code + bare name, no parens). Used where the label
+    sits inside a list or a parenthetical, so it must not add its own parentheses."""
     sc = (subcode or "").strip()
     name = _SUBCODE_LABELS.get(sc)
-    return f"{sc} ({name})" if name else (sc or "Industrial")
+    return f"{sc} {name}" if name else (sc or "Industrial")
 
 
 def _product_label(subcode: str | None) -> str:
     """Route/product name: 'Self-Storage' for E7, 'Industrial' for the pooled eight + F8."""
     return "Self-Storage" if (subcode or "").strip() == E7 else "Industrial"
+
+
+def _bucket_label(subcode: str | None) -> str:
+    """The subject-panel bucket label WITHOUT the leading code (the template prepends the code
+    as 'CODE (bucket_label)'): E7 -> 'Self-Storage' (the route IS the clean name); every other
+    subcode -> 'Industrial — Warehouse' (route — clean name)."""
+    sc = (subcode or "").strip()
+    if sc == E7:
+        return "Self-Storage"
+    return f"Industrial — {_clean_name(sc)}"
 
 
 def _universe_subcodes(subcode: str) -> tuple[str, ...]:
@@ -139,7 +158,7 @@ def _composition_note(subject_subcode: str, comps) -> str | None:
         return None                                    # pure set — say nothing
     ordered = sorted(counts.items(), key=lambda kv: (kv[0] != subject_subcode, -kv[1], kv[0]))
     listed = ", ".join(f"{n} {_label(sc)}" for sc, n in ordered)
-    return (f"Comp set spans multiple industrial subcodes ({len(comps)} comps: {listed}). "
+    return (f"Comp set spans multiple industrial subcodes — {len(comps)} comps: {listed}. "
             "Subcodes are a DOF filing distinction, not a value boundary; comps are pooled on "
             "size and location.")
 
@@ -226,9 +245,9 @@ def _coverage_display(subj: dict, subj_cov, threshold) -> str | None:
     ba, la = subj.get("pluto_bldgarea"), subj.get("pluto_lotarea")
     if subj_cov is not None and ba and la:
         parts.append(f"Subject: building-area {ba:,.0f} SF ÷ lot-area {la:,.0f} SF = {subj_cov:.2f}.")
-    ver = subj.get("pluto_dataset_version")
-    if ver:
-        parts.append(f"Source: {ver}.")
+    # The PLUTO dataset citation is intentionally NOT stamped inline here — machine provenance
+    # belongs in the provenance block (sf_pluto_versions), not mid-prose. The concrete
+    # BldgArea/LotArea figures above stay; they are the readable fact, not a raw version string.
     return " ".join(parts)
 
 
@@ -290,7 +309,7 @@ def select_industrial_comps(con, subject_bbl: str, juris: Jurisdiction, criteria
 
     subject_summary = {
         "parcel_id": subj["parcel_id"], "bldg_class": subcode,
-        "bucket": subcode, "bucket_label": f"{product} — {_label(subcode)}",
+        "bucket": subcode, "bucket_label": _bucket_label(subcode),
         "borough": juris.borough_of(subj["parcel_id"]), "zip_code": subj.get("zip_code"),
         "sf": subj.get("sf"), "sf_source": subj.get("sf_source"),
         "year_built": subj.get("year_built"), "house_number": subj.get("house_number"),
