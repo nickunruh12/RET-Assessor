@@ -246,7 +246,7 @@ def test_beyond_range_parcel_shows_explicit_state_not_pegged_max(client):
     # PART 2: a citywide big-box parcel resolves > 2.0 mi; the slider can't represent it, so it
     # is disabled and the label states the real radius + "beyond ... override range" — the thumb
     # is never silently read as a literal 2.0.
-    BIGBOX_F = "1007600021"
+    BIGBOX_F = "5041910038"   # F5, shortfall-extends to ~2.8mi (> 2.0 slider max)
     j = client.get("/api/screen", params={"bbl": BIGBOX_F}).json()
     ru = j["comp_meta"]["radius_used_miles"]
     assert ru > 2.0                            # precondition: genuinely beyond the slider max

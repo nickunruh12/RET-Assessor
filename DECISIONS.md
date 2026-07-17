@@ -572,3 +572,47 @@ fires LESS but not never, so it stays.
   previously 0 F within cap — but only 3 in-band within 1.75mi, so an honest refusal).
 - NO F parcel got worse. Office + retail /api/screen JSON byte-identical (sha256 unchanged on
   1013010001, 1000650004).
+
+## 2026-07-17 — LOCKED: industrial big-box branch REMOVED; replaced by a shortfall-triggered extended radius
+
+The 100K big-box citywide-no-cap branch is deleted (no size threshold anywhere in industrial),
+and the Manhattan out-of-borough branch is retired with it. Replaced by ONE size-agnostic rule.
+
+**Why the big-box branch was wrong (measured):** no per-SF regime change at any size
+(50-100K $109, 100-250K $107, 250K+ $108; the only break is a mild ~12% small-parcel premium
+under 25K). Density: 90% of ≥100K parcels fill 8 in-band locally within 1.75mi — the branch
+invented scarcity. Decisive: fixture 4002940106 (654K) fills at 0.6mi; the branch was ignoring
+its next-door peers to travel 8.3mi for a size match on a non-driver.
+
+**The replacement — shortfall-triggered extended cap (size-agnostic):** any subject that can't
+reach 8 in-band comps within radius_cap_miles (1.75) extends to radius_cap_extended_miles (4.0)
+at the SAME ±75% band, then refuses. The trigger is the density shortfall, not a size gate —
+no "≥100K"/"≥250K" rule (that sidesteps the arbitrary-threshold problem that killed 100K). The
+band is NEVER widened (band-relax removed): a shortfall reaches further at the same band or
+refuses. 4.0mi is the measured knee: for ≥250K subjects, fill goes 1.75mi 79% → 3mi 86% →
+4mi 92% → 5/7mi 92% (add nothing) → 10mi 98% (reaches other submarkets). The extension is
+DISCLOSED, stating the actual radius reached; manual radius overrides never claim it.
+
+**Manhattan branch retired:** the 4.0mi extension covers 7 of 8 Manhattan stragglers; the 1
+remaining (1019530042, 500 SF, 8th in-band peer at 4.7mi) refuses honestly. One uniform
+mechanism replaces both the size branch and the geography branch — cross-borough is still
+disclosed automatically by the shared serializer note.
+
+**E7 self-storage — ±75% band DROPPED (keeps the wall + the extension):** size is a total
+non-driver of E7 per-SF (corr -0.012, R² 0.000; flat $172-180/SF across the whole range because
+self-storage prices per unit-month). The band cost 22 points of fill (55%→77%) for zero
+protection; with it dropped and the 4.0mi extension added, E7 fills 98% (refuses 2% — genuinely
+isolated parcels, e.g. 5032230006). E7 stays same-subcode-only (the wall is unchanged); the
+size-dissimilar ✗ marker never fires for E7 (correct — size is irrelevant to its value). The
+pooled eight KEEP the band: it guards the ABSOLUTE value/tax charts (size explains ~87% of
+total EMV), not per-SF.
+
+**Config:** removed big_box_sf_threshold + big_box_citywide_no_cap; added radius_cap_miles 1.75
++ radius_cap_extended_miles 4.0.
+
+**Verification (fixtures):** 4002940106 (654K) fills at 0.7mi, no extension, no big-box note.
+3017200001 (574K) extends to 2.0mi (was 6 in-band <1.75). 3053460017 (107K E7) fills at 1.4mi
+as Self-Storage, pure E7. 2050330001 (62K E7) NOW FILLS at 2.1mi via the extension (previously
+refused). 1019530042 refuses honestly. Office + retail /api/screen byte-identical (sha256
+unchanged). 369 tests pass, render_check clean, big-box/few-peers note gone from every
+industrial page.

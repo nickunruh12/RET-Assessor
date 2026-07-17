@@ -39,11 +39,13 @@ Every other class refuses with a stated reason (commercial condos get their own 
 
 **Built and live:**
 - **Comp engine** — comps selected by MEASURED property type (never a user dropdown), size band
-  (office/retail ±50%, industrial ±75%), and location (radius ladder with per-type caps;
-  Manhattan and big-box/citywide cascades); 8-comp refusal gate; land-dominant comps
-  (coverage < 0.30) excluded from per-SF and disclosed; per-SF percentile suppression on thin or
-  size-dispersed sets; large-format (K8 / industrial big-box) "few true peers — directional"
-  handling.
+  (office/retail ±50%, industrial ±75%; E7 self-storage no band — size is a non-driver there),
+  and location (radius ladder with per-type caps). Industrial uses a shortfall-triggered
+  extended radius (1.75→4.0 mi at the same band, then refuse) instead of a size threshold — the
+  big-box citywide branch and the Manhattan branch were removed (measured 2026-07-17). 8-comp
+  refusal gate; land-dominant comps (coverage < 0.30) excluded from per-SF and disclosed; per-SF
+  percentile suppression on thin or size-dispersed sets; large-format retail (K8) keeps its
+  "few true peers — directional" handling.
 - **Provenance layer** — every figure cites the DOF roll (`8y4t-faws`, FY2027 final) and PLUTO
   (`26v1`) with dataset version and retrieval date; user-supplied numbers (NOI, opex) are stamped
   user-supplied, no citation; ICAP abatements disclosed, never computed with.

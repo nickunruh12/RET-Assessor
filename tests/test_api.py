@@ -406,7 +406,7 @@ def test_tax_per_gba_twin_mirrors_mv_per_gba(client):
     # industrial land-dominant comp: both twins exclude the SAME count and disclose.
     # (Pooled industrial subject whose comp set contains a land-dominant parcel; the exact
     # count is incidental — the invariant is that the two per-GBA twins mirror each other.)
-    i = client.get("/api/screen", params={"bbl": "1000720013"}).json()
+    i = client.get("/api/screen", params={"bbl": "1002830083"}).json()
     byi = {s["key"]: s for s in i["signals"]}
     assert (byi["tax_per_gross_sf"]["land_dominant_excluded"]
             == byi["mv_per_gross_sf"]["land_dominant_excluded"] >= 1)
