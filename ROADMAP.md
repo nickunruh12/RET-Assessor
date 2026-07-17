@@ -30,9 +30,12 @@ locked choice lives in `DECISIONS.md`; what the tool refuses to do and why lives
 
 ## Current state
 
-**Public v1 (live on `main`):** NYC tax-class-4 **office (O), retail (K), industrial (F)** —
-each with the full provenance, disclosure, and suppression machinery. Every other class refuses
-with a stated reason (commercial condos get their own explanation).
+**Public v1 (live on `main`):** NYC tax-class-4 **office (O), retail (K), industrial (pooled
+E+F)** — each with the full provenance, disclosure, and suppression machinery. Industrial pools
+the eight warehouse/factory subcodes (E1,E2,E9,F1,F2,F4,F5,F9) into one route (the E/F split is
+a DOF filing artifact, measured); E7 self-storage is a walled "Self-Storage" branch inside it.
+Every other class refuses with a stated reason (commercial condos get their own explanation).
+(Pooled E+F built on `dev` 2026-07-17, pending merge.)
 
 **Built and live:**
 - **Comp engine** — comps selected by MEASURED property type (never a user dropdown), size band
@@ -99,7 +102,8 @@ so a new frontend can render the full honesty layer from JSON alone. Two standin
 - **Commercial condos** — three data paths measured, all dead (no value on the billing lot; no
   unit-level comparability attributes in any public dataset). See `KNOWN_LIMITS.md` for the
   full record. Both screening paths refuse/exclude condos with specific, truthful messages.
-- **E7 self-storage** — backlogged; needs its own comp-density kill-gate (318 parcels citywide).
+- **E7 self-storage** — SHIPPED (2026-07-17) as a walled same-subcode-only branch inside the
+  pooled Industrial route; product label "Self-Storage", refuses when it can't field 8 E7 comps.
 - Appeal-outcome learning, opex-margin checks, tool-asserted cap rates, any ML/feedback loop —
   walled off (see the spine); recorded in `KNOWN_LIMITS.md` where data-gated.
 - Smaller recorded limits (no-PLUTO-coordinates parcels, roll-vintage edge cases) live in

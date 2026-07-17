@@ -154,13 +154,14 @@ def _screen_view(con, *, bbl, house_number, street, borough, zip_code, radius=""
         return build_retail_screen_view(
             con, CRITERIA, JURIS, bbl=rr.bbl,
             radius_selection=_effective_radius_selection(radius)), rr.bbl
-    # INDUSTRIAL LIVE SWITCH — a resolved class-4 F-code (industrial) routes to the SAME
-    # industrial engine as the /industrial_screen test route (byte-identical: same call, no
-    # resolve/radius plumbing). Same K-only pattern: F-codes are intercepted UPSTREAM; the broad
-    # out_of_scope_v1 gate is untouched, so every non-office/non-K/non-F class (R condos, V
-    # vacant, G garage, U utility) keeps refusing. The F-code resolves to out_of_scope_v1 in the
-    # office resolver (non-"O") but carries its bldg_class + bbl, all the industrial engine needs.
-    if (rr.bldg_class or "").startswith("F"):
+    # INDUSTRIAL LIVE SWITCH — a resolved class-4 E- or F-code (pooled industrial, incl. E7
+    # self-storage) routes to the SAME industrial engine as the /industrial_screen test route
+    # (byte-identical: same call, no resolve/radius plumbing). Same K-only pattern: E/F-codes
+    # are intercepted UPSTREAM; the broad out_of_scope_v1 gate is untouched, so every
+    # non-office/non-K/non-E/non-F class (R condos, V vacant, G garage, U utility) keeps
+    # refusing. The E/F-code resolves to out_of_scope_v1 in the office resolver (non-"O") but
+    # carries its bldg_class + bbl, all the industrial engine needs.
+    if (rr.bldg_class or "").startswith(("E", "F")):
         return build_industrial_screen_view(
             con, CRITERIA, JURIS, bbl=rr.bbl,
             radius_selection=_effective_radius_selection(radius)), rr.bbl
@@ -445,7 +446,7 @@ def api_comp_count(bbl: str = Query(...), radius: float = Query(...)):
         if bc.startswith("K"):
             cs, _ = select_retail_comps(con, b, JURIS, CRITERIA, radius_override=r)
             min_c = CRITERIA.min_comp_count
-        elif bc.startswith("F"):
+        elif bc.startswith(("E", "F")):
             cs, _ = select_industrial_comps(con, b, JURIS, CRITERIA, radius_override=r)
             min_c = (CRITERIA.industrial_config or {}).get("min_comp_count", CRITERIA.min_comp_count)
         else:

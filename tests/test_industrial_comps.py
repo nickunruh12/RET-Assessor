@@ -114,9 +114,10 @@ def test_industrial_now_live_on_public_screen_byte_identical_to_test_route(clien
     assert json.dumps(pub, sort_keys=True, default=str) == json.dumps(test, sort_keys=True, default=str)
 
 
-def test_live_switch_is_f_only_other_classes_still_refuse(client):
-    # CRITICAL — the flip opens F-codes ONLY. Condos (R*) and other non-office/non-K/non-F
-    # class-4 codes (V vacant, G garage, U utility) must STILL refuse out_of_scope_v1.
+def test_live_switch_is_ef_only_other_classes_still_refuse(client):
+    # CRITICAL — the pooled route opens E- AND F-codes. Condos (R*) and other
+    # non-office/non-K/non-E/non-F class-4 codes (V vacant, G garage, U utility) must STILL
+    # refuse out_of_scope_v1.
     con = duckdb.connect(str(config.DB_PATH), read_only=True)
     try:
         for like in ("R%", "V%", "G%", "U%"):
@@ -128,6 +129,83 @@ def test_live_switch_is_f_only_other_classes_still_refuse(client):
             assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1", (like, j)
     finally:
         con.close()
+
+
+# --- pooled E+F route (restructured 2026-07-17) ----------------------------------------
+def _first(con, where):
+    r = con.execute(f"SELECT parcel_id FROM parcels WHERE {where} AND curmkttot>0 AND sf>0 "
+                    "AND pluto_latitude IS NOT NULL ORDER BY parcel_id LIMIT 1").fetchone()
+    return r[0] if r else None
+
+
+def test_e_codes_now_in_scope_and_route_to_industrial(client):
+    # E1/E2/E9 warehouses now screen (pooled with F), product label "Industrial".
+    con = duckdb.connect(str(config.DB_PATH), read_only=True)
+    try:
+        for sub in ("E1", "E2", "E9"):
+            b = _first(con, f"bldg_class='{sub}'")
+            j = client.get("/api/screen", params={"bbl": b}).json()
+            assert j["status"] == "ok", (sub, j.get("reason"))
+            assert j["product_label"] == "Industrial"
+            assert j["subject"]["bucket_label"].startswith(f"Industrial — {sub} (")
+    finally:
+        con.close()
+
+
+def test_e7_self_storage_walled_same_subcode_only(client):
+    # E7 comps against E7 ONLY (never the pool); product label "Self-Storage"; refuses when
+    # it cannot field 8 E7 comps.
+    con = duckdb.connect(str(config.DB_PATH), read_only=True)
+    try:
+        e7s = [r[0] for r in con.execute(
+            "SELECT parcel_id FROM parcels WHERE bldg_class='E7' AND curmkttot>0 AND sf>0 "
+            "AND pluto_latitude IS NOT NULL ORDER BY parcel_id LIMIT 8").fetchall()]
+        filled = refused = 0
+        for b in e7s:
+            j = client.get("/api/screen", params={"bbl": b}).json()
+            if j["status"] == "refused":
+                refused += 1
+                assert j["reason"] == "insufficient_comps_within_cap"
+                continue
+            filled += 1
+            assert j["product_label"] == "Self-Storage"
+            assert j["subject"]["bucket_label"].startswith("Self-Storage — E7 (")
+            comp_bbls = [r["parcel_id"] for v in j["variance"]["views"] for r in v["rows"]]
+            ph = ",".join(["?"] * len(comp_bbls))
+            classes = {x[0] for x in con.execute(
+                f"SELECT DISTINCT bldg_class FROM parcels WHERE parcel_id IN ({ph})", comp_bbls).fetchall()}
+            assert classes <= {"E7"}, f"E7 wall leaked: {classes}"
+        assert filled >= 1 and refused >= 1     # E7 both fills (dense clusters) and refuses (sparse)
+    finally:
+        con.close()
+
+
+def test_composition_note_names_subcodes_when_mixed(client):
+    # A pooled subject with a cross-subcode set names the mix; a pure set says nothing.
+    # 2025950039 (F8) falls back to the pool -> mixed set -> named composition.
+    h = client.get("/screen", params={"bbl": "2025950039"}).text
+    assert "spans multiple industrial subcodes" in h
+    assert "not a value boundary" in h          # honest framing, no verdict
+    # named with cleaned labels + DOF subcode
+    assert "Warehouse" in h and "(" in h
+
+
+def test_f8_subject_falls_back_to_pool(client):
+    # An F8 tank-farm SUBJECT screens (falls back to the flat pool); its own per-SF is
+    # withheld when land-dominant, but the value/tax distribution still renders.
+    j = client.get("/api/screen", params={"bbl": "2025950039"}).json()
+    assert j["status"] == "ok"
+    assert j["comp_meta"]["comp_count"] >= config.MIN_COMP_COUNT
+
+
+def test_pooled_office_retail_byte_identical(client):
+    # The pooled restructure must not move office or retail at all.
+    import json
+    for b in ("1013010001", "1000650004"):
+        j = client.get("/api/screen", params={"bbl": b}).json()
+        assert j["status"] == "ok"
+        assert "Industrial" not in (j["subject"].get("bucket_label") or "")
+        assert "product_label" not in j       # industrial-only field never leaks
 
 
 # --- coverage (item 5) — SUBJECT-side caveat (LIVE) -------------------------------------

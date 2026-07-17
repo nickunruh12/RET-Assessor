@@ -509,3 +509,66 @@ class-4-like; no value clip; comp-set dispersion in the class-4 band).
   pre-exemption by construction, so all comps already share the plotted basis; segregation
   fixes nothing and starves the pool. Selection stays on measured value drivers.
 - The class-4 subject benefit note covers class-2 abated/exempt subjects when the route lands.
+
+## 2026-07-17 — LOCKED: Industrial route restructured to a POOLED E+F pool (deliberately moves F)
+
+The live industrial route now pools E (warehouse) and F (factory/industrial) into ONE
+"Industrial" product over eight flat subcodes — E1, E2, E9, F1, F2, F4, F5, F9 (~8,968
+parcels). This RESTRUCTURES F's comp behavior on purpose; it is measurement-backed and the
+before/after diff was verified (below).
+
+**Why (measured):** the E/F split is a DOF filing artifact (construction/fireproofing —
+E1 "Fireproof Warehouse" vs F4 "Industrial Semi-Fireproof"), not an asset boundary. The eight
+sit in one $112–123/SF band; E1 ($120) is a statistical twin of F4/F5 ($114/$114), not of its
+letter-mate E7 ($175). E and F interleave block-by-block (F→nearest-E median 0.03 mi, 99%
+within 0.25 mi). Pooled QCD 0.222 sits BELOW E-only 0.231 — the split does no statistical
+work. The sharper test: after matching size (±75%) and location (≤1 mi), storage-vs-production
+explains 1.5% of per-SF variance (R² 0.015) — below the vintage filter already killed at 0.019.
+Subcode is a non-driver.
+
+**Fallback = same-subcode-first → flat pool → refuse. NOT a family/subcode tier.** A subcode
+preference would reorder comps toward a non-driver — the exact failure mode of the rejected
+soft vintage preference. (Confirmed: when subcodes fall back they pull across the
+storage/production line freely — F5 pulls 84% storage, F1 pulls 72% storage — the line isn't a
+value boundary.) F's parameters transfer wholesale: ±75% SF band, 0.5→1.0 auto-radius, 1.75mi
+cap, 0.30 land-dominant coverage exclusion, 100K big-box citywide-no-cap.
+
+**Two flagged special cases inside the ONE route (not parallel engines):**
+- **E7 self-storage** — same-subcode-ONLY, never falls back; refuses when it can't field 8
+  (measured ~44% will refuse — intended). Product label "Self-Storage". Justified: median
+  $175/SF vs the $112–123 block, QCD 0.057 (5× tighter), coverage 2.69, median 79K SF — a
+  distinct asset. One branch in the selector.
+- **F8 tank farm** — an F8 SUBJECT falls back to the flat pool (F8 is NOT in the pool itself);
+  its own per-SF stays withheld when land-dominant via the existing 0.30 rule. No new handling.
+
+**Composition disclosure:** whenever ANY comp differs from the subject's subcode, the set names
+the mix ("Comp set spans multiple industrial subcodes (8 comps: 6 E1 (Warehouse), 2 F5 (Light
+Manufacturing)). Subcodes are a DOF filing distinction, not a value boundary…"). Pure sets say
+nothing. No threshold — a count is a fact (same precedent as the cross-type note). Fires
+naturally scaled to actual mixing (E1 averages 0.07 cross/8 and rarely fires; F2 averages 6.06
+and always fires).
+
+**Labels:** cleaned market names with the DOF subcode always shown for traceability — E1
+(Warehouse), E2 (Contractor's Warehouse), E9 (Warehouse — Misc), E7 (Self-Storage), F1 (Heavy
+Manufacturing), F2 (Special Construction), F4 (Industrial), F5 (Light Manufacturing), F8 (Tank
+Farm), F9 (Industrial — Misc). Route label "Industrial" (pooled eight) / "Self-Storage" (E7).
+
+**Manhattan cascade — KEPT (measured, not removed).** Verified: ~8 of 139 pooled Manhattan
+industrial subjects still cannot field 8 within the 1.75mi cap (e.g. 1005960092, 1010910001,
+1019530042, 1006010026), so the uncapped out-of-borough reach is still load-bearing. The two
+prior Manhattan fixtures (1007880016, 1007610041) now fill within cap unchanged — the cascade
+fires LESS but not never, so it stays.
+
+**Before/after F verification (worktree diff at HEAD d700056):**
+- Core F5 (3000320029/50/140): IDENTICAL comp sets — same-subcode fills within cap, untouched.
+- Large-format (4002940106, 3017200001): max distance grew (6.4→8.3 mi) but that is size-
+  matched-citywide by design, and the size match got ~4× TIGHTER (mean |Δsf| 225K→51K). Better.
+- F8 (2025950039, 2025970001): closer + denser (radius 1.2→0.5; n 8→11) — falls back to the
+  dense pool now. Better.
+- Band-relaxed (4107590186, 4107630023): BOTH now fill fully IN-BAND (sf_band_relaxed
+  False, were band-relaxed before) — size-comparable comps where before they were size-
+  dissimilar. Strictly better.
+- 5041910038: STILL refuses (isolated Staten Island F5; pooling added nearer E1s — 0.76 mi vs
+  previously 0 F within cap — but only 3 in-band within 1.75mi, so an honest refusal).
+- NO F parcel got worse. Office + retail /api/screen JSON byte-identical (sha256 unchanged on
+  1013010001, 1000650004).
