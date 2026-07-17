@@ -308,3 +308,29 @@ def test_coverage_note_no_verdict_language():
     for banned in ("outlier", "flagged", "over-assessed", "under-assessed", "overvalued",
                    "undervalued", "should", "fair", "true value"):
         assert banned not in low
+
+
+def test_industrial_suppresses_exact_adjacent_framing(client):
+    # On the pooled route "exact" = same DOF subcode, a measured non-driver, so the exact/adjacent
+    # quality framing is suppressed: no low-exact caution, no "N exact / M adjacent" meta line.
+    # The composition note is the ONLY remaining cross-subcode disclosure. Counts still travel in
+    # the API (comp_meta.composition) for provenance.
+    j = client.get("/api/screen", params={"bbl": "2045550046"}).json()   # E2, cross-subcode set
+    cm = j["comp_meta"]
+    assert cm["low_exact_caution"] is False and cm["caution_message"] is None
+    assert cm["suppress_exact_split"] is True
+    assert "exact_count" in cm["composition"] and "adjacent_count" in cm["composition"]  # kept in API
+    html = client.get("/screen", params={"bbl": "2045550046"}).text
+    assert "exact /" not in html.split("comp-meta")[1].split("</p>")[0]   # not in the meta line
+    assert 'class="caution"' not in html                                  # no adjacent-class caution
+    assert "spans multiple industrial subcodes" in html                  # composition note remains
+
+
+def test_office_retail_keep_exact_adjacent_framing(client):
+    # Office/retail never reach the industrial path: their exact/adjacent line + caution machinery
+    # are untouched (there "exact" = same bucket, which genuinely matters).
+    for b in ("1013010001", "1000650004"):
+        j = client.get("/api/screen", params={"bbl": b}).json()
+        assert "suppress_exact_split" not in j["comp_meta"]              # flag never set
+        html = client.get("/screen", params={"bbl": b}).text
+        assert "exact /" in html.split("comp-meta")[1].split("</p>")[0]  # still in the meta line

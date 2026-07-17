@@ -476,4 +476,18 @@ def build_industrial_screen_view(con, criteria: CompCriteria, juris: Jurisdictio
                     name = _SUBCODE_LABELS.get(sc)
                     if name:
                         _r["exact_match_display"] = f"✗ ({sc} {name})"
+        # SUPPRESS the exact/adjacent framing on the pooled industrial route (incl. E7). On this
+        # route "exact" means "same DOF subcode", and subcode is a MEASURED non-driver of value
+        # (within size-and-location-matched groups, R² 0.015 — below the killed vintage filter at
+        # 0.019). The pool is deliberately mixed, so a same-subcode comp is not a better comp:
+        # the low-exact caution flags intended behavior as a weakness, and the "N exact / M
+        # adjacent" split presents subcode as a quality signal it is not. The composition note
+        # already names the actual subcode mix as a neutral fact. Office/retail never reach this
+        # path (their "exact" = same bucket, which genuinely matters), so their output is
+        # untouched. Display-only — the counts still travel in comp_meta.composition for the API.
+        cm = result.get("comp_meta")
+        if isinstance(cm, dict):
+            cm["low_exact_caution"] = False
+            cm["caution_message"] = None
+            cm["suppress_exact_split"] = True
     return result
