@@ -129,7 +129,7 @@
         <tbody>
         {% for r in rows %}
           <tr>
-            <td>{{ r.parcel_id }}{% if r.has_icap %} <span class="icap-tag" title="Current ICAP abatement (rgyu-ii48). Plotted tax is the full statutory amount.">ICAP</span>{% endif %}</td>{% if show_origin %}<td><span class="origin-tag origin-{{ (r.origin or '')|replace('-', '') }}" title="{{ r.origin_note or '' }}">{{ r.origin or '—' }}</span></td>{% endif %}
+            <td>{{ r.parcel_id }}{% if r.has_icap %} <span class="icap-tag" title="Current ICAP abatement (rgyu-ii48). Plotted tax is the full statutory amount.">ICAP</span>{% endif %}{% if r.exempt_share_display %} <span class="exempt-tag" title="Exemption covers {{ r.exempt_share_display }} of this comp's taxable value (curtxbextot, assessment roll). Plotted tax is the full statutory amount.">exempt {{ r.exempt_share_display }}</span>{% endif %}</td>{% if show_origin %}<td><span class="origin-tag origin-{{ (r.origin or '')|replace('-', '') }}" title="{{ r.origin_note or '' }}">{{ r.origin or '—' }}</span></td>{% endif %}
             <td>{{ r.address }}<br><span class="src">{{ r.address_source }}</span></td>
             {% if stories_col %}<td>{{ r.stories_display }}</td>{% endif %}
             <td>{{ r.comp_sf_display }}{% if show_size_flag and r.size_dissimilar %} <span class="size-flag" title="{{ _sf_title }}">size-dissimilar</span>{% endif %}{% if r.land_dominant %} <span class="size-flag" title="Building covers under 30% of lot (PLUTO BldgArea/LotArea); excluded from per-SF, kept in the value distribution">land-dominant</span>{% endif %}</td>
@@ -165,9 +165,9 @@
       {% endif %}
       <p class="comp-meta">
         <strong class="radius-used">{{ radius_used_text(result.comp_meta.radius_used_miles, result.radius_control) }}</strong>
-        · comp set: {{ result.comp_meta.comp_count }} comps ·
+        · comp set: {{ result.comp_meta.comp_count }} comps{% if not result.comp_meta.suppress_exact_split %} ·
         {{ result.comp_meta.composition.exact_count }} exact / {{ result.comp_meta.composition.adjacent_count }} adjacent
-        {% if result.comp_meta.sf_band_relaxed %} · (gross-SF band relaxed to reach the 8-comp minimum; comp set includes size-dissimilar buildings){% elif not result.comp_meta.sf_band_applied %} · (no gross-SF band: subject SF not reported){% endif %}
+        {% endif %}{% if result.comp_meta.sf_band_relaxed %} · (gross-SF band relaxed to reach the 8-comp minimum; comp set includes size-dissimilar buildings){% elif not result.comp_meta.sf_band_applied %} · (no gross-SF band: subject SF not reported){% endif %}
       </p>
       {{ radius_control(result.radius_control, s.bbl, result.comp_meta.radius_used_miles) }}
       {% if result.comp_meta.low_exact_caution %}
@@ -177,9 +177,9 @@
 
     <!-- 3. Three SIGNAL distributions -->
     <section class="signals">
-      {% if result.icap_banner %}
-      <p class="icap-banner">{{ result.icap_banner.message }}
-        <span class="src">Source: {{ result.icap_banner.dataset }} · extract {{ result.icap_banner.extractdt }}</span></p>
+      {% if result.subject_benefit_note %}
+      <p class="icap-banner benefit-note">{{ result.subject_benefit_note.message }}
+        {% if result.subject_benefit_note.sources %}<span class="src">Source: {{ result.subject_benefit_note.sources | join(' · ') }}</span>{% endif %}</p>
       {% endif %}
       <h2>Where the Subject Sits Among Its Comps</h2>
       <p class="gloss src">Percentile = the share of comps at or below the subject on this metric.
@@ -340,7 +340,10 @@
           roll year {{ result.provenance.roll_year }} · retrieved {{ result.provenance.retrieval_date }}</li>
         <li>Gross-building-area source (PLUTO): {{ result.provenance.sf_pluto_versions|join(", ") }}</li>
         {% if result.provenance.abatement_extractdt %}
-        <li>ICAP abatement source: {{ result.provenance.abatement_dataset }} · extract {{ result.provenance.abatement_extractdt }}</li>
+        <li>Abatement source (ICAP/J-51/MCI/GCCA): {{ result.provenance.abatement_dataset }} · extract {{ result.provenance.abatement_extractdt }}</li>
+        {% endif %}
+        {% if result.provenance.exemption_dataset %}
+        <li>Exemption source (curtxbextot): {{ result.provenance.exemption_dataset }} · FY{{ result.provenance.exemption_roll_year }} roll</li>
         {% endif %}
         <li>Tax rate applied: {{ result.provenance.tax_rate_applied }}</li>
         <li>Source fields:

@@ -420,3 +420,199 @@ Deliberately NO share threshold and NO warning tier: nothing measurable says at 
 cross-type mix becomes misleading, so stating the count is a fact while a cutoff would be an
 unmeasured judgment. Rendered in the custom banner and carried in the API as
 comp_source.cross_type_note (null when no cross-type comp).
+
+## 2026-07-16 — LOCKED: capped small-residential subclasses (2A/2B/2C) refuse entirely in any class-2 route
+
+Tax classes 2A/2B/2C (residential, 10 or fewer units; 78,952 parcels on the FY2027 final roll)
+will never screen — not tax charts, and not value charts either. Recorded now, ahead of any
+class-2 build, because the specific refusal is UNREACHABLE today: the DB is class-4-only and
+PLUTO carries no tax-class field, so a 2A/2B/2C BBL currently (and truthfully) refuses with the
+generic not-class-4 message on both the auto and custom paths (verified 2026-07-16 on
+1000070038 (2A), 1000110010 (2B), 1000071101 (2C)). The specific refusal ships as part of the
+class-2 route — no dead code lands now. Design: docs/api_contracts/class2_route.md.
+
+**Why tax charts are out** (measured on the FY2027 final roll, 8y4t-faws):
+- State law limits assessed-value increases on these subclasses (8%/yr, 30%/5yr — nyc.gov,
+  "Determining your assessed value"). The limit binds in `curtxbtot`: median billable is 31.2%
+  (2A) / 35.7% (2B) / 51.5% (2C) of the 45%-of-market target (`curacttot`); pooled, ~70% of
+  these parcels bill below HALF their target (2A 83% / 2B 66% / 2C 48%); billable/target IQR
+  spreads are 0.23–0.44. Class-4 contrast: O/K/F medians 0.94–0.96, IQR spreads 0.08–0.09,
+  and 0% bill below half. A tax-bill distribution across 2A/2B/2C therefore ranks each
+  building's accumulated shortfall history, not its assessment treatment.
+
+**Why value-only was considered and rejected** (three measured legs):
+1. The tax comparison IS the product for this tool's audience; a value-only screen is half a
+   tool, and half a tool is worse than an honest refusal.
+2. Little to rank: only ~1% of 2A subjects sit more than 2x from (or under half of) their
+   peer-set median EMV/SF, vs 8.4% class-4 office / 13.8% retail (same peer method: same
+   subclass+letter, ±50% SF, ≤1 mi, ≥8 peers). Typical comp-set relative IQR on 2A is 0.21 vs
+   0.42 office — the small-residential model floors and ceilings values into a band.
+3. The value figure itself is path-dependent: YoY `curmkttot` growth on 2A/2B/2C is clipped at
+   EXACTLY +20.0%/yr — p90 pinned at 20.0% in every subclass and every year-pair 2024→2027,
+   30–52% of parcels at precisely +20.0% each year, <2% ever above, declines passed through,
+   and 10–22% compounded at exactly 1.20^3 over the three years. Controls show the clip is
+   exclusive to these subclasses (plain-'2' C/D and class-4 K/F/O: 0.1–0.2% at +20%, free
+   tails). No published DOF methodology page discloses this practice — so a 2A/2B/2C value
+   chart would present a distribution whose generating rule cannot be cited, failing the
+   tool's own provenance standard.
+
+**Mechanism note for the message copy**: the shortfall reflects each building's value-growth
+history relative to the yearly limit. NYC's limits do NOT reset when a property is sold (that
+is California's system), so copy must not attribute the gap to "how long the owner has held
+it" — the accurate plain-language frame is the building's own value history.
+
+**Scope of the refusal**: subject entry (auto + custom) AND custom-comp entry — a 2A/2B/2C
+parcel entered as a user comp excludes with the same stated reason, once class-2 data makes
+the subclass identifiable. Plain-'2' C/D rentals (33,196 parcels) are unaffected and remain
+the buildable class-2 route: measured clean on every axis (billable/target median 0.956–0.966,
+class-4-like; no value clip; comp-set dispersion in the class-4 band).
+
+## 2026-07-16 — LOCKED: benefit-program disclosure — class-4 exemption naming + subject benefit note (live), class-2 program design (recorded)
+
+**Live class-4 changes (shipped this date):**
+- The comp-basis caveat now names EXEMPTIONS beside abatements. Measured reason: the auto
+  engine excludes curmkttot <= 0, but a parcel can be fully exempt with positive market
+  value and enter a comp set — 10.8% of office comps carry some exemption and 5.8% are
+  fully exempt (K 4.2%/0.8%, F 7.2%/3.2%), so "may pay less" undersold comps that pay
+  nothing. The statutory-basis framing is unchanged: the plotted number stays pre-exemption
+  and pre-abatement, computed identically for every comp.
+- Per-comp "exempt N%" tag from the roll's own curtxbextot (new exemptions_class4 table,
+  loader `python -m screener.exemptions`; share = curtxbextot/curtxbtot). NO threshold —
+  any exempt comp is tagged with its share (a fact), consistent with the cross-type-note
+  precedent that cutoffs are unmeasured judgments. Display only; never filters a comp.
+- SUBJECT benefit-basis note (replaces the ICAP-only banner; one consolidated note, never
+  stacked banners): fires when the subject carries a current abatement (ICAP/J-51/MCI/GCCA
+  — abatement table widened to all four; table name `abatements_icap` kept so a deployed
+  ICAP-only DB degrades gracefully) or an exemption. States, verdict-free: the benefit
+  reduces what is paid; figures shown are statutory pre-benefit on the same basis for every
+  comp; a benefit applies to a bill the assessment produces, so the charts show how that
+  underlying assessment compares with similar buildings'. The affirmative case for the
+  pre-abatement convention: an abated owner's benefit is calculated against the assessment,
+  so the pre-benefit position is the number their credit rides on.
+- Reconciliation of the three disclosures (no restating): TAX_METHOD_NOTE defines the
+  plotted quantity; COMP_BASIS_CAVEAT covers comp-side uniformity + the marks; the subject
+  note carries the subject's own benefits + what the basis shows. The exempt-marks sentence
+  is appended to the caveat ONLY when the exemption table is loaded, so an older deployed
+  DB never promises marks it cannot render.
+- DEPLOYMENT NOTE: the new/widened tables live in screener.duckdb — the live host shows the
+  new caveat text immediately on code deploy, but tags + notes light up only with a new DB
+  Release + updated SCREENER_DB_SHA256. All helpers tolerate the old DB (no hard failure).
+
+**Class-2 route design (recorded now, ships with the route — docs/api_contracts/class2_route.md):**
+- Shelter-rent family (Article XI/420-c/HDFC/UDAAP/DAMP/HPD): disclose both sides — comp
+  badge + subject valuation-basis notice (measured: C at 0.75x unexempt-peer median, p25,
+  43% below peers' 20th). Not a refusal: the generating rule is citable statute (DOF's own
+  code table labels these "SHELTER RENT").
+- 421-a/485-x/467-m: badge only, both sides — measured abatement-shaped (1.62x peer median,
+  1.24x age-matched: new-construction effect, not assessment suppression).
+- NO segregation, NO program-weighting of comps: curtxbtot is pre-abatement and
+  pre-exemption by construction, so all comps already share the plotted basis; segregation
+  fixes nothing and starves the pool. Selection stays on measured value drivers.
+- The class-4 subject benefit note covers class-2 abated/exempt subjects when the route lands.
+
+## 2026-07-17 — LOCKED: Industrial route restructured to a POOLED E+F pool (deliberately moves F)
+
+The live industrial route now pools E (warehouse) and F (factory/industrial) into ONE
+"Industrial" product over eight flat subcodes — E1, E2, E9, F1, F2, F4, F5, F9 (~8,968
+parcels). This RESTRUCTURES F's comp behavior on purpose; it is measurement-backed and the
+before/after diff was verified (below).
+
+**Why (measured):** the E/F split is a DOF filing artifact (construction/fireproofing —
+E1 "Fireproof Warehouse" vs F4 "Industrial Semi-Fireproof"), not an asset boundary. The eight
+sit in one $112–123/SF band; E1 ($120) is a statistical twin of F4/F5 ($114/$114), not of its
+letter-mate E7 ($175). E and F interleave block-by-block (F→nearest-E median 0.03 mi, 99%
+within 0.25 mi). Pooled QCD 0.222 sits BELOW E-only 0.231 — the split does no statistical
+work. The sharper test: after matching size (±75%) and location (≤1 mi), storage-vs-production
+explains 1.5% of per-SF variance (R² 0.015) — below the vintage filter already killed at 0.019.
+Subcode is a non-driver.
+
+**Fallback = same-subcode-first → flat pool → refuse. NOT a family/subcode tier.** A subcode
+preference would reorder comps toward a non-driver — the exact failure mode of the rejected
+soft vintage preference. (Confirmed: when subcodes fall back they pull across the
+storage/production line freely — F5 pulls 84% storage, F1 pulls 72% storage — the line isn't a
+value boundary.) F's parameters transfer wholesale: ±75% SF band, 0.5→1.0 auto-radius, 1.75mi
+cap, 0.30 land-dominant coverage exclusion, 100K big-box citywide-no-cap.
+
+**Two flagged special cases inside the ONE route (not parallel engines):**
+- **E7 self-storage** — same-subcode-ONLY, never falls back; refuses when it can't field 8
+  (measured ~44% will refuse — intended). Product label "Self-Storage". Justified: median
+  $175/SF vs the $112–123 block, QCD 0.057 (5× tighter), coverage 2.69, median 79K SF — a
+  distinct asset. One branch in the selector.
+- **F8 tank farm** — an F8 SUBJECT falls back to the flat pool (F8 is NOT in the pool itself);
+  its own per-SF stays withheld when land-dominant via the existing 0.30 rule. No new handling.
+
+**Composition disclosure:** whenever ANY comp differs from the subject's subcode, the set names
+the mix ("Comp set spans multiple industrial subcodes (8 comps: 6 E1 (Warehouse), 2 F5 (Light
+Manufacturing)). Subcodes are a DOF filing distinction, not a value boundary…"). Pure sets say
+nothing. No threshold — a count is a fact (same precedent as the cross-type note). Fires
+naturally scaled to actual mixing (E1 averages 0.07 cross/8 and rarely fires; F2 averages 6.06
+and always fires).
+
+**Labels:** cleaned market names with the DOF subcode always shown for traceability — E1
+(Warehouse), E2 (Contractor's Warehouse), E9 (Warehouse — Misc), E7 (Self-Storage), F1 (Heavy
+Manufacturing), F2 (Special Construction), F4 (Industrial), F5 (Light Manufacturing), F8 (Tank
+Farm), F9 (Industrial — Misc). Route label "Industrial" (pooled eight) / "Self-Storage" (E7).
+
+**Manhattan cascade — KEPT (measured, not removed).** Verified: ~8 of 139 pooled Manhattan
+industrial subjects still cannot field 8 within the 1.75mi cap (e.g. 1005960092, 1010910001,
+1019530042, 1006010026), so the uncapped out-of-borough reach is still load-bearing. The two
+prior Manhattan fixtures (1007880016, 1007610041) now fill within cap unchanged — the cascade
+fires LESS but not never, so it stays.
+
+**Before/after F verification (worktree diff at HEAD d700056):**
+- Core F5 (3000320029/50/140): IDENTICAL comp sets — same-subcode fills within cap, untouched.
+- Large-format (4002940106, 3017200001): max distance grew (6.4→8.3 mi) but that is size-
+  matched-citywide by design, and the size match got ~4× TIGHTER (mean |Δsf| 225K→51K). Better.
+- F8 (2025950039, 2025970001): closer + denser (radius 1.2→0.5; n 8→11) — falls back to the
+  dense pool now. Better.
+- Band-relaxed (4107590186, 4107630023): BOTH now fill fully IN-BAND (sf_band_relaxed
+  False, were band-relaxed before) — size-comparable comps where before they were size-
+  dissimilar. Strictly better.
+- 5041910038: STILL refuses (isolated Staten Island F5; pooling added nearer E1s — 0.76 mi vs
+  previously 0 F within cap — but only 3 in-band within 1.75mi, so an honest refusal).
+- NO F parcel got worse. Office + retail /api/screen JSON byte-identical (sha256 unchanged on
+  1013010001, 1000650004).
+
+## 2026-07-17 — LOCKED: industrial big-box branch REMOVED; replaced by a shortfall-triggered extended radius
+
+The 100K big-box citywide-no-cap branch is deleted (no size threshold anywhere in industrial),
+and the Manhattan out-of-borough branch is retired with it. Replaced by ONE size-agnostic rule.
+
+**Why the big-box branch was wrong (measured):** no per-SF regime change at any size
+(50-100K $109, 100-250K $107, 250K+ $108; the only break is a mild ~12% small-parcel premium
+under 25K). Density: 90% of ≥100K parcels fill 8 in-band locally within 1.75mi — the branch
+invented scarcity. Decisive: fixture 4002940106 (654K) fills at 0.6mi; the branch was ignoring
+its next-door peers to travel 8.3mi for a size match on a non-driver.
+
+**The replacement — shortfall-triggered extended cap (size-agnostic):** any subject that can't
+reach 8 in-band comps within radius_cap_miles (1.75) extends to radius_cap_extended_miles (4.0)
+at the SAME ±75% band, then refuses. The trigger is the density shortfall, not a size gate —
+no "≥100K"/"≥250K" rule (that sidesteps the arbitrary-threshold problem that killed 100K). The
+band is NEVER widened (band-relax removed): a shortfall reaches further at the same band or
+refuses. 4.0mi is the measured knee: for ≥250K subjects, fill goes 1.75mi 79% → 3mi 86% →
+4mi 92% → 5/7mi 92% (add nothing) → 10mi 98% (reaches other submarkets). The extension is
+DISCLOSED, stating the actual radius reached; manual radius overrides never claim it.
+
+**Manhattan branch retired:** the 4.0mi extension covers 7 of 8 Manhattan stragglers; the 1
+remaining (1019530042, 500 SF, 8th in-band peer at 4.7mi) refuses honestly. One uniform
+mechanism replaces both the size branch and the geography branch — cross-borough is still
+disclosed automatically by the shared serializer note.
+
+**E7 self-storage — ±75% band DROPPED (keeps the wall + the extension):** size is a total
+non-driver of E7 per-SF (corr -0.012, R² 0.000; flat $172-180/SF across the whole range because
+self-storage prices per unit-month). The band cost 22 points of fill (55%→77%) for zero
+protection; with it dropped and the 4.0mi extension added, E7 fills 98% (refuses 2% — genuinely
+isolated parcels, e.g. 5032230006). E7 stays same-subcode-only (the wall is unchanged); the
+size-dissimilar ✗ marker never fires for E7 (correct — size is irrelevant to its value). The
+pooled eight KEEP the band: it guards the ABSOLUTE value/tax charts (size explains ~87% of
+total EMV), not per-SF.
+
+**Config:** removed big_box_sf_threshold + big_box_citywide_no_cap; added radius_cap_miles 1.75
++ radius_cap_extended_miles 4.0.
+
+**Verification (fixtures):** 4002940106 (654K) fills at 0.7mi, no extension, no big-box note.
+3017200001 (574K) extends to 2.0mi (was 6 in-band <1.75). 3053460017 (107K E7) fills at 1.4mi
+as Self-Storage, pure E7. 2050330001 (62K E7) NOW FILLS at 2.1mi via the extension (previously
+refused). 1019530042 refuses honestly. Office + retail /api/screen byte-identical (sha256
+unchanged). 369 tests pass, render_check clean, big-box/few-peers note gone from every
+industrial page.

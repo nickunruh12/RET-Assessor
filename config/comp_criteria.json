@@ -1,97 +1,136 @@
 {
-  "_doc": "Tunable comp-selection criteria. Edit this file to retune WITHOUT touching code. Jurisdiction logic lives in src/screener/plugins/<jurisdiction>.py; this file only carries parameters. Every value here traces to a dated entry in DECISIONS.md.",
-  "jurisdiction": "nyc",
-
-  "activated_products": ["O"],
-  "_activated_products_doc": "Building-class first letters ACTIVATED in v1. Only Office ('O') is live (DECISIONS 2026-06-19). A subject whose class letter is not here gets an 'out of scope for v1' refusal. Adding a type later (e.g. 'K' retail) is a config addition here plus its bucket map, not an engine change.",
-
-  "office_buckets": {
-    "O1": "O1", "O2": "O2", "O3": "O3", "O4": "O4",
-    "O5": "O5_O6", "O6": "O5_O6",
-    "O7": "O7_O9", "O8": "O7_O9", "O9": "O7_O9"
-  },
-  "_office_buckets_doc": "Office subclass -> bucket key (DECISIONS 2026-06-19). O1-O4 each their own bucket (exact match, no cross-matching); O5+O6 grouped; O7+O8+O9 grouped. Class code encodes stories at 100% fill, so common codes stay exact for tight peers and rare codes group to avoid comp starvation. A comp must share the subject's bucket.",
-
-  "office_bucket_labels": {
-    "O1": "Office — O1", "O2": "Office — O2", "O3": "Office — O3", "O4": "Office — O4",
-    "O5_O6": "Office with commercial (O5/O6)", "O7_O9": "Misc office (O7/O8/O9)"
-  },
-
-  "fallback_ladder": {
-    "O1": ["O2", "O3"],
-    "O2": ["O1", "O3"],
-    "O3": ["O2", "O1"],
-    "O4": []
-  },
-  "_fallback_ladder_doc": "Tiered class fallback for the EXACT low-rise codes (DECISIONS 2026-06-20). Distance is relaxed BEFORE class: a subject's exact class is exhausted across the full radius (0.5->1.0 mi) first; only if it yields < min_comp_count at 1.0 mi are adjacent classes added, in ladder order, each swept 0.5->1.0 mi. O4 has an empty ladder = exact-or-refuse (towers have no adjacent peer class). Classes NOT listed here (O5/O6, O7/O8/O9) are grouped buckets that 'fall back within the bucket only': the whole bucket is the exact match unit, with no cross-bucket ladder. The grouped bucket map (office_buckets) is unchanged.",
-
-  "sf_band": 0.50,
-  "_sf_band_doc": "Gross-building-area band: a comp must fall within +/- this fraction of the subject's gross building area. LOCKED 0.50 (DECISIONS 2026-06-19), tunable in Phase 6.",
-
-  "sf_required": true,
-  "_sf_required_doc": "Only parcels with a reported gross building area enter the comp set, and the subject must have one too (gross SF is part of the +/-50% match).",
-
-  "location_mode": "distance",
-  "_location_mode_doc": "Comps ranked/collected by great-circle distance from the subject's PLUTO latitude/longitude (DECISIONS 2026-06-19). ZIP is NOT a match criterion.",
-
-  "radius_start_miles": 0.25,
-  "radius_cap_miles": 1.0,
-  "radius_step_miles": 0.1,
-  "_radius_doc": "Radius-first with automatic expansion (DECISIONS 2026-06-19; start lowered 0.5->0.25 citywide 2026-06-29). Named ladder (start, step, cap) so a future metro can set its own. Collect ALL qualifying comps within radius_start_miles; if fewer than min_comp_count, expand by radius_step_miles toward radius_cap_miles; if still short at the cap, REFUSE. The actual radius used is reported on every result. This band governs the AUTO ladder ONLY — the manual OVERRIDE slider keeps its own [0.1, 2.0] range and fixes the radius with no auto-expansion. Radii tunable.",
-
-  "zip_prefilter": false,
-  "_zip_prefilter_doc": "Optional ZIP pre-filter, OFF by default. When true, candidates are additionally restricted to the subject's ZIP before distance ranking. Demoted from a match criterion to an optional pre-filter only.",
-
-  "retail_share_pure_threshold": 0.80,
-  "mixed_use_second_use_threshold": 0.10,
-  "_retail_classification_doc": "Retail (K) parcels are classified by MEASURED PLUTO floor-area share, not by K-code (diagnosis: PLUTO retailarea is 98% filled, ~99% reconciled). retail_share = retailarea/bldgarea. >= retail_share_pure_threshold -> pure_retail (per-SF shown); below -> mixed, with second use by mixed_use_second_use_threshold (office precedence over residential). Per-SF gating is by retail_share ALONE, independent of category. Tunable per-metro. Stage 1 = classifier module only; live retail screening is later stages.",
-
-  "industrial_config": {
-    "scope_rule": "bldg_class starts with 'F' (ALL F-subcodes in scope, incl. F8)",
-    "subcodes_present": ["F1", "F2", "F4", "F5", "F8", "F9"],
-    "subcode_match_first": true,
-    "radius_start_miles": 0.5,
-    "radius_cap_miles": 1.75,
+    "_doc": "Tunable comp-selection criteria. Edit this file to retune WITHOUT touching code. Jurisdiction logic lives in src/screener/plugins/<jurisdiction>.py; this file only carries parameters. Every value here traces to a dated entry in DECISIONS.md.",
+    "jurisdiction": "nyc",
+    "activated_products": [
+        "O"
+    ],
+    "_activated_products_doc": "Building-class first letters ACTIVATED in v1. Only Office ('O') is live (DECISIONS 2026-06-19). A subject whose class letter is not here gets an 'out of scope for v1' refusal. Adding a type later (e.g. 'K' retail) is a config addition here plus its bucket map, not an engine change.",
+    "office_buckets": {
+        "O1": "O1",
+        "O2": "O2",
+        "O3": "O3",
+        "O4": "O4",
+        "O5": "O5_O6",
+        "O6": "O5_O6",
+        "O7": "O7_O9",
+        "O8": "O7_O9",
+        "O9": "O7_O9"
+    },
+    "_office_buckets_doc": "Office subclass -> bucket key (DECISIONS 2026-06-19). O1-O4 each their own bucket (exact match, no cross-matching); O5+O6 grouped; O7+O8+O9 grouped. Class code encodes stories at 100% fill, so common codes stay exact for tight peers and rare codes group to avoid comp starvation. A comp must share the subject's bucket.",
+    "office_bucket_labels": {
+        "O1": "Office \u2014 O1",
+        "O2": "Office \u2014 O2",
+        "O3": "Office \u2014 O3",
+        "O4": "Office \u2014 O4",
+        "O5_O6": "Office with commercial (O5/O6)",
+        "O7_O9": "Misc office (O7/O8/O9)"
+    },
+    "fallback_ladder": {
+        "O1": [
+            "O2",
+            "O3"
+        ],
+        "O2": [
+            "O1",
+            "O3"
+        ],
+        "O3": [
+            "O2",
+            "O1"
+        ],
+        "O4": []
+    },
+    "_fallback_ladder_doc": "Tiered class fallback for the EXACT low-rise codes (DECISIONS 2026-06-20). Distance is relaxed BEFORE class: a subject's exact class is exhausted across the full radius (0.5->1.0 mi) first; only if it yields < min_comp_count at 1.0 mi are adjacent classes added, in ladder order, each swept 0.5->1.0 mi. O4 has an empty ladder = exact-or-refuse (towers have no adjacent peer class). Classes NOT listed here (O5/O6, O7/O8/O9) are grouped buckets that 'fall back within the bucket only': the whole bucket is the exact match unit, with no cross-bucket ladder. The grouped bucket map (office_buckets) is unchanged.",
+    "sf_band": 0.5,
+    "_sf_band_doc": "Gross-building-area band: a comp must fall within +/- this fraction of the subject's gross building area. LOCKED 0.50 (DECISIONS 2026-06-19), tunable in Phase 6.",
+    "sf_required": true,
+    "_sf_required_doc": "Only parcels with a reported gross building area enter the comp set, and the subject must have one too (gross SF is part of the +/-50% match).",
+    "location_mode": "distance",
+    "_location_mode_doc": "Comps ranked/collected by great-circle distance from the subject's PLUTO latitude/longitude (DECISIONS 2026-06-19). ZIP is NOT a match criterion.",
+    "radius_start_miles": 0.25,
+    "radius_cap_miles": 1.0,
     "radius_step_miles": 0.1,
-    "sf_band": 0.75,
+    "_radius_doc": "Radius-first with automatic expansion (DECISIONS 2026-06-19; start lowered 0.5->0.25 citywide 2026-06-29). Named ladder (start, step, cap) so a future metro can set its own. Collect ALL qualifying comps within radius_start_miles; if fewer than min_comp_count, expand by radius_step_miles toward radius_cap_miles; if still short at the cap, REFUSE. The actual radius used is reported on every result. This band governs the AUTO ladder ONLY \u2014 the manual OVERRIDE slider keeps its own [0.1, 2.0] range and fixes the radius with no auto-expansion. Radii tunable.",
+    "zip_prefilter": false,
+    "_zip_prefilter_doc": "Optional ZIP pre-filter, OFF by default. When true, candidates are additionally restricted to the subject's ZIP before distance ranking. Demoted from a match criterion to an optional pre-filter only.",
+    "retail_share_pure_threshold": 0.8,
+    "mixed_use_second_use_threshold": 0.1,
+    "_retail_classification_doc": "Retail (K) parcels are classified by MEASURED PLUTO floor-area share, not by K-code (diagnosis: PLUTO retailarea is 98% filled, ~99% reconciled). retail_share = retailarea/bldgarea. >= retail_share_pure_threshold -> pure_retail (per-SF shown); below -> mixed, with second use by mixed_use_second_use_threshold (office precedence over residential). Per-SF gating is by retail_share ALONE, independent of category. Tunable per-metro. Stage 1 = classifier module only; live retail screening is later stages.",
+    "industrial_config": {
+        "scope_rule": "bldg_class starts with 'E' or 'F' (POOLED E+F; E7 walled, F8 pooled-fallback)",
+        "subcodes_present": [
+            "E1",
+            "E2",
+            "E9",
+            "F1",
+            "F2",
+            "F4",
+            "F5",
+            "F9"
+        ],
+        "subcode_match_first": true,
+        "radius_start_miles": 0.5,
+        "radius_cap_miles": 1.75,
+        "radius_step_miles": 0.1,
+        "sf_band": 0.75,
+        "min_comp_count": 8,
+        "coverage_ratio_threshold": 0.3,
+        "coverage_exclusion_threshold": 0.3,
+        "relaxation_order": [
+            "same_subcode_in_band",
+            "flat_pool_in_band",
+            "extend_to_4mi_same_band",
+            "refuse"
+        ],
+        "pool_subcodes": [
+            "E1",
+            "E2",
+            "E9",
+            "F1",
+            "F2",
+            "F4",
+            "F5",
+            "F9"
+        ],
+        "walled_subcodes": {
+            "E7": "self-storage: same-subcode-only, product label Self-Storage, refuse when <8",
+            "F8": "tank farm: subject falls back to the pool, own per-SF withheld when land-dominant"
+        },
+        "radius_cap_extended_miles": 4.0,
+        "_extension_doc": "Shortfall-triggered extended cap (measured 2026-07-17, replaces the dead 100K big-box branch). Any subject that cannot reach 8 in-band comps within radius_cap_miles (1.75) extends to radius_cap_extended_miles (4.0) at the SAME +/-75% band, then REFUSES. Size-agnostic: the trigger is the density shortfall, not a size gate (no per-SF regime change at any size; local fill slopes down gradually with no inflection). 4.0mi is the measured knee: for >=250K subjects, fill goes 1.75mi 79% -> 3mi 86% -> 4mi 92% -> 5/7mi 92% (add nothing) -> 10mi 98% (reaches other submarkets). Also retires the Manhattan out-of-borough branch: the 4.0mi extension covers 7 of 8 Manhattan stragglers; the 1 remaining (1019530042, 500 SF) refuses honestly at 4.0. E7 self-storage drops the band entirely (size R^2 0.000) but keeps the 1.75->4.0 extension."
+    },
+    "_industrial_config_doc": "SUPERSEDED 2026-07-17 (see industrial_config._extension_doc + DECISIONS 'shortfall extended radius'): the BIG-BOX and MANHATTAN out-of-borough branches described below are REMOVED. Industrial now uses a shortfall-triggered extended radius (1.75->4.0mi at the same +/-75% band, then refuse); no size threshold; E7 drops the band. Text below retained for provenance only. --- Industrial (F-code) comp parameters, LOCKED 2026-07-01 (DECISIONS.md 'Industrial F-code comp configuration'). LIVE on public /screen: F-codes are intercepted in _screen_view and routed to build_industrial_screen_view (same K-only pattern retail uses; the broad out_of_scope gate is untouched). activated_products stays ['O'] \u2014 like retail K, industrial goes live via the interception, not this list. All numbers here are tunable config, not hardcoded. SCOPE: bldg_class.startswith('F') \u2014 every F-subcode (F1 factory/heavy, F2/F4 warehouse, F5 light-mfg, F8 special/tank/utility-yard, F9 misc) is in scope; F8 explicitly INCLUDED. Self-storage E7 is an E-code, already excluded by the F filter. VALUE = curmkttot (99.9% filled on F, 3,245/3,248); tax bill = curtxbtot \u00d7 class4_tax_rate \u2014 same mechanics as office/retail. SF = PLUTO BldgArea (100% filled, 3,248/3,248). RADIUS: same auto-ladder as retail (start 0.5, step 0.1) but a HIGHER ceiling \u2014 cap 1.75 mi (tunable 1.5-2.0). ~97% of F-codes fill within 1.0 mi (dense clusters); the raised cap serves the sparse ~3% tail (isolated / Staten Island / Manhattan). REFUSE beyond the cap; never reach further. SUBCODE MATCHING: subcode_match_first \u2014 prefer same F-subcode; pool to all-F ONLY when same-subcode can't reach min_comp_count, and DISCLOSE ('extended to all industrial subcodes to reach comparable parcels'). SF BAND: \u00b10.75 of subject BldgArea, proportional; size-dissimilar comps flagged loudly (retail \u2715 marker + per-SF handling ported). RELAXATION ORDER (each step disclosed): same-subcode in-borough \u2192 same-subcode cross-borough \u2192 all-F cross-borough \u2192 refuse; GEOGRAPHY relaxes BEFORE subcode (use-type fidelity > proximity). MANHATTAN CASCADE (~30 F-codes citywide): in-borough same-subcode \u00b175% \u2192 if <8, reach NEAREST outer-borough cluster first \u2192 expand citywide only if that can't fill 8 \u2192 refuse if still <8; every cross-borough reach disclosed. BIG-BOX TAIL (BldgArea >= big_box_sf_threshold = 100,000 SF, ~67 parcels): drop the SF-band ceiling, take nearest-by-size CITYWIDE with NO distance cap (big_box_citywide_no_cap, retail K8 pattern); MANDATORY 'few true peers \u2014 directional, not precise' disclosure on every big-box screen; disclose max comp distance; loud size-dissimilar flags. 100K threshold is measurement-backed (peers collapse to 0-5 even at \u00b1100%/3mi above 100K). Big-box is INDEPENDENT of the coverage disclosure (NYC big-box is high-coverage, median 2.0, only 2 of 67 below 0.30 \u2014 the coverage flag naturally never co-fires; no special logic). COVERAGE / LAND-VALUE. TWO complementary keys, deliberately 0.30 both now, tuned independently later. (1) coverage_exclusion_threshold (COMP-side): any comp with BldgArea/LotArea < it is land-dominant and is EXCLUDED from the per-SF calc only (stays in the value distribution + comp table, marked); disclosure 'N comp(s) excluded from per-SF as land-dominant'. (2) coverage_ratio_threshold (SUBJECT-side): when the SUBJECT's own coverage < it, the subject's per-SF is caveated (display-only). Net: subject land-dominant = per-SF caveated; comps land-dominant = excluded from per-SF. Legacy note: coverage_ratio_threshold fires when the SUBJECT has BldgArea/LotArea < 0.30 (land-dominant, per-building-SF skewed). Disclosure ONLY \u2014 non-computational, shows BldgArea/LotArea + LotArea for context; never filters/refuses. Threshold NYC-MEASURED from all 3,248 F-codes (median coverage 1.00, p25-p75 0.89-1.31, land-dominant tail unambiguous below 0.30, fires on 116 parcels = 3.6%); national industrial ratios (0.10-0.35) are meaningless for NYC and were NOT borrowed. F8 (median coverage 0.08) fires this on ~94% of F8 \u2014 CORRECT and intended (F8 is genuinely land-dominant, structure incidental); F8 stays in scope. MIN COMP COUNT: 8, refuse below (same as retail).",
+    "exclude_condo_unit_lots": true,
+    "condo_unit_lot_min": 1001,
+    "_condo_doc": "Condo unit lots are excluded from the comp set: their gross_sqft provenance is unreliable for $/SF (whole-building-envelope error, see DECISIONS derived-tier rejection). A parcel is a condo unit lot if its building class starts with 'R' OR its lot number (BBL digits 7-10) >= condo_unit_lot_min. NOTE: not fully excluded upstream \u2014 many re-enter SF-eligibility via the roll gross_sqft fallback \u2014 so they are excluded here at the comp layer.",
+    "exclude_non_positive_market_value": true,
+    "_exclude_non_positive_market_value_doc": "Parcels with curmkttot <= 0 are tax-EXEMPT (no positive market value) and are NOT assessment peers \u2014 same categorical logic as the condo exclusion (DECISIONS 2026-06-20). Excluded from the comp universe entirely and routed to the exclusions table with reason NON_POSITIVE_MARKET_VALUE. A SUBJECT with curmkttot <= 0 gets a no-comparison refusal, not a distribution.",
     "min_comp_count": 8,
-    "big_box_sf_threshold": 100000,
-    "big_box_citywide_no_cap": true,
-    "coverage_ratio_threshold": 0.30,
-    "coverage_exclusion_threshold": 0.30,
-    "relaxation_order": [
-      "same_subcode_in_borough",
-      "same_subcode_cross_borough",
-      "all_subcode_cross_borough",
-      "refuse"
-    ]
-  },
-  "_industrial_config_doc": "Industrial (F-code) comp parameters, LOCKED 2026-07-01 (DECISIONS.md 'Industrial F-code comp configuration'). LIVE on public /screen: F-codes are intercepted in _screen_view and routed to build_industrial_screen_view (same K-only pattern retail uses; the broad out_of_scope gate is untouched). activated_products stays ['O'] — like retail K, industrial goes live via the interception, not this list. All numbers here are tunable config, not hardcoded. SCOPE: bldg_class.startswith('F') — every F-subcode (F1 factory/heavy, F2/F4 warehouse, F5 light-mfg, F8 special/tank/utility-yard, F9 misc) is in scope; F8 explicitly INCLUDED. Self-storage E7 is an E-code, already excluded by the F filter. VALUE = curmkttot (99.9% filled on F, 3,245/3,248); tax bill = curtxbtot × class4_tax_rate — same mechanics as office/retail. SF = PLUTO BldgArea (100% filled, 3,248/3,248). RADIUS: same auto-ladder as retail (start 0.5, step 0.1) but a HIGHER ceiling — cap 1.75 mi (tunable 1.5-2.0). ~97% of F-codes fill within 1.0 mi (dense clusters); the raised cap serves the sparse ~3% tail (isolated / Staten Island / Manhattan). REFUSE beyond the cap; never reach further. SUBCODE MATCHING: subcode_match_first — prefer same F-subcode; pool to all-F ONLY when same-subcode can't reach min_comp_count, and DISCLOSE ('extended to all industrial subcodes to reach comparable parcels'). SF BAND: ±0.75 of subject BldgArea, proportional; size-dissimilar comps flagged loudly (retail ✕ marker + per-SF handling ported). RELAXATION ORDER (each step disclosed): same-subcode in-borough → same-subcode cross-borough → all-F cross-borough → refuse; GEOGRAPHY relaxes BEFORE subcode (use-type fidelity > proximity). MANHATTAN CASCADE (~30 F-codes citywide): in-borough same-subcode ±75% → if <8, reach NEAREST outer-borough cluster first → expand citywide only if that can't fill 8 → refuse if still <8; every cross-borough reach disclosed. BIG-BOX TAIL (BldgArea >= big_box_sf_threshold = 100,000 SF, ~67 parcels): drop the SF-band ceiling, take nearest-by-size CITYWIDE with NO distance cap (big_box_citywide_no_cap, retail K8 pattern); MANDATORY 'few true peers — directional, not precise' disclosure on every big-box screen; disclose max comp distance; loud size-dissimilar flags. 100K threshold is measurement-backed (peers collapse to 0-5 even at ±100%/3mi above 100K). Big-box is INDEPENDENT of the coverage disclosure (NYC big-box is high-coverage, median 2.0, only 2 of 67 below 0.30 — the coverage flag naturally never co-fires; no special logic). COVERAGE / LAND-VALUE. TWO complementary keys, deliberately 0.30 both now, tuned independently later. (1) coverage_exclusion_threshold (COMP-side): any comp with BldgArea/LotArea < it is land-dominant and is EXCLUDED from the per-SF calc only (stays in the value distribution + comp table, marked); disclosure 'N comp(s) excluded from per-SF as land-dominant'. (2) coverage_ratio_threshold (SUBJECT-side): when the SUBJECT's own coverage < it, the subject's per-SF is caveated (display-only). Net: subject land-dominant = per-SF caveated; comps land-dominant = excluded from per-SF. Legacy note: coverage_ratio_threshold fires when the SUBJECT has BldgArea/LotArea < 0.30 (land-dominant, per-building-SF skewed). Disclosure ONLY — non-computational, shows BldgArea/LotArea + LotArea for context; never filters/refuses. Threshold NYC-MEASURED from all 3,248 F-codes (median coverage 1.00, p25-p75 0.89-1.31, land-dominant tail unambiguous below 0.30, fires on 116 parcels = 3.6%); national industrial ratios (0.10-0.35) are meaningless for NYC and were NOT borrowed. F8 (median coverage 0.08) fires this on ~94% of F8 — CORRECT and intended (F8 is genuinely land-dominant, structure incidental); F8 stays in scope. MIN COMP COUNT: 8, refuse below (same as retail).",
-
-  "exclude_condo_unit_lots": true,
-  "condo_unit_lot_min": 1001,
-  "_condo_doc": "Condo unit lots are excluded from the comp set: their gross_sqft provenance is unreliable for $/SF (whole-building-envelope error, see DECISIONS derived-tier rejection). A parcel is a condo unit lot if its building class starts with 'R' OR its lot number (BBL digits 7-10) >= condo_unit_lot_min. NOTE: not fully excluded upstream — many re-enter SF-eligibility via the roll gross_sqft fallback — so they are excluded here at the comp layer.",
-
-  "exclude_non_positive_market_value": true,
-  "_exclude_non_positive_market_value_doc": "Parcels with curmkttot <= 0 are tax-EXEMPT (no positive market value) and are NOT assessment peers — same categorical logic as the condo exclusion (DECISIONS 2026-06-20). Excluded from the comp universe entirely and routed to the exclusions table with reason NON_POSITIVE_MARKET_VALUE. A SUBJECT with curmkttot <= 0 gets a no-comparison refusal, not a distribution.",
-
-  "min_comp_count": 8,
-  "_min_comp_count_doc": "Below this within the 1-mile cap, the screen REFUSES (DECISIONS LOCKED = 8). Tunable, logged for Phase 6.",
-
-  "low_exact_caution_threshold": 3,
-  "_low_exact_caution_doc": "When a SUCCESSFUL comp set has fewer than this many exact-class comps, attach a visible caution ('comp set is largely adjacent-class, interpret accordingly'). Warn, never refuse (DECISIONS 2026-06-20). Tunable, logged for Phase 6.",
-
-  "metro_name": "New York City",
-  "_metro_name_doc": "Display name for this jurisdiction's metro, used in the expense-ratio benchmark note. NYC plugin renders 'New York City'.",
-
-  "product_type_labels": {"O": "office", "K": "retail", "F": "industrial", "E": "warehouse"},
-  "_product_type_labels_doc": "Building-class first letter -> product-type word for display (e.g. the expense-ratio note). v1 activates office only; others are mapped ahead of activation.",
-
-  "expense_ratio_benchmarks": {
-    "New York City": {"office": [40, 50], "retail": [35, 45]}
-  },
-  "_expense_ratio_benchmarks_doc": "Per-(metro, product_type) rule-of-thumb range for the real-estate-tax share of operating expenses, as [LOW, HIGH] percents. The note renders ONLY when a range exists for the subject's (metro, product_type). Populated for NYC: office = 40-50, retail = 35-45. The retail range mirrors office exactly (user-input-only, same 'general rule of thumb, not a sourced benchmark' label, no verdict framing); only the range and the word 'retail' differ. Add more (metro, product_type) entries later. NOT a sourced benchmark.",
-
-  "class4_tax_rate": 0.10848,
-  "_class4_tax_rate_doc": "LATEST-ADOPTED class-4 tax rate (FY2026 = 10.848%), applied to the FY2027 transitional taxable value because DOF has not yet published the FY2027 class-4 rate. Single source of truth: multiplies curtxbtot (transitional taxable) into the tax-bill SIGNAL (CONTEXT layer). MAINTENANCE: when DOF publishes the FY2027 class-4 rate, update THIS value only (one-line change); see DATA_SOURCES.md / DECISIONS.md."
+    "_min_comp_count_doc": "Below this within the 1-mile cap, the screen REFUSES (DECISIONS LOCKED = 8). Tunable, logged for Phase 6.",
+    "low_exact_caution_threshold": 3,
+    "_low_exact_caution_doc": "When a SUCCESSFUL comp set has fewer than this many exact-class comps, attach a visible caution ('comp set is largely adjacent-class, interpret accordingly'). Warn, never refuse (DECISIONS 2026-06-20). Tunable, logged for Phase 6.",
+    "metro_name": "New York City",
+    "_metro_name_doc": "Display name for this jurisdiction's metro, used in the expense-ratio benchmark note. NYC plugin renders 'New York City'.",
+    "product_type_labels": {
+        "O": "office",
+        "K": "retail",
+        "F": "industrial",
+        "E": "warehouse"
+    },
+    "_product_type_labels_doc": "Building-class first letter -> product-type word for display (e.g. the expense-ratio note). v1 activates office only; others are mapped ahead of activation.",
+    "expense_ratio_benchmarks": {
+        "New York City": {
+            "office": [
+                40,
+                50
+            ],
+            "retail": [
+                35,
+                45
+            ]
+        }
+    },
+    "_expense_ratio_benchmarks_doc": "Per-(metro, product_type) rule-of-thumb range for the real-estate-tax share of operating expenses, as [LOW, HIGH] percents. The note renders ONLY when a range exists for the subject's (metro, product_type). Populated for NYC: office = 40-50, retail = 35-45. The retail range mirrors office exactly (user-input-only, same 'general rule of thumb, not a sourced benchmark' label, no verdict framing); only the range and the word 'retail' differ. Add more (metro, product_type) entries later. NOT a sourced benchmark.",
+    "class4_tax_rate": 0.10848,
+    "_class4_tax_rate_doc": "LATEST-ADOPTED class-4 tax rate (FY2026 = 10.848%), applied to the FY2027 transitional taxable value because DOF has not yet published the FY2027 class-4 rate. Single source of truth: multiplies curtxbtot (transitional taxable) into the tax-bill SIGNAL (CONTEXT layer). MAINTENANCE: when DOF publishes the FY2027 class-4 rate, update THIS value only (one-line change); see DATA_SOURCES.md / DECISIONS.md."
 }

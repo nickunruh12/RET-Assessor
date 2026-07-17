@@ -1,20 +1,49 @@
-"""Industrial (F-code) comp selection — engine EXTENSION, not a parallel engine.
+"""Industrial (pooled E+F) comp selection — engine EXTENSION, not a parallel engine.
 
-Mirrors retail_comps.py exactly: it selects a CompSet with industrial's class/band/cap/cascade
+Mirrors retail_comps.py exactly: it selects a CompSet with industrial's band/cap/cascade
 parameters (read from `industrial_config` in comp_criteria.json) and hands it to the SAME shared
 machinery — CompRow/CompSet, compute_stats, compute_variance, build_screen_view, the per-SF
-in-band percentile, and the size-dissimilar ✕ marker — that office and retail use. Only four
-things here are genuinely new: the F candidate query, the subcode+borough relaxation cascade,
-the Manhattan out-of-borough branch, and the (currently DORMANT) land-value coverage function.
+in-band percentile, and the size-dissimilar ✕ marker — that office and retail use.
+
+POOLED E+F (restructured 2026-07-17; DECISIONS 'Pooled Industrial route'): the E/F split is a
+DOF filing artifact (construction/fireproofing), not an asset boundary. Measured: the eight
+subcodes E1,E2,E9,F1,F2,F4,F5,F9 sit in one $112–123/SF band; after matching size (±75%) and
+location (≤1 mi), storage-vs-production explains 1.5% of per-SF variance (R² 0.015 — below the
+already-killed vintage filter at 0.019); E and F interleave block-by-block (F→nearest-E median
+0.03 mi); pooling drops F's refusals ~4× and improves everyone's reach. So the eight are ONE
+FLAT POOL. Fallback is same-subcode-first → flat pool → refuse — NOT a family/subcode tier (a
+subcode preference would reorder comps toward a non-driver, the exact failure mode of the soft
+vintage preference we rejected).
+
+RADIUS = shortfall-triggered extension (restructured 2026-07-17; DECISIONS 'shortfall
+extended radius'). No size threshold anywhere. The cascade first tries to reach 8 in-band
+comps within the STANDARD cap (radius_cap_miles, 1.75 mi); a subject that falls short EXTENDS
+to the extended cap (radius_cap_extended_miles, 4.0 mi) at the SAME ±75% band, then REFUSES.
+Size-agnostic: the trigger is the density shortfall, not a size gate (measured — no per-SF
+regime change at any size, and 4.0 mi is the fill knee for the large tail). This REPLACES the
+dead 100K big-box branch (which invented scarcity: 90% of ≥100K fills locally, and a 654K
+fixture fills at 0.6 mi). It also RETIRES the Manhattan out-of-borough branch: the 4.0 mi
+extension covers 7 of 8 Manhattan stragglers, and the 1 remaining refuses honestly.
+
+TWO flagged members inside the route, both measured distinct:
+  * E7 self-storage (median $175/SF, QCD 0.057 — 5× tighter, coverage 2.69, median 79K SF):
+    SAME-SUBCODE-ONLY, never falls back to the pool; refuses when it can't fill 8. The ±75%
+    band is DROPPED for E7 (size is a total non-driver of E7 per-SF: R² 0.000, flat because
+    self-storage prices per unit-month) — any E7 within the radius is a comp, radius is the
+    only guard. Product label reads "Self-Storage", not "Industrial". ONE branch, not an
+    engine. E7 still gets the 1.75→4.0 mi extension.
+  * F8 tank farm (structurally land-dominant, ~16 parcels): an F8 SUBJECT falls back to the
+    flat pool (F8 is NOT in the pool itself); its own per-SF stays withheld when land-dominant
+    via the existing 0.30 coverage rule. No new handling.
 
 Reused verbatim from comps.py / retail_comps.py: `_radii`, `_rows_to_dicts`, `_sweep`,
 EARTH_RADIUS_MI, CompRow, CompSet, REFUSAL_MESSAGES, the icap/taxable-series lookups, and the
-whole serialize/stats/variance output path.
+whole serialize/stats/variance output path (incl. the shared cross-borough note).
 
-LIVE on the public /screen + /api/screen routes: a resolved F-code is intercepted in
+LIVE on the public /screen + /api/screen routes: a resolved E- or F-code is intercepted in
 _screen_view and routed here, the same K-only pattern retail uses (the broad out_of_scope_v1
-gate is untouched, so every non-office/non-K/non-F class keeps refusing). The /industrial_screen
-+ /api/industrial_screen routes are kept for byte-identical debugging.
+gate is untouched, so every non-office/non-K/non-E/non-F class keeps refusing). The
+/industrial_screen + /api/industrial_screen routes are kept for debugging.
 
 Band note: industrial SELECTS comps at ±sf_band (0.75). The per-SF percentile / ✕ marker keep
 the shared "size-comparable" definition (criteria.sf_band, 0.50) — but that only engages on
@@ -42,30 +71,103 @@ from .taxable_series import taxable_series
 
 # Config defaults mirror comp_criteria.json industrial_config; the file is the source of truth.
 _DEFAULTS = {
-    "sf_band": 0.75, "radius_start_miles": 0.5, "radius_cap_miles": 1.75, "radius_step_miles": 0.1,
-    "min_comp_count": 8, "big_box_sf_threshold": 100000, "big_box_citywide_no_cap": True,
+    "sf_band": 0.75, "radius_start_miles": 0.5, "radius_cap_miles": 1.75,
+    "radius_cap_extended_miles": 4.0, "radius_step_miles": 0.1,
+    "min_comp_count": 8,
     "coverage_ratio_threshold": 0.30, "coverage_exclusion_threshold": 0.30,
     "subcode_match_first": True,
 }
 
-_MANHATTAN = "1"                                        # BBL first digit -> borough (1 = Manhattan)
+# The FLAT POOL — the eight measured-equivalent subcodes (E7 and F8 deliberately excluded;
+# both are handled as flagged special cases below). ~8,968 parcels.
+POOL_SUBCODES = ("E1", "E2", "E9", "F1", "F2", "F4", "F5", "F9")
+E7 = "E7"                                              # self-storage: same-subcode-only, walled
 
-# Disclosure strings (no verdict / banned words). Each cascade step that widens scope says so.
-_CROSS_BORO_NOTE = ("Extended beyond the subject's borough to reach same-subcode industrial "
-                    "comps; cross-borough comps may sit in a different submarket.")
-_ALLF_NOTE = ("Extended to all industrial subcodes to reach comparable parcels (fewer than "
-              "8 same-subcode comps nearby).")
-_BAND_RELAX_NOTE = ("Gross-SF band relaxed to reach the 8-comp minimum; comp set includes "
-                    "size-dissimilar buildings, marked below.")
-_MANHATTAN_NOTE = ("Manhattan has very few industrial parcels; comp set reaches the nearest "
-                   "industrial clusters in other boroughs. Cross-borough comps disclosed.")
+# Cleaned market names (BARE — no DOF code baked in; the code is prepended by callers so the
+# mapping stays traceable without double-wrapping). No em-dash inside these: they sit inside
+# parentheticals that already carry one.
+_SUBCODE_LABELS = {
+    "E1": "Warehouse", "E2": "Contractor's Warehouse", "E9": "Misc Warehouse",
+    "E7": "Self-Storage",
+    "F1": "Heavy Manufacturing", "F2": "Special Construction", "F4": "Industrial",
+    "F5": "Light Manufacturing", "F8": "Tank Farm", "F9": "Misc Industrial",
+}
+
+
+def _clean_name(subcode: str | None) -> str:
+    """'F5' -> 'Light Manufacturing' (bare market name, no code). Falls back to the code."""
+    sc = (subcode or "").strip()
+    return _SUBCODE_LABELS.get(sc, sc or "Industrial")
+
+
+def _label(subcode: str | None) -> str:
+    """'F5' -> 'F5 Light Manufacturing' (code + bare name, no parens). Used where the label
+    sits inside a list or a parenthetical, so it must not add its own parentheses."""
+    sc = (subcode or "").strip()
+    name = _SUBCODE_LABELS.get(sc)
+    return f"{sc} {name}" if name else (sc or "Industrial")
+
+
+def _product_label(subcode: str | None) -> str:
+    """Route/product name: 'Self-Storage' for E7, 'Industrial' for the pooled eight + F8."""
+    return "Self-Storage" if (subcode or "").strip() == E7 else "Industrial"
+
+
+def _bucket_label(subcode: str | None) -> str:
+    """The subject-panel bucket label WITHOUT the leading code (the template prepends the code
+    as 'CODE (bucket_label)'): E7 -> 'Self-Storage' (the route IS the clean name); every other
+    subcode -> 'Industrial — Warehouse' (route — clean name)."""
+    sc = (subcode or "").strip()
+    if sc == E7:
+        return "Self-Storage"
+    return f"Industrial — {_clean_name(sc)}"
+
+
+def _universe_subcodes(subcode: str) -> tuple[str, ...]:
+    """Candidate subcodes to PULL for a subject of this subcode. E7 is walled to itself; every
+    other subject sees the flat pool plus its own subcode (so an F8 subject can reach its own
+    same-subcode step even though F8 is not in the pool)."""
+    if subcode == E7:
+        return (E7,)
+    return tuple(dict.fromkeys((*POOL_SUBCODES, subcode)))   # pool ∪ {subcode}, order-stable
+
+
+def _pool_fallback_subcodes(subcode: str) -> tuple[str, ...]:
+    """Subcodes the flat-pool fallback step may draw from. E7 never leaves E7 (empty cross-pool);
+    everyone else falls back to the eight (F8 included as a subject falls back here, not to F8)."""
+    return (E7,) if subcode == E7 else POOL_SUBCODES
+
+
+# Disclosure strings (no verdict / banned words). The extension says how far it actually reached.
+def _extended_note(radius_used: float, cap: float) -> str:
+    return (f"Comp set reached beyond the standard {cap:g}-mile search to {radius_used:.1f} miles "
+            "to find 8 comparable parcels; the nearest 8 within that radius were used.")
+
+
+def _composition_note(subject_subcode: str, comps) -> str | None:
+    """Name the subcode mix whenever ANY comp differs from the subject's subcode; say nothing
+    when the set is pure. A count is a fact — no threshold (same precedent as the cross-type
+    note). Names every subcode present, subject's own first, then others by count desc."""
+    if not comps:
+        return None
+    counts: dict[str, int] = {}
+    for c in comps:
+        sc = (c.bldg_class or "").strip()
+        counts[sc] = counts.get(sc, 0) + 1
+    if all(sc == subject_subcode for sc in counts):
+        return None                                    # pure set — say nothing
+    ordered = sorted(counts.items(), key=lambda kv: (kv[0] != subject_subcode, -kv[1], kv[0]))
+    listed = ", ".join(f"{n} {_label(sc)}" for sc, n in ordered)
+    return (f"Comp set spans multiple industrial subcodes — {len(comps)} comps: {listed}. "
+            "Subcodes are a DOF filing distinction, not a value boundary; comps are pooled on "
+            "size and location.")
 
 
 @dataclass
 class IndustrialMeta:
     subcode: str | None
     fallback_note: str | None
-    quality_note: str | None          # big-box "few true peers" (reuses the prominent note slot)
+    extended: bool                    # True when the shortfall extension (>1.75mi) fired
     radius_auto_label: str | None
     suppress_per_sf: bool
     coverage_note: str | None         # DORMANT until PLUTO LotArea is loaded (see build view)
@@ -82,16 +184,18 @@ def _crit_summary(criteria, cap, band, minc):
             "min_comp_count": minc, "match": "F-subcode (same-subcode first)"}
 
 
-def _pull_f_candidates(con, comp_table, subj, juris, criteria, *, cap):
-    """F-code candidate pull — mirrors retail._pull_candidates (same haversine + condo/exempt
-    filters) but selects class-4 F parcels directly (no class table). `cap` None = citywide."""
+def _pull_candidates(con, comp_table, subj, juris, criteria, *, cap, subcodes):
+    """Pooled-industrial candidate pull — mirrors retail._pull_candidates (same haversine +
+    condo/exempt filters) but selects class-4 parcels whose bldg_class is in `subcodes` (the
+    pull universe for this subject). `cap` None = citywide."""
     slat, slon = subj["pluto_latitude"], subj["pluto_longitude"]
     hav = (f"{EARTH_RADIUS_MI}*2*asin(sqrt(power(sin(radians(p.pluto_latitude-?)/2),2)+"
            f"cos(radians(?))*cos(radians(p.pluto_latitude))*power(sin(radians(p.pluto_longitude-?)/2),2)))")
+    subcode_ph = ",".join(["?"] * len(subcodes))
     where = ["p.parcel_id != ?",
              "p.pluto_latitude IS NOT NULL AND p.pluto_longitude IS NOT NULL",
-             "p.sf IS NOT NULL", "p.bldg_class LIKE 'F%'"]
-    params = [slat, slat, slon, subj["parcel_id"]]
+             "p.sf IS NOT NULL", f"p.bldg_class IN ({subcode_ph})"]
+    params = [slat, slat, slon, subj["parcel_id"], *subcodes]
     condo_sql, condo_params = juris.condo_clause(criteria)
     where.append(condo_sql.replace("parcel_id", "p.parcel_id").replace("bldg_class", "p.bldg_class"))
     params += condo_params
@@ -141,9 +245,9 @@ def _coverage_display(subj: dict, subj_cov, threshold) -> str | None:
     ba, la = subj.get("pluto_bldgarea"), subj.get("pluto_lotarea")
     if subj_cov is not None and ba and la:
         parts.append(f"Subject: building-area {ba:,.0f} SF ÷ lot-area {la:,.0f} SF = {subj_cov:.2f}.")
-    ver = subj.get("pluto_dataset_version")
-    if ver:
-        parts.append(f"Source: {ver}.")
+    # The PLUTO dataset citation is intentionally NOT stamped inline here — machine provenance
+    # belongs in the provenance block (sf_pluto_versions), not mid-prose. The concrete
+    # BldgArea/LotArea figures above stay; they are the readable fact, not a raw version string.
     return " ".join(parts)
 
 
@@ -178,15 +282,16 @@ def select_industrial_comps(con, subject_bbl: str, juris: Jurisdiction, criteria
                             comp_table: str = "parcels", *,
                             radius_override: float | None = None) -> tuple[CompSet, IndustrialMeta]:
     cfg = _cfg(criteria)
-    # Manual radius override (slider): BOUND the whole cascade at R — same-subcode/borough sweep,
-    # the Manhattan out-of-borough reach, and the big-box citywide-by-size pull are all capped at
-    # R; band relax, subcode fallback, cross-borough disclosure, and the 8-comp refusal gate still
-    # run WITHIN it. No override -> unchanged auto behavior (config cap 1.75; citywide tails free).
+    # Manual radius override (slider): BOUND the whole cascade at R — the standard cap AND the
+    # shortfall extension are both pinned to R, so the 8-comp refusal gate genuinely fires when
+    # the user tightens the search. No override -> auto behavior (standard cap 1.75, extension
+    # to 4.0 on a shortfall).
     if radius_override is not None:
-        cfg = {**cfg, "radius_start_miles": radius_override, "radius_cap_miles": radius_override}
+        cfg = {**cfg, "radius_start_miles": radius_override,
+               "radius_cap_miles": radius_override, "radius_cap_extended_miles": radius_override}
     band, minc = cfg["sf_band"], cfg["min_comp_count"]
-    cap, bigbox_sf = cfg["radius_cap_miles"], cfg["big_box_sf_threshold"]
-    meta = IndustrialMeta(None, None, None, None, False, None)
+    cap, cap_ext = cfg["radius_cap_miles"], cfg["radius_cap_extended_miles"]
+    meta = IndustrialMeta(None, None, False, None, False, None)
 
     subj_rows = _rows_to_dicts(con.execute(
         f"SELECT * FROM {comp_table} WHERE parcel_id = ?", [subject_bbl]))
@@ -195,12 +300,16 @@ def select_industrial_comps(con, subject_bbl: str, juris: Jurisdiction, criteria
         return _refuse(subject_bbl, None, crit, "subject_not_found"), meta
     subj = subj_rows[0]
     subcode = (subj.get("bldg_class") or "")
-    if not subcode.startswith("F"):
+    # Scope: any class-4 E- or F-code. E7 (self-storage) is walled to same-subcode-only; F8 is a
+    # normal subject that falls back to the pool. Everything non-E/F stays out of scope.
+    if not (subcode.startswith("E") or subcode.startswith("F")):
         return _refuse(subject_bbl, None, crit, "out_of_scope_v1"), meta
+    is_e7 = subcode == E7
+    product = _product_label(subcode)
 
     subject_summary = {
         "parcel_id": subj["parcel_id"], "bldg_class": subcode,
-        "bucket": subcode, "bucket_label": f"Industrial — {subcode}",
+        "bucket": subcode, "bucket_label": _bucket_label(subcode),
         "borough": juris.borough_of(subj["parcel_id"]), "zip_code": subj.get("zip_code"),
         "sf": subj.get("sf"), "sf_source": subj.get("sf_source"),
         "year_built": subj.get("year_built"), "house_number": subj.get("house_number"),
@@ -219,36 +328,46 @@ def select_industrial_comps(con, subject_bbl: str, juris: Jurisdiction, criteria
         return _refuse(subject_bbl, subject_summary, crit, "subject_no_coordinates"), meta
 
     subj_sf = subj.get("sf")
-    in_band = (lambda c: subj_sf * (1 - band) <= c["sf"] <= subj_sf * (1 + band)) if subj_sf else (lambda c: True)
+    # E7 drops the ±75% band entirely: size is a total non-driver of E7 per-SF (R² 0.000, flat —
+    # self-storage prices per unit-month), so any E7 within the radius is a valid comp and the
+    # radius is the only guard. The pooled eight KEEP the band (it guards the ABSOLUTE value/tax
+    # charts, where size explains ~87% of total EMV).
+    if is_e7:
+        in_band = lambda c: True
+    elif subj_sf:
+        in_band = lambda c: subj_sf * (1 - band) <= c["sf"] <= subj_sf * (1 + band)
+    else:
+        in_band = lambda c: True
     meta.suppress_per_sf = not subj_sf                 # per-SF shown unless SF missing (reuse office path)
 
-    crit_ind = criteria.model_copy(update={
-        "radius_start_miles": cfg["radius_start_miles"], "radius_cap_miles": cap,
+    # Two radius ladders: standard (≤cap) and extended (≤cap_ext). The cascade fills within the
+    # standard ladder first; only a shortfall reaches into the extended tail.
+    crit_ext = criteria.model_copy(update={
+        "radius_start_miles": cfg["radius_start_miles"], "radius_cap_miles": cap_ext,
         "radius_step_miles": cfg["radius_step_miles"]})
-    radii = _radii(crit_ind)
+    radii_ext = _radii(crit_ext)
+    radii_std = [r for r in radii_ext if r <= cap + 1e-9]
 
-    # ---- route: big-box (size) > Manhattan (geography) > core cascade --------------------
-    if subj_sf and subj_sf >= bigbox_sf:
-        sel = _select_bigbox(con, comp_table, subj, juris, criteria, subj_sf, minc, meta,
-                             radius_override)
-        auto_label = "Citywide — nearest big-box industrial comps, no distance cap"
-    elif subject_bbl[:1] == _MANHATTAN:
-        sel = _select_manhattan(con, comp_table, subj, juris, criteria, subcode, in_band,
-                                radii, minc, cap, meta, radius_override)
-        auto_label = "Citywide — nearest industrial comps"   # out-of-borough parenthetical added below
-    else:
-        sel = _select_core(con, comp_table, subj, juris, criteria, subcode, in_band, radii,
-                           minc, cap, meta)
-        auto_label = f"Auto — expands up to {cap:g} mi"
+    # Pull universe + flat-pool fallback set for this subject (E7 walled to itself).
+    pull_subcodes = _universe_subcodes(subcode)
+    pool_fallback = _pool_fallback_subcodes(subcode)
+
+    # ---- ONE cascade for everyone: same-subcode → flat pool → extend to cap_ext → refuse.
+    # No size branch (big-box removed) and no Manhattan branch (the extension supersedes both).
+    sel = _select_core(con, comp_table, subj, juris, criteria, subcode, in_band,
+                       radii_std, radii_ext, minc, cap, cap_ext, meta,
+                       pull_subcodes=pull_subcodes, pool_fallback=pool_fallback)
     if sel is None:
-        meta.radius_auto_label = auto_label
-        return _refuse(subject_bbl, subject_summary, crit, "insufficient_comps_within_cap", cap=cap), meta
+        meta.radius_auto_label = f"Auto — expands up to {cap_ext:g} mi"
+        return _refuse(subject_bbl, subject_summary, crit, "insufficient_comps_within_cap", cap=cap_ext), meta
     chosen, radius_used, band_applied, sf_band_relaxed, fallback, candidates_n = sel
-    # Manhattan label claims out-of-borough reach ONLY when a comp actually crossed (same gate
-    # as _MANHATTAN_NOTE); an all-Manhattan cluster keeps the accurate in-borough label.
-    if subject_bbl[:1] == _MANHATTAN and any(c["parcel_id"][:1] != subject_bbl[:1] for c in chosen):
-        auto_label += " (Manhattan reaches out-of-borough)"
-    meta.radius_auto_label = auto_label
+    # Auto-mode label + extension disclosure (only for AUTO runs — a manual override radius is the
+    # user's own choice, not a tool extension, so it never claims to have "reached beyond").
+    if radius_override is None and meta.extended:
+        meta.fallback_note = _extended_note(radius_used, cap)
+        meta.radius_auto_label = f"Auto — reached {radius_used:.1f} mi (beyond the {cap:g}-mi standard)"
+    else:
+        meta.radius_auto_label = f"Auto — expands up to {cap:g} mi"
 
     icap = icap_bbls(con, [c["parcel_id"] for c in chosen])
     excl_thr = cfg["coverage_exclusion_threshold"]     # comp-side: EXCLUDE from per-SF (separate key)
@@ -279,94 +398,40 @@ def select_industrial_comps(con, subject_bbl: str, juris: Jurisdiction, criteria
     return cs, meta
 
 
-def _select_core(con, comp_table, subj, juris, criteria, subcode, in_band, radii, minc, cap, meta):
-    """Non-Manhattan cascade (item 7), geography relaxes BEFORE subcode; each step disclosed:
-    same-subcode in-borough -> same-subcode cross-borough -> all-F cross-borough -> band-relax
-    -> refuse. Distance never exceeds the cap; the band-relax fill is size-dissimilar-flagged."""
-    pool = _pull_f_candidates(con, comp_table, subj, juris, criteria, cap=cap)
-    boro = subj["parcel_id"][:1]
+def _select_core(con, comp_table, subj, juris, criteria, subcode, in_band, radii_std, radii_ext,
+                 minc, cap, cap_ext, meta, *, pull_subcodes, pool_fallback):
+    """The ONE cascade: same-subcode → flat pool (both within the standard cap) → extend to the
+    extended cap at the SAME band → refuse. NOT a subcode tier — the sweep orders by distance, so
+    nearer comps are preferred naturally, and the shared serializer discloses any borough
+    crossing. The band is NEVER widened (no band-relax): a shortfall reaches further at the same
+    ±75% band, or refuses. E7 has pool_fallback == its own subcode (the pool step is a no-op) and
+    a dropped band (in_band always True), so it is same-subcode-only same-guard.
+
+    Returns (chosen, radius_used, band_applied, sf_band_relaxed, fallback, candidate_count).
+    sf_band_relaxed is always False now (the band is never widened); meta.extended records the
+    shortfall extension for disclosure."""
+    pool = _pull_candidates(con, comp_table, subj, juris, criteria, cap=cap_ext, subcodes=pull_subcodes)
     same_sub = lambda c: c["bldg_class"] == subcode
-    same_boro = lambda c: c["parcel_id"][:1] == boro
+    in_pool = lambda c: c["bldg_class"] in pool_fallback
+    has_pool_step = pool_fallback != (subcode,)
 
-    hit = _sweep(pool, radii, minc, predicate=lambda c: same_sub(c) and same_boro(c) and in_band(c))
-    note, fallback = None, False
+    # STANDARD cap (≤ cap): same-subcode-first, then the flat pool.
+    hit = _sweep(pool, radii_std, minc, predicate=lambda c: same_sub(c) and in_band(c))
+    fallback = False
+    if hit is None and has_pool_step:
+        hit = _sweep(pool, radii_std, minc, predicate=lambda c: in_pool(c) and in_band(c))
+        fallback = hit is not None
+    # EXTENSION (cap < r ≤ cap_ext): density shortfall — nearest in-band pool at the same band.
+    # Location-first here (no subcode re-preference): subcode is a non-driver, distance matters.
     if hit is None:
-        hit = _sweep(pool, radii, minc, predicate=lambda c: same_sub(c) and in_band(c))
+        hit = _sweep(pool, radii_ext, minc, predicate=lambda c: in_pool(c) and in_band(c))
         if hit is not None:
-            note = _CROSS_BORO_NOTE
+            fallback = True
+            meta.extended = True
     if hit is None:
-        hit = _sweep(pool, radii, minc, predicate=in_band)
-        if hit is not None:
-            note, fallback = _ALLF_NOTE, True
-    if hit is not None:
-        radius_used, chosen = hit
-        meta.fallback_note = note
-        return chosen, radius_used, True, False, fallback, len(pool)
-    # band-relax: nearest all-F within cap (size-dissimilar), fill to the minimum
-    chosen = sorted(pool, key=lambda c: c["distance_miles"])[:minc]
-    if len(chosen) < minc:
-        return None
-    meta.fallback_note = _BAND_RELAX_NOTE
-    return chosen, max(c["distance_miles"] for c in chosen), False, True, True, len(pool)
-
-
-def _select_manhattan(con, comp_table, subj, juris, criteria, subcode, in_band, radii, minc, cap, meta,
-                      radius_override=None):
-    """Manhattan (item 8): in-borough same-subcode ±band first; else reach the NEAREST
-    out-of-borough same-subcode comps citywide, then fill with nearest all-F; refuse only if
-    the whole city can't field 8 (never, in practice). Every cross-borough reach disclosed.
-    A manual radius bounds even the out-of-borough reach to R (cap=radius_override), so the
-    refusal gate can genuinely fire when the user tightens the search."""
-    capped = _pull_f_candidates(con, comp_table, subj, juris, criteria, cap=cap)
-    hit = _sweep(capped, radii, minc,
-                 predicate=lambda c: c["bldg_class"] == subcode and c["parcel_id"][:1] == _MANHATTAN and in_band(c))
-    if hit is not None:                                # rare: Manhattan fills locally
-        radius_used, chosen = hit
-        return chosen, radius_used, True, False, False, len(capped)
-
-    citywide = _pull_f_candidates(con, comp_table, subj, juris, criteria, cap=radius_override)
-    same = sorted((c for c in citywide if c["bldg_class"] == subcode), key=lambda c: c["distance_miles"])
-    chosen = same[:minc]
-    ids = {c["parcel_id"] for c in chosen}
-    if len(chosen) < minc:                             # top up with nearest all-F citywide
-        rest = sorted((c for c in citywide if c["parcel_id"] not in ids), key=lambda c: c["distance_miles"])
-        chosen += rest[:minc - len(chosen)]
-    if len(chosen) < minc:
-        return None
-    # Fire the cross-borough note ONLY when a comp actually left the subject's borough — the
-    # citywide-nearest step can still land an all-Manhattan cluster (e.g. 1007880016), and
-    # claiming "other boroughs" then would be false. Same borough test the shared cross-borough
-    # note uses (BBL first digit); if nothing crossed, no note.
-    subj_boro = subj["parcel_id"][:1]
-    if any(c["parcel_id"][:1] != subj_boro for c in chosen):
-        meta.fallback_note = _MANHATTAN_NOTE
-    band_applied = all(in_band(c) for c in chosen)
-    return chosen, max(c["distance_miles"] for c in chosen), band_applied, not band_applied, True, len(citywide)
-
-
-def _select_bigbox(con, comp_table, subj, juris, criteria, subj_sf, minc, meta, radius_override=None):
-    """Big-box (item 9, ≥ big_box_sf_threshold): drop the band, take the nearest-BY-SIZE F
-    parcels — CITYWIDE at auto (no distance cap, the retail K8 pattern), or bounded to R when the
-    user sets a manual radius. Mandatory 'few true peers' disclosure + max comp distance; loud
-    size flags. Bounded search still refuses below the 8-comp minimum."""
-    pool = _pull_f_candidates(con, comp_table, subj, juris, criteria, cap=radius_override)
-    chosen = sorted(pool, key=lambda c: abs(c["sf"] - subj_sf))[:minc]
-    if len(chosen) < minc:
-        return None
-    maxd = max(c["distance_miles"] for c in chosen)
-    if radius_override is None:
-        meta.quality_note = (
-            "Big-box industrial has very few true peers in NYC. This is a size-matched citywide "
-            "screen — the subject is compared against the nearest-sized industrial parcels "
-            f"regardless of distance (furthest comp {maxd:.1f} mi). Treat the position read as "
-            "directional, not precise; size-dissimilar comps are marked below.")
-    else:
-        meta.quality_note = (
-            "Big-box industrial has very few true peers in NYC. This is a size-matched screen "
-            f"bounded to your {radius_override:g}-mi radius — the subject is compared against the "
-            f"nearest-sized industrial parcels within it (furthest comp {maxd:.1f} mi). Treat the "
-            "position read as directional, not precise; size-dissimilar comps are marked below.")
-    return chosen, maxd, False, True, True, len(pool)
+        return None                                    # refuse — 8 in-band unreachable within cap_ext
+    radius_used, chosen = hit
+    return chosen, radius_used, True, False, fallback, len(pool)
 
 
 def build_industrial_screen_view(con, criteria: CompCriteria, juris: Jurisdiction, *, bbl: str,
@@ -384,12 +449,45 @@ def build_industrial_screen_view(con, criteria: CompCriteria, juris: Jurisdictio
         except ValueError:
             override = None
     cs, meta = select_industrial_comps(con, bbl, juris, criteria, radius_override=override)
-    # Coverage note (when it ever fires) rides alongside the cascade fallback note in the same
-    # disclosure slot retail uses; today it is always None (LotArea not loaded).
-    fallback = " ".join(n for n in (meta.fallback_note, meta.coverage_note) if n) or None
-    return build_screen_view(
+    # Composition disclosure: name the subcode mix whenever any comp differs from the subject's
+    # subcode (item 5). Rides in the same disclosure slot as the cascade + coverage notes.
+    subj_subcode = (cs.subject or {}).get("bldg_class", "") if cs.subject else ""
+    composition = _composition_note(subj_subcode, cs.comps) if not cs.refused else None
+    fallback = " ".join(n for n in (composition, meta.fallback_note, meta.coverage_note) if n) or None
+    result = build_screen_view(
         con, criteria, juris, bbl=bbl, comp_set=cs,
         suppress_per_sf=meta.suppress_per_sf, per_sf_note=None,
         classification_note=None, fallback_note=fallback,
-        quality_note=meta.quality_note, radius_auto_label=meta.radius_auto_label,
+        quality_note=None, radius_auto_label=meta.radius_auto_label,
         radius_selection=radius_selection)
+    # Industrial-only post-processing (office/retail never call this path, so it cannot move
+    # their output): stamp the product label, and enrich the comp table's cross-subcode marker
+    # with the cleaned name — "✗ (F5)" -> "✗ (F5 Light Manufacturing)" — so the table carries
+    # subcode + cleaned name. Same-subcode "✓" rows are left untouched (the subject's own name
+    # is in the subject panel's bucket label).
+    if isinstance(result, dict) and result.get("status") == "ok":
+        result["product_label"] = _product_label(subj_subcode)
+        for _rows in ([v["rows"] for v in result.get("variance", {}).get("views", [])]
+                      + [result.get("variance", {}).get("all_diffs", [])]):
+            for _r in _rows:
+                disp = _r.get("exact_match_display", "")
+                if disp.startswith("✗ (") and disp.endswith(")"):
+                    sc = disp[3:-1]
+                    name = _SUBCODE_LABELS.get(sc)
+                    if name:
+                        _r["exact_match_display"] = f"✗ ({sc} {name})"
+        # SUPPRESS the exact/adjacent framing on the pooled industrial route (incl. E7). On this
+        # route "exact" means "same DOF subcode", and subcode is a MEASURED non-driver of value
+        # (within size-and-location-matched groups, R² 0.015 — below the killed vintage filter at
+        # 0.019). The pool is deliberately mixed, so a same-subcode comp is not a better comp:
+        # the low-exact caution flags intended behavior as a weakness, and the "N exact / M
+        # adjacent" split presents subcode as a quality signal it is not. The composition note
+        # already names the actual subcode mix as a neutral fact. Office/retail never reach this
+        # path (their "exact" = same bucket, which genuinely matters), so their output is
+        # untouched. Display-only — the counts still travel in comp_meta.composition for the API.
+        cm = result.get("comp_meta")
+        if isinstance(cm, dict):
+            cm["low_exact_caution"] = False
+            cm["caution_message"] = None
+            cm["suppress_exact_split"] = True
+    return result

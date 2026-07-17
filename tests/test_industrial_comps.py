@@ -13,10 +13,10 @@ from screener.industrial_comps import coverage_note, coverage_ratio
 warnings.filterwarnings("ignore")
 pytestmark = pytest.mark.skipif(not config.DB_PATH.exists(), reason="screener.duckdb not built")
 
-CORE = "3022210014"       # Brooklyn F5, dense cluster -> same-subcode in-band, band held
-MANHATTAN = "1019980016"  # Manhattan F2 -> reaches out-of-borough citywide
-BIGBOX = "4002940106"     # F1 654,615 SF -> big-box citywide-by-size
-ISOLATED = "5041910038"   # F5 with 0 F-neighbors within the cap -> refuses
+CORE = "3022210014"       # Brooklyn F5, dense cluster -> same-subcode in-band within standard cap
+LARGE = "4002940106"      # F1 654,615 SF -> fills LOCALLY (~0.7mi); no big-box branch, no extension
+EXTEND = "3017200001"     # F5 574,055 SF -> shortfall extends past 1.75mi to ~2.0mi
+ISOLATED = "1019530042"   # E1 500 SF -> can't field 8 in-band even at 4.0mi -> refuses
 LOW_COVER = "2025990090"  # F8 tank/utility-yard, coverage ~0.00 -> land-dominant disclosure fires
 
 
@@ -37,7 +37,7 @@ def test_core_industrial_full_screen_same_subcode(client):
     j = client.get("/api/industrial_screen", params={"bbl": CORE}).json()
     assert j["status"] == "ok"
     assert [s["key"] for s in j["signals"]] == ["assessed_value_market", "mv_per_gross_sf", "tax_bill", "tax_per_gross_sf"]
-    assert j["subject"]["bucket_label"].startswith("Industrial — F")
+    assert j["subject"]["bucket_label"].startswith("Industrial — ")   # e.g. "Industrial — Light Manufacturing"
     assert j["comp_meta"]["comp_count"] >= 8
     assert j["comp_meta"]["composition"]["exact_count"] >= 1        # same-subcode comps present
     assert j["comp_meta"]["radius_used_miles"] <= 1.75              # never past the cap
@@ -52,47 +52,37 @@ def test_industrial_per_sf_and_provenance_present(client):
     assert len(sig["distribution"]) == sig["n"]
 
 
-def test_manhattan_reaches_cross_borough_with_disclosure(client):
-    j = client.get("/api/industrial_screen", params={"bbl": MANHATTAN}).json()
+def test_no_big_box_branch_large_subject_fills_locally(client):
+    # The 100K big-box citywide branch is GONE. A 654K subject fills locally within the standard
+    # cap — no "few true peers" note, no citywide-no-cap label, and it never extends.
+    j = client.get("/api/industrial_screen", params={"bbl": LARGE}).json()
     assert j["status"] == "ok" and j["comp_meta"]["comp_count"] >= 8
-    assert "reaches" in j["radius_control"]["auto_label"] or "out-of-borough" in j["radius_control"]["auto_label"]
-    assert j["retail_fallback_note"] and "other boroughs" in j["retail_fallback_note"]
-    assert j["cross_borough_note"]                                 # existing machinery also discloses
+    assert j["comp_meta"]["radius_used_miles"] <= 1.75            # fills locally, no extension
+    assert not j.get("k3_quality_note")                          # no prominent "few peers" note
+    html = client.get("/screen", params={"bbl": LARGE}).text
+    assert "few true peers" not in html.lower() and "big-box" not in html.lower()
+    assert "reached beyond" not in html                          # did not extend
 
 
-def test_manhattan_note_gated_on_actual_cross_borough(client):
-    # The Manhattan cross-borough note must fire ONLY when a comp truly left the borough.
-    # 1007880016's citywide-nearest step lands an all-Manhattan cluster -> must NOT claim
-    # "other boroughs" (and the shared cross-borough note is correctly silent too).
-    allm = client.get("/api/industrial_screen", params={"bbl": "1007880016"}).json()
-    assert allm["status"] == "ok"
-    assert {r["parcel_id"][0] for r in allm["variance"]["all_diffs"]} == {"1"}   # never left Manhattan
-    assert "very few industrial parcels" not in (allm.get("retail_fallback_note") or "")
-    assert not allm.get("cross_borough_note")                                    # consistent
-    assert "out-of-borough" not in allm["radius_control"]["auto_label"]          # label also accurate
-
-    # 1007610041 genuinely reaches Queens -> the note AND the label claim out-of-borough.
-    crossed = client.get("/api/industrial_screen", params={"bbl": "1007610041"}).json()
-    assert len({r["parcel_id"][0] for r in crossed["variance"]["all_diffs"]}) >= 2
-    assert "very few industrial parcels" in (crossed.get("retail_fallback_note") or "")
-    assert "out-of-borough" in crossed["radius_control"]["auto_label"]
+def test_shortfall_extension_fires_and_discloses(client):
+    # A subject short of 8 in-band comps at 1.75mi extends to the 4.0mi cap at the SAME band and
+    # states the actual radius reached. Band is NEVER widened (sf_band_relaxed stays False).
+    j = client.get("/api/industrial_screen", params={"bbl": EXTEND}).json()
+    assert j["status"] == "ok" and j["comp_meta"]["comp_count"] >= 8
+    ru = j["comp_meta"]["radius_used_miles"]
+    assert 1.75 < ru <= 4.0                                      # extended into the tail, bounded
+    assert j["comp_meta"]["sf_band_relaxed"] is False            # same ±75% band, no widening
+    assert "reached" in j["radius_control"]["auto_label"] and "beyond" in j["radius_control"]["auto_label"]
+    html = client.get("/screen", params={"bbl": EXTEND}).text
+    assert "reached beyond the standard" in html and f"{ru:.1f} miles" in html
+    assert "big-box" not in html.lower() and "few true peers" not in html.lower()
 
 
-def test_bigbox_citywide_few_peers_disclosure(client):
-    j = client.get("/api/industrial_screen", params={"bbl": BIGBOX}).json()
-    assert j["status"] == "ok" and j["comp_meta"]["comp_count"] == 8
-    assert j["radius_control"]["auto_label"] == "Citywide — nearest big-box industrial comps, no distance cap"
-    q = j["k3_quality_note"]                                        # reuses the prominent-note slot
-    assert q and "few true peers" in q and "directional, not precise" in q
-    assert "furthest comp" in q                                    # max comp distance disclosed
-    assert j["comp_meta"]["radius_used_miles"] > 1.75              # no distance cap for big-box
-    assert _persf(j)["subject_percentile"] is not None            # big-box keeps its per-SF percentile
-
-
-def test_isolated_industrial_refuses_not_reaches_past_cap(client):
+def test_isolated_industrial_refuses_within_extended_cap(client):
+    # Genuinely peerless subject: can't field 8 in-band comps even at the 4.0mi extension -> refuse.
     j = client.get("/api/industrial_screen", params={"bbl": ISOLATED}).json()
     assert j["status"] == "refused" and j["reason"] == "insufficient_comps_within_cap"
-    assert j.get("candidates_within_cap", 0) < 8                   # did not reach past the 1.75 cap
+    assert j.get("candidates_within_cap", 0) < 8                 # did not reach 8 even extended
 
 
 # --- INDUSTRIAL LIVE on public /screen; walls hold; office/retail unaffected -----------
@@ -110,13 +100,14 @@ def test_industrial_now_live_on_public_screen_byte_identical_to_test_route(clien
     import json
     pub = client.get("/api/screen", params={"bbl": CORE}).json()
     test = client.get("/api/industrial_screen", params={"bbl": CORE}).json()
-    assert pub["status"] == "ok" and pub["subject"]["bucket_label"].startswith("Industrial — F")
+    assert pub["status"] == "ok" and pub["subject"]["bucket_label"].startswith("Industrial — ")
     assert json.dumps(pub, sort_keys=True, default=str) == json.dumps(test, sort_keys=True, default=str)
 
 
-def test_live_switch_is_f_only_other_classes_still_refuse(client):
-    # CRITICAL — the flip opens F-codes ONLY. Condos (R*) and other non-office/non-K/non-F
-    # class-4 codes (V vacant, G garage, U utility) must STILL refuse out_of_scope_v1.
+def test_live_switch_is_ef_only_other_classes_still_refuse(client):
+    # CRITICAL — the pooled route opens E- AND F-codes. Condos (R*) and other
+    # non-office/non-K/non-E/non-F class-4 codes (V vacant, G garage, U utility) must STILL
+    # refuse out_of_scope_v1.
     con = duckdb.connect(str(config.DB_PATH), read_only=True)
     try:
         for like in ("R%", "V%", "G%", "U%"):
@@ -128,6 +119,86 @@ def test_live_switch_is_f_only_other_classes_still_refuse(client):
             assert j["status"] == "refused" and j["reason"] == "out_of_scope_v1", (like, j)
     finally:
         con.close()
+
+
+# --- pooled E+F route (restructured 2026-07-17) ----------------------------------------
+def _first(con, where):
+    r = con.execute(f"SELECT parcel_id FROM parcels WHERE {where} AND curmkttot>0 AND sf>0 "
+                    "AND pluto_latitude IS NOT NULL ORDER BY parcel_id LIMIT 1").fetchone()
+    return r[0] if r else None
+
+
+def test_e_codes_now_in_scope_and_route_to_industrial(client):
+    # E1/E2/E9 warehouses now screen (pooled with F), product label "Industrial".
+    con = duckdb.connect(str(config.DB_PATH), read_only=True)
+    try:
+        for sub in ("E1", "E2", "E9"):
+            b = _first(con, f"bldg_class='{sub}'")
+            j = client.get("/api/screen", params={"bbl": b}).json()
+            assert j["status"] == "ok", (sub, j.get("reason"))
+            assert j["product_label"] == "Industrial"
+            assert j["subject"]["bucket_label"].startswith("Industrial — ")   # CODE prepended by template, not the bucket_label
+    finally:
+        con.close()
+
+
+def test_e7_self_storage_walled_same_subcode_only(client):
+    # E7 comps against E7 ONLY (never the pool); product label "Self-Storage"; refuses when
+    # it cannot field 8 E7 comps.
+    con = duckdb.connect(str(config.DB_PATH), read_only=True)
+    try:
+        e7s = [r[0] for r in con.execute(
+            "SELECT parcel_id FROM parcels WHERE bldg_class='E7' AND curmkttot>0 AND sf>0 "
+            "AND pluto_latitude IS NOT NULL ORDER BY parcel_id LIMIT 10").fetchall()]
+        filled = 0
+        for b in e7s:
+            j = client.get("/api/screen", params={"bbl": b}).json()
+            if j["status"] == "refused":
+                assert j["reason"] == "insufficient_comps_within_cap"
+                continue
+            filled += 1
+            assert j["product_label"] == "Self-Storage"
+            assert j["subject"]["bucket_label"] == "Self-Storage"   # E7: route IS the clean name; template prepends "E7 ("
+            comp_bbls = [r["parcel_id"] for v in j["variance"]["views"] for r in v["rows"]]
+            ph = ",".join(["?"] * len(comp_bbls))
+            classes = {x[0] for x in con.execute(
+                f"SELECT DISTINCT bldg_class FROM parcels WHERE parcel_id IN ({ph})", comp_bbls).fetchall()}
+            assert classes <= {"E7"}, f"E7 wall leaked: {classes}"
+        assert filled >= 1                       # E7 fills in dense clusters (98% do now)
+        # E7 refusal still happens for genuinely isolated parcels (measured ~2%): the wall means
+        # it never borrows non-E7 comps to avoid refusing.
+        iso = client.get("/api/screen", params={"bbl": "5032230006"}).json()
+        assert iso["status"] == "refused" and iso["reason"] == "insufficient_comps_within_cap"
+    finally:
+        con.close()
+
+
+def test_composition_note_names_subcodes_when_mixed(client):
+    # A pooled subject with a cross-subcode set names the mix; a pure set says nothing.
+    # 2025950039 (F8) falls back to the pool -> mixed set -> named composition.
+    h = client.get("/screen", params={"bbl": "2025950039"}).text
+    assert "spans multiple industrial subcodes" in h
+    assert "not a value boundary" in h          # honest framing, no verdict
+    # named with cleaned labels + DOF subcode
+    assert "Warehouse" in h and "(" in h
+
+
+def test_f8_subject_falls_back_to_pool(client):
+    # An F8 tank-farm SUBJECT screens (falls back to the flat pool); its own per-SF is
+    # withheld when land-dominant, but the value/tax distribution still renders.
+    j = client.get("/api/screen", params={"bbl": "2025950039"}).json()
+    assert j["status"] == "ok"
+    assert j["comp_meta"]["comp_count"] >= config.MIN_COMP_COUNT
+
+
+def test_pooled_office_retail_byte_identical(client):
+    # The pooled restructure must not move office or retail at all.
+    import json
+    for b in ("1013010001", "1000650004"):
+        j = client.get("/api/screen", params={"bbl": b}).json()
+        assert j["status"] == "ok"
+        assert "Industrial" not in (j["subject"].get("bucket_label") or "")
+        assert "product_label" not in j       # industrial-only field never leaks
 
 
 # --- coverage (item 5) — SUBJECT-side caveat (LIVE) -------------------------------------
@@ -237,3 +308,29 @@ def test_coverage_note_no_verdict_language():
     for banned in ("outlier", "flagged", "over-assessed", "under-assessed", "overvalued",
                    "undervalued", "should", "fair", "true value"):
         assert banned not in low
+
+
+def test_industrial_suppresses_exact_adjacent_framing(client):
+    # On the pooled route "exact" = same DOF subcode, a measured non-driver, so the exact/adjacent
+    # quality framing is suppressed: no low-exact caution, no "N exact / M adjacent" meta line.
+    # The composition note is the ONLY remaining cross-subcode disclosure. Counts still travel in
+    # the API (comp_meta.composition) for provenance.
+    j = client.get("/api/screen", params={"bbl": "2045550046"}).json()   # E2, cross-subcode set
+    cm = j["comp_meta"]
+    assert cm["low_exact_caution"] is False and cm["caution_message"] is None
+    assert cm["suppress_exact_split"] is True
+    assert "exact_count" in cm["composition"] and "adjacent_count" in cm["composition"]  # kept in API
+    html = client.get("/screen", params={"bbl": "2045550046"}).text
+    assert "exact /" not in html.split("comp-meta")[1].split("</p>")[0]   # not in the meta line
+    assert 'class="caution"' not in html                                  # no adjacent-class caution
+    assert "spans multiple industrial subcodes" in html                  # composition note remains
+
+
+def test_office_retail_keep_exact_adjacent_framing(client):
+    # Office/retail never reach the industrial path: their exact/adjacent line + caution machinery
+    # are untouched (there "exact" = same bucket, which genuinely matters).
+    for b in ("1013010001", "1000650004"):
+        j = client.get("/api/screen", params={"bbl": b}).json()
+        assert "suppress_exact_split" not in j["comp_meta"]              # flag never set
+        html = client.get("/screen", params={"bbl": b}).text
+        assert "exact /" in html.split("comp-meta")[1].split("</p>")[0]  # still in the meta line

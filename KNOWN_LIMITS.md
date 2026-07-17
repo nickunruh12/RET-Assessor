@@ -185,3 +185,35 @@ Related, fixed the same day: non-R-class parcels with lot >= 1001 (air-rights an
 conventionally high-numbered lots, e.g. 200 Park Ave = 1012809010 at lot 9010 — 62 O/K/F parcels
 citywide) are excluded from comps by the same lot-range rule the auto engine uses, but are NOT
 condo units — their exclusion reason names the lot-range rule, never asserts "condominium."
+
+## Capped small-residential subclasses (2A/2B/2C) will not screen (decided 2026-07-16)
+
+Tax classes 2A/2B/2C — residential buildings with 10 or fewer units, 78,952 parcels on the
+FY2027 final roll — are permanently out of scope for screening, in any class-2 route. Three
+measured legs, strongest first:
+
+1. **The generating rule for the printed market value is undocumented and uncitable.** YoY
+   `curmkttot` growth on these subclasses is clipped at prior-year × 1.20: p90 pinned at
+   exactly +20.0% in every subclass and every year-pair 2024→2027; 30–52% of parcels land at
+   precisely +20.0% each year; 10–22% sit at exactly +72.8% cumulative over three years
+   (= 1.20³); declines pass through freely. The clip is absent from the plain-'2' C/D and
+   class-4 controls (0.1–0.2% at +20%, free tails) and appears in NEITHER of DOF's published
+   methodology pages ("Determining your market value" / "Determining your assessed value" —
+   the published limits sit at the assessed stage only). A distribution whose generating rule
+   cannot be cited is not something this tool can present. This leg disqualifies the
+   subclasses on the tool's own provenance standard, before any statistics.
+2. **Tax charts would rank shortfall history, not assessment.** State law limits yearly
+   assessed-value increases here (8%/yr, 30%/5yr). The limit binds in `curtxbtot`: the median
+   2A parcel is billed on 31% of its 45%-of-market target; ~70% of the pooled subclasses bill
+   below half their target; billable/target IQR spreads 0.23–0.44 (class-4 O/K/F: medians
+   0.94–0.96, spreads 0.08–0.09, none below half).
+3. **Value-only was considered and rejected.** The tax comparison is the product, and only
+   ~1% of 2A subjects sit more than 2x from (or under half of) their peer-set median EMV/SF
+   vs 8.4% class-4 office / 13.8% retail — almost nothing to rank. Note: that compression is
+   itself partly explained by leg 1 — the +20% clip smooths the printed values; it is not
+   purely DOF's model being smooth.
+
+Today these BBLs refuse with the generic not-class-4 message (the DB cannot identify the
+subclass without class-2 roll data). The specific plain-language refusal ships with the
+class-2 route: see docs/api_contracts/class2_route.md and the LOCKED entry in DECISIONS.md.
+Plain-'2' C/D rentals (33,196 parcels) measured clean on every axis and remain buildable.
